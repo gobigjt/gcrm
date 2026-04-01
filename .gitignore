@@ -1,0 +1,50 @@
+# OS / Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Node.js (backend/frontend)
+node_modules/
+dist/
+build/
+coverage/
+.turbo/
+.cache/
+
+# Flutter / Dart (mobile)
+.dart_tool/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+**/build/
+
+# Generated platform tooling
+crm_mobile/android/.gradle/
+crm_mobile/android/local.properties
+crm_mobile/ios/Pods/
+crm_mobile/ios/Flutter/ephemeral/
+crm_mobile/macos/Pods/
+crm_mobile/macos/Flutter/ephemeral/
+
+# Misc
+*.tmp
+*.temp
