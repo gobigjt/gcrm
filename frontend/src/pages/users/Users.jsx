@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import api from '../../api/client';
+import { useAuth } from '../../context/AuthContext';
 import Table from '../../components/Table';
 import Modal from '../../components/Modal';
 import Tabs  from '../../components/Tabs';
@@ -206,6 +207,7 @@ function PermGrid({ allPerms, selected, onChange, readOnly = false }) {
 // ─── Users Tab ───────────────────────────────────────────────
 
 function UsersTab({ allPerms, roles }) {
+  const { user } = useAuth();
   const [users,  setUsers]  = useState([]);
   const [saving, setSaving] = useState(false);
 
@@ -219,7 +221,13 @@ function UsersTab({ allPerms, roles }) {
   const load = useCallback(() =>
     api.get('/users').then(r => setUsers(r.data || [])).catch(() => {}), []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (!user || !localStorage.getItem('access_token')) {
+      setUsers([]);
+      return;
+    }
+    load();
+  }, [load, user]);
 
   const setC = k => e => setCForm(f => ({ ...f, [k]: e.target.value }));
   const setE = k => e => setEForm(f => ({ ...f, [k]: e.target.value }));
@@ -403,6 +411,7 @@ function UsersTab({ allPerms, roles }) {
 // ─── Roles Tab ───────────────────────────────────────────────
 
 function RolesTab({ allPerms, onReload }) {
+  const { user } = useAuth();
   const [roles,  setRoles]  = useState([]);
   const [saving, setSaving] = useState(false);
   const [createModal,   setCreateModal]   = useState(false);
@@ -412,7 +421,13 @@ function RolesTab({ allPerms, onReload }) {
   const load = useCallback(() =>
     api.get('/users/roles').then(r => setRoles(r.data || [])).catch(() => {}), []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (!user || !localStorage.getItem('access_token')) {
+      setRoles([]);
+      return;
+    }
+    load();
+  }, [load, user]);
 
   const handleCreate = async (e) => {
     e.preventDefault(); setSaving(true);
@@ -574,6 +589,7 @@ function PermissionsTab({ allPerms }) {
 // ─── Root Page ───────────────────────────────────────────────
 
 export default function Users() {
+  const { user } = useAuth();
   const [tab,      setTab]      = useState('Users');
   const [allPerms, setAllPerms] = useState([]);
   const [roles,    setRoles]    = useState([]);
@@ -582,9 +598,14 @@ export default function Users() {
   const reload = () => setLoadKey(k => k + 1);
 
   useEffect(() => {
+    if (!user || !localStorage.getItem('access_token')) {
+      setAllPerms([]);
+      setRoles([]);
+      return;
+    }
     api.get('/users/permissions').then(r => setAllPerms(r.data || [])).catch(() => {});
     api.get('/users/roles').then(r => setRoles(r.data || [])).catch(() => {});
-  }, [loadKey]);
+  }, [loadKey, user]);
 
   return (
     <div>

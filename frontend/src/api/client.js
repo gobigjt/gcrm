@@ -10,15 +10,11 @@ api.interceptors.request.use((config) => {
 });
 
 // ── Response: auto-refresh on 401 ────────────────────────────
-let isRefreshing = false;
-let failedQueue  = [];
+// Backend rotates refresh tokens on every /auth/refresh. Parallel refresh calls
+// revoke each other's tokens → some requests stay on stale access tokens and get 401.
+// All 401s must await the same in-flight refresh promise (no queue + second refresh).
 
-function processQueue(error, token = null) {
-  failedQueue.forEach(({ resolve, reject }) =>
-    error ? reject(error) : resolve(token),
-  );
-  failedQueue = [];
-}
+let refreshPromise = null;
 
 function clearSession() {
   localStorage.removeItem('access_token');
@@ -26,57 +22,67 @@ function clearSession() {
   localStorage.removeItem('user');
 }
 
+function refreshSession() {
+  if (!refreshPromise) {
+    const refreshToken = localStorage.getItem('refresh_token');
+    if (!refreshToken) {
+      return Promise.reject(new Error('No refresh token'));
+    }
+    refreshPromise = axios
+      .post('/api/auth/refresh', { refresh_token: refreshToken })
+      .then(({ data }) => {
+        const { access_token, refresh_token: newRefresh } = data;
+        localStorage.setItem('access_token', access_token);
+        localStorage.setItem('refresh_token', newRefresh);
+        api.defaults.headers.common.Authorization = `Bearer ${access_token}`;
+        return access_token;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+}
+
 api.interceptors.response.use(
   (res) => res,
   async (err) => {
     const original = err.config;
 
-    // Only handle 401; anything else just propagates
-    if (err.response?.status !== 401 || original._retry) {
+    if (err.response?.status !== 401) {
+      return Promise.reject(err);
+    }
+    if (!original || original._retry) {
       return Promise.reject(err);
     }
 
-    const refreshToken = localStorage.getItem('refresh_token');
-    if (!refreshToken) {
+    const url = typeof original.url === 'string' ? original.url : '';
+    if (url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/refresh')) {
+      return Promise.reject(err);
+    }
+
+    if (!localStorage.getItem('refresh_token')) {
       clearSession();
       window.location.href = '/login';
       return Promise.reject(err);
-    }
-
-    // If a refresh is already in flight, queue this request
-    if (isRefreshing) {
-      return new Promise((resolve, reject) => {
-        failedQueue.push({ resolve, reject });
-      }).then((token) => {
-        original.headers.Authorization = `Bearer ${token}`;
-        return api(original);
-      });
     }
 
     original._retry = true;
-    isRefreshing = true;
 
     try {
-      const { data } = await axios.post('/api/auth/refresh', { refresh_token: refreshToken });
-      const { access_token, refresh_token: newRefresh } = data;
-
-      localStorage.setItem('access_token', access_token);
-      localStorage.setItem('refresh_token', newRefresh);
-
-      api.defaults.headers.common.Authorization = `Bearer ${access_token}`;
-      original.headers.Authorization = `Bearer ${access_token}`;
-
-      processQueue(null, access_token);
-      // Must await: otherwise `finally` runs immediately, isRefreshing clears while retries are
-      // still in flight and parallel 401s can trigger multiple refreshes (revoking each other's tokens).
-      return await api(original);
-    } catch (refreshErr) {
-      processQueue(refreshErr, null);
+      await refreshSession();
+      if (original.headers) {
+        if (typeof original.headers.delete === 'function') {
+          original.headers.delete('Authorization');
+        } else {
+          delete original.headers.Authorization;
+        }
+      }
+      return api(original);
+    } catch {
       clearSession();
       window.location.href = '/login';
-      return Promise.reject(refreshErr);
-    } finally {
-      isRefreshing = false;
+      return Promise.reject(err);
     }
   },
 );

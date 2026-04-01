@@ -21,22 +21,8 @@ export class UsersController {
   @Post()
   createUser(@CurrentUser() u: any, @Body() body: any) { return this.svc.createUser(body, u.id); }
 
-  @Patch(':id')
-  updateUser(@CurrentUser() u: any, @Param('id') id: string, @Body() body: any) {
-    return this.svc.updateUser(Number(id), body, u.id);
-  }
-
-  @Patch(':id/toggle-status')
-  toggleStatus(@CurrentUser() u: any, @Param('id') id: string) { return this.svc.toggleStatus(Number(id), u.id); }
-
-  @Get(':id/permissions')
-  getUserPermissions(@Param('id') id: string) { return this.svc.getUserPermissions(Number(id)); }
-
-  @Put(':id/permissions')
-  setUserPermissions(@CurrentUser() u: any, @Param('id') id: string, @Body() body: { permission_ids: number[] }) {
-    return this.svc.setUserPermissions(Number(id), body.permission_ids || [], u.id);
-  }
-
+  // Static paths must be registered before parameterized routes so `roles` / `permissions`
+  // are not captured as `:id` segments.
   // ─── Roles ───────────────────────────────────────────────
   @Get('roles')
   listRoles() { return this.svc.listRoles(); }
@@ -66,4 +52,20 @@ export class UsersController {
 
   @Get('permissions/grouped')
   listPermissionsGrouped() { return this.svc.listPermissions(); }
+
+  @Patch(':id')
+  updateUser(@CurrentUser() u: any, @Param('id') id: string, @Body() body: any) {
+    return this.svc.updateUser(Number(id), body, u.id);
+  }
+
+  @Patch(':id/toggle-status')
+  toggleStatus(@CurrentUser() u: any, @Param('id') id: string) { return this.svc.toggleStatus(Number(id), u.id); }
+
+  @Get(':id/permissions')
+  getUserPermissions(@Param('id') id: string) { return this.svc.getUserPermissions(Number(id)); }
+
+  @Put(':id/permissions')
+  setUserPermissions(@CurrentUser() u: any, @Param('id') id: string, @Body() body: { permission_ids: number[] }) {
+    return this.svc.setUserPermissions(Number(id), body.permission_ids || [], u.id);
+  }
 }

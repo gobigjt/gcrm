@@ -1,12 +1,43 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import api from '../api/client';
 
 const AuthContext = createContext(null);
 
+function readStoredUser() {
+  try {
+    return JSON.parse(localStorage.getItem('user'));
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('user')); } catch { return null; }
+    const token = localStorage.getItem('access_token');
+    const u = readStoredUser();
+    if (u && !token) {
+      localStorage.removeItem('user');
+      return null;
+    }
+    if (token) {
+      api.defaults.headers.common.Authorization = `Bearer ${token}`;
+    }
+    return u;
   });
+
+  useEffect(() => {
+    const token = localStorage.getItem('access_token');
+    const u = readStoredUser();
+    if (u && !token) {
+      localStorage.removeItem('user');
+      setUser(null);
+      delete api.defaults.headers.common.Authorization;
+      return;
+    }
+    if (token) {
+      api.defaults.headers.common.Authorization = `Bearer ${token}`;
+    }
+  }, []);
 
   const login = useCallback(async (email, password) => {
     const res = await api.post('/auth/login', { email, password });

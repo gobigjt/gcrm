@@ -1,5 +1,4 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { useLocation } from 'react-router-dom';
 import api from '../api/client';
 import { useAuth } from './AuthContext';
 
@@ -7,18 +6,24 @@ const ModuleContext = createContext({ modules: [], loaded: false, canAccess: () 
 
 export function ModuleProvider({ children }) {
   const { user } = useAuth();
-  const { pathname } = useLocation();
   const [modules, setModules] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const prevUserIdRef = useRef(null);
 
-  // Re-fetch modules when user changes, or in background on route change (do not set loaded=false
-  // on navigation — that unmounted the whole shell and fired dozens of parallel authed requests).
+  // Only call /settings/modules when there is a real session (user + access token).
+  // Avoids proxy/API traffic on login/register and before tokens are written after login.
   useEffect(() => {
     if (!user) {
       setModules([]);
       setLoaded(true);
       prevUserIdRef.current = null;
+      return;
+    }
+
+    const accessToken = localStorage.getItem('access_token');
+    if (!accessToken) {
+      setModules([]);
+      setLoaded(true);
       return;
     }
 
@@ -40,7 +45,7 @@ export function ModuleProvider({ children }) {
     return () => {
       cancelled = true;
     };
-  }, [user, pathname]);
+  }, [user]);
 
   const canAccess = (moduleKey) => {
     if (!moduleKey) return true;
