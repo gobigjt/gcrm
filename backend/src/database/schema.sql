@@ -1,5 +1,5 @@
 -- ============================================================
--- BuildConstruct CRM + ERP Platform — PostgreSQL Schema
+-- EzCRM Platform — PostgreSQL Schema
 -- ============================================================
 
 -- Extensions

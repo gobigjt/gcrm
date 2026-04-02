@@ -1,7 +1,7 @@
 {
-  "name": "buildconstruct-backend",
+  "name": "EzCRM-backend",
   "version": "1.0.0",
-  "description": "BuildConstruct CRM+ERP — NestJS backend",
+  "description": "EzCRM CRM+ERP — NestJS backend",
   "scripts": {
     "start": "node dist/main",
     "start:dev": "ts-node-dev --respawn --transpile-only src/main.ts",

@@ -112,12 +112,10 @@ export default function Layout({ children }) {
               <span className="text-white text-xs font-bold leading-none">B</span>
             </div>
             <span className="text-sm font-bold text-slate-800 dark:text-slate-100 tracking-tight">
-              BuildConstruct
+              EzCRM
             </span>
             <span className="hidden sm:block h-4 w-px bg-slate-200 dark:bg-slate-700 mx-1" />
-            <span className="hidden sm:block text-xs text-slate-400 dark:text-slate-500 font-medium">
-              CRM + ERP
-            </span>
+              
           </div>
 
           {/* Right side */}
