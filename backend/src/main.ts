@@ -16,9 +16,9 @@ async function bootstrap() {
 
   // ── Swagger ──────────────────────────────────────────────
   const config = new DocumentBuilder()
-    .setTitle('BuildConstruct API')
+    .setTitle('EzCRM API')
     .setDescription(
-      'REST API for BuildConstruct CRM + ERP platform.\n\n' +
+      'REST API for EzCRM platform.\n\n' +
       'Authenticate via **POST /api/auth/login**, copy the `access_token`, ' +
       'then click **Authorize** and enter `Bearer <token>`.',
     )
@@ -50,7 +50,7 @@ async function bootstrap() {
       tagsSorter: 'alpha',
       operationsSorter: 'alpha',
     },
-    customSiteTitle: 'BuildConstruct API Docs',
+    customSiteTitle: 'EzCRM API Docs',
   });
 
   const port = process.env.PORT || 4000;

@@ -7,7 +7,13 @@ export class DatabaseService implements OnModuleInit {
   readonly pool: Pool;
 
   constructor() {
-    this.pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    const url = process.env.DATABASE_URL;
+    if (!url?.trim()) {
+      throw new Error(
+        'DATABASE_URL is not set. In production, reference your host’s Postgres URL (e.g. Railway: Variables → reference the Postgres plugin’s DATABASE_URL).',
+      );
+    }
+    this.pool = new Pool({ connectionString: url });
   }
 
   async onModuleInit() {

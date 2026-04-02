@@ -1,5 +1,5 @@
 /**
- * BuildConstruct — Database Migration Runner
+ * EzCRM — Database Migration Runner
  *
  * Usage:
  *   npm run migrate              — apply all pending migrations
@@ -56,7 +56,7 @@ async function getApplied(client: Client): Promise<Set<string>> {
 
 async function runMigrate(): Promise<void> {
   const client = await connect();
-  console.log(bold('\n  BuildConstruct — Migration Runner\n'));
+  console.log(bold('\n  EzCRM — Migration Runner\n'));
 
   try {
     await ensureTrackingTable(client);
@@ -103,7 +103,7 @@ async function runMigrate(): Promise<void> {
 
 async function runStatus(): Promise<void> {
   const client = await connect();
-  console.log(bold('\n  BuildConstruct — Migration Status\n'));
+  console.log(bold('\n  EzCRM — Migration Status\n'));
 
   try {
     await ensureTrackingTable(client);
@@ -136,7 +136,7 @@ async function runStatus(): Promise<void> {
 
 async function runFresh(): Promise<void> {
   const client = await connect();
-  console.log(bold('\n  BuildConstruct — Fresh Migration (⚠️  drops all data)\n'));
+  console.log(bold('\n  EzCRM — Fresh Migration (⚠️  drops all data)\n'));
 
   try {
     // Drop everything including tracking table

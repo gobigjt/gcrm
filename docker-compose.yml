@@ -8,7 +8,7 @@ services:
     container_name: bc_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB:       ${POSTGRES_DB:-buildconstruct}
+      POSTGRES_DB:       ${POSTGRES_DB:-EzCRM}
       POSTGRES_USER:     ${POSTGRES_USER:-bcuser}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bcpass}
     volumes:
@@ -51,7 +51,7 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV:          production
-      DATABASE_URL:      postgres://${POSTGRES_USER:-bcuser}:${POSTGRES_PASSWORD:-bcpass}@postgres:5432/${POSTGRES_DB:-buildconstruct}
+      DATABASE_URL:      postgres://${POSTGRES_USER:-bcuser}:${POSTGRES_PASSWORD:-bcpass}@postgres:5432/${POSTGRES_DB:-EzCRM}
       REDIS_URL:         redis://redis:6379
       JWT_SECRET:        ${JWT_SECRET:-changeme_in_production}
       JWT_EXPIRES_IN:    ${JWT_EXPIRES_IN:-15m}

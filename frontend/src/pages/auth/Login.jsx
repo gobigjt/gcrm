@@ -53,7 +53,7 @@ export default function Login() {
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center mx-auto shadow-lg mb-4">
             <span className="text-white text-xl font-bold">B</span>
           </div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50 tracking-tight">BuildConstruct</h1>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50 tracking-tight">EzCRM</h1>
           <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Sign in to your workspace</p>
         </div>
 

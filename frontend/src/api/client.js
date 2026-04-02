@@ -1,6 +1,10 @@
 import axios from 'axios';
 
-const api = axios.create({ baseURL: '/api' });
+// Dev: leave unset → `/api` (Vite proxy → backend). Production: set in `.env.production`, e.g.
+//   VITE_API_BASE_URL=https://your-api.up.railway.app/api
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
+
+const api = axios.create({ baseURL: API_BASE });
 
 // ── Request: attach access token ──────────────────────────────
 api.interceptors.request.use((config) => {
@@ -29,7 +33,7 @@ function refreshSession() {
       return Promise.reject(new Error('No refresh token'));
     }
     refreshPromise = axios
-      .post('/api/auth/refresh', { refresh_token: refreshToken })
+      .post(`${API_BASE}/auth/refresh`, { refresh_token: refreshToken })
       .then(({ data }) => {
         const { access_token, refresh_token: newRefresh } = data;
         localStorage.setItem('access_token', access_token);

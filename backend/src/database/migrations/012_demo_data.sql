@@ -45,7 +45,7 @@ ON CONFLICT (email) DO NOTHING;
 -- ── Company profile (only if none exists) ───────────────────
 INSERT INTO company_settings (company_name, gstin, address, phone, email, currency, fiscal_year_start)
 SELECT
-  'Demo BuildConstruct Pvt Ltd',
+  'Demo EzCRM Pvt Ltd',
   '29ABCDE1234F1Z5',
   '42 Electronics Park, Bengaluru 560001, India',
   '+91-80-5555-0100',
