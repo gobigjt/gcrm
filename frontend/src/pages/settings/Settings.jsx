@@ -3,7 +3,7 @@ import api from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import Table from '../../components/Table';
 import Tabs  from '../../components/Tabs';
-import { Field, inputCls } from '../../components/FormField';
+import { Field, inputCls, selectCls, FormActions } from '../../components/FormField';
 
 // ─── Constants ───────────────────────────────────────────────
 
@@ -82,9 +82,7 @@ function CompanyTab({ user }) {
         </Field>
 
         {(user?.role === 'Admin' || user?.role === 'Super Admin') && (
-          <button type="submit"
-            className="bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700
-                       text-white text-sm font-semibold px-5 py-2.5 rounded-xl shadow-sm transition-all active:scale-[0.98]">
+          <button type="submit" className="btn-wf-primary">
             Save Settings
           </button>
         )}
@@ -235,14 +233,14 @@ export default function Settings() {
   const { user } = useAuth();
   const isAdmin  = user?.role === 'Admin' || user?.role === 'Super Admin';
 
-  const tabs = isAdmin ? ['Company', 'Modules', 'Audit Logs'] : ['Company'];
+  const tabs = isAdmin ? ['Company', 'Modules', 'Lead Platforms', 'Audit Logs'] : ['Company'];
   const [tab, setTab] = useState('Company');
 
   return (
     <div>
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-50 tracking-tight">Settings</h2>
-        <p className="text-slate-500 dark:text-slate-400 text-sm mt-0.5">
+      <div className="mb-4">
+        <h2 className="text-[16px] font-semibold text-slate-800 dark:text-slate-100">Company settings</h2>
+        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
           Company profile, module access, and system logs
         </p>
       </div>
@@ -251,7 +249,163 @@ export default function Settings() {
 
       {tab === 'Company'    && <CompanyTab user={user} />}
       {tab === 'Modules'    && <ModulesTab />}
+      {tab === 'Lead Platforms' && <LeadPlatformsTab />}
       {tab === 'Audit Logs' && <AuditTab />}
     </div>
   );
 }
+
+// ─── Lead Platforms Tab ─────────────────────────────────────
+
+function LeadPlatformsTab() {
+  const [pages,   setPages]   = useState([]);
+  const [sources, setSources] = useState([]);
+
+  const [form, setForm] = useState({
+    page_url: '',
+    page_name: '',
+    page_access_token: '',
+    lead_source_id: '',
+  });
+
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(() => {
+    api.get('/crm/lead-platforms/facebook/pages').then(r => setPages(r.data || [])).catch(() => {});
+    api.get('/crm/leads/sources').then(r => setSources(r.data || [])).catch(() => {});
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
+
+  const masked = (t) => {
+    if (!t) return '—';
+    const s = String(t);
+    if (s.length <= 10) return '******';
+    return `${s.slice(0, 6)}…${s.slice(-4)}`;
+  };
+
+  const handleConnect = async (e) => {
+    e.preventDefault();
+    if (!form.page_url.trim()) return;
+    setSaving(true);
+    try {
+      await api.post('/crm/lead-platforms/facebook/pages', {
+        page_url: form.page_url.trim(),
+        page_name: form.page_name.trim() || null,
+        page_access_token: form.page_access_token.trim() || null,
+        lead_source_id: form.lead_source_id ? Number(form.lead_source_id) : null,
+      });
+      setForm({ page_url: '', page_name: '', page_access_token: '', lead_source_id: '' });
+      load();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const disconnect = async (id) => {
+    if (!confirm('Disconnect this Facebook page?')) return;
+    setSaving(true);
+    try {
+      await api.delete(`/crm/lead-platforms/facebook/pages/${id}`);
+      load();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const syncLeads = async (id) => {
+    if (!confirm('Sync leads from this Facebook Page now?')) return;
+    setSaving(true);
+    try {
+      await api.post(`/crm/lead-platforms/facebook/pages/${id}/sync-leads`);
+      load();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="bg-white dark:bg-[#1a1d2e] rounded-2xl shadow-card border border-slate-200/80 dark:border-slate-700/50 p-6 max-w-xl">
+        <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100 mb-2">Facebook Pages</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+          Connect a Facebook Page so we can later sync Lead Ads / Lead Forms into your CRM.
+          For now, we store the page config and map it to a Lead Source.
+        </p>
+
+        <form onSubmit={handleConnect} className="space-y-3">
+          <Field label="Page URL *">
+            <input
+              className={inputCls}
+              value={form.page_url}
+              onChange={set('page_url')}
+              placeholder="https://www.facebook.com/<page>"
+              required
+            />
+          </Field>
+          <Field label="Page Name (optional)">
+            <input className={inputCls} value={form.page_name} onChange={set('page_name')} placeholder="My Facebook Page" />
+          </Field>
+          <Field label="Page Access Token">
+            <input
+              className={inputCls}
+              type="password"
+              value={form.page_access_token}
+              onChange={set('page_access_token')}
+              placeholder="(stored on backend)"
+            />
+          </Field>
+          <Field label="Lead Source">
+            <select className={selectCls} value={form.lead_source_id} onChange={set('lead_source_id')}>
+              <option value="">Default (Facebook Ads)</option>
+              {sources.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </Field>
+
+          <div className="pt-2">
+            <button
+              type="submit"
+              disabled={saving}
+              className="w-full btn-wf-primary py-2 disabled:opacity-60"
+            >
+              {saving ? 'Saving…' : 'Connect Facebook Page'}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <Table
+        cols={['Page URL', 'Page ID', 'Page Name', 'Lead Source', 'Token', 'Actions']}
+        empty="No Facebook pages connected"
+        rows={pages.map(p => ([
+          p.page_url || '—',
+          p.page_id,
+          p.page_name || '—',
+          p.lead_source_name || 'Default',
+          masked(p.page_access_token),
+          <div className="flex items-center gap-2">
+            <button
+              key={`s-${p.id}`}
+              onClick={() => syncLeads(p.id)}
+              className="px-2.5 py-1 text-xs font-medium rounded-lg transition-all
+                         bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 hover:bg-brand-100"
+            >
+              Sync Leads
+            </button>
+            <button
+              key={`d-${p.id}`}
+              onClick={() => disconnect(p.id)}
+              className="px-2.5 py-1 text-xs font-medium rounded-lg transition-all
+                         bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100"
+            >
+              Disconnect
+            </button>
+          </div>,
+        ]))}
+      />
+    </div>
+  );
+}
+

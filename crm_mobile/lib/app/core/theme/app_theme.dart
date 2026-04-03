@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 abstract class AppTheme {
   static ThemeData get lightTheme {
     final scheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF3B82F6),
+      // Showcase accent: #185FA5
+      seedColor: const Color(0xFF185FA5),
       brightness: Brightness.light,
     );
     final base = ThemeData(colorScheme: scheme, useMaterial3: true);
@@ -51,7 +52,8 @@ abstract class AppTheme {
 
   static ThemeData get darkTheme {
     final scheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF3B82F6),
+      // Showcase accent: #185FA5
+      seedColor: const Color(0xFF185FA5),
       brightness: Brightness.dark,
     );
     final base = ThemeData(colorScheme: scheme, useMaterial3: true);

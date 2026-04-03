@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import api from '../api/client';
+import api, { persistAccessToken, clearSession } from '../api/client';
 
 const AuthContext = createContext(null);
 
@@ -17,11 +17,10 @@ export function AuthProvider({ children }) {
     const u = readStoredUser();
     if (u && !token) {
       localStorage.removeItem('user');
+      clearSession();
       return null;
     }
-    if (token) {
-      api.defaults.headers.common.Authorization = `Bearer ${token}`;
-    }
+    if (token) persistAccessToken(token);
     return u;
   });
 
@@ -42,10 +41,9 @@ export function AuthProvider({ children }) {
   const login = useCallback(async (email, password) => {
     const res = await api.post('/auth/login', { email, password });
     const { access_token, refresh_token, user: u } = res.data;
-    localStorage.setItem('access_token', access_token);
     localStorage.setItem('refresh_token', refresh_token);
     localStorage.setItem('user', JSON.stringify(u));
-    api.defaults.headers.common.Authorization = `Bearer ${access_token}`;
+    persistAccessToken(access_token);
     setUser(u);
     return u;
   }, []);
@@ -57,10 +55,7 @@ export function AuthProvider({ children }) {
     } catch {
       // ignore — we're logging out regardless
     } finally {
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
-      localStorage.removeItem('user');
-      delete api.defaults.headers.common.Authorization;
+      clearSession();
       setUser(null);
     }
   }, []);

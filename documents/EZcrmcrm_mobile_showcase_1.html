@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRM Suite — Mobile App Showcase</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f0;color:#1a1a18;padding:24px 16px}
+:root{
+  --color-background-primary:#ffffff;
+  --color-background-secondary:#f1efe8;
+  --color-background-tertiary:#e8e6df;
+  --color-text-primary:#1a1a18;
+  --color-text-secondary:#73726c;
+  --color-border-tertiary:rgba(0,0,0,0.1);
+  --color-border-secondary:rgba(0,0,0,0.18);
+  --color-border-primary:rgba(0,0,0,0.28);
+  --accent:#185FA5;--accent-light:#E6F1FB;--accent-mid:#378ADD;
+  --green:#1D9E75;--green-light:#E1F5EE;
+  --amber:#EF9F27;--amber-light:#FAEEDA;
+  --red:#E24B4A;--red-light:#FCEBEB;
+  --purple:#534AB7;--purple-light:#EEEDFE;
+}
+@media(prefers-color-scheme:dark){
+  :root{
+    --color-background-primary:#1e1e1c;
+    --color-background-secondary:#2a2a28;
+    --color-background-tertiary:#111110;
+    --color-text-primary:#e8e6df;
+    --color-text-secondary:#9c9a92;
+    --color-border-tertiary:rgba(255,255,255,0.1);
+    --color-border-secondary:rgba(255,255,255,0.18);
+    --color-border-primary:rgba(255,255,255,0.28);
+  }
+  body{background:#111110;color:#e8e6df}
+}
+.showcase{max-width:1100px;margin:0 auto;padding:0 0 40px}
+.hero{text-align:center;padding:32px 16px 24px;border-bottom:0.5px solid var(--color-border-tertiary);margin-bottom:28px}
+.hero-badge{display:inline-flex;align-items:center;gap:6px;background:var(--accent-light);border-radius:20px;padding:5px 14px;font-size:12px;font-weight:500;color:#0C447C;margin-bottom:14px}
+.hero-badge-dot{width:7px;height:7px;border-radius:50%;background:var(--accent)}
+.hero-title{font-size:28px;font-weight:500;color:var(--color-text-primary);margin-bottom:8px}
+.hero-sub{font-size:14px;color:var(--color-text-secondary);max-width:480px;margin:0 auto 18px;line-height:1.6}
+.feat-pills{display:flex;flex-wrap:wrap;gap:7px;justify-content:center}
+.fp{padding:5px 12px;border-radius:14px;font-size:12px;font-weight:500}
+.sect{margin-bottom:36px}
+.sect-header{display:flex;align-items:center;gap:12px;margin-bottom:18px;padding-bottom:12px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.sect-icon{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.sect-title{font-size:16px;font-weight:500;color:var(--color-text-primary)}
+.sect-sub{font-size:12px;color:var(--color-text-secondary);margin-top:2px}
+.phones-row{display:flex;gap:16px;overflow-x:auto;padding-bottom:10px}
+.phones-row::-webkit-scrollbar{height:4px}
+.phones-row::-webkit-scrollbar-track{background:var(--color-background-secondary);border-radius:2px}
+.phones-row::-webkit-scrollbar-thumb{background:var(--color-border-secondary);border-radius:2px}
+.phone-wrap{flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:9px}
+.phone-label{font-size:11px;font-weight:500;color:var(--color-text-secondary);text-align:center}
+.phone{width:200px;background:var(--color-background-primary);border-radius:30px;border:2px solid var(--color-border-secondary);overflow:hidden}
+.ph-status{height:22px;background:var(--color-background-secondary);display:flex;align-items:center;justify-content:space-between;padding:0 13px}
+.ph-st{font-size:9px;color:var(--color-text-secondary)}
+.screen-body{background:var(--color-background-primary);min-height:390px}
+.topbar{padding:8px 12px 7px;border-bottom:0.5px solid var(--color-border-tertiary);display:flex;align-items:center;gap:7px}
+.tbtitle{font-size:12px;font-weight:500;color:var(--color-text-primary);flex:1}
+.tbback{font-size:10px;color:var(--accent);cursor:pointer}
+.av{border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:500;flex-shrink:0}
+.body{padding:9px 11px}
+.krow{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:9px}
+.kc{background:var(--color-background-secondary);border-radius:7px;padding:7px 9px}
+.kl{font-size:8px;color:var(--color-text-secondary);margin-bottom:1px}
+.kv{font-size:14px;font-weight:500;color:var(--color-text-primary)}
+.kt{font-size:8px}
+.sec{font-size:9px;font-weight:500;color:var(--color-text-secondary);margin:7px 0 5px;text-transform:uppercase;letter-spacing:.04em}
+.lrow{display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:0.5px solid var(--color-border-tertiary)}
+.lname{font-size:10px;font-weight:500;color:var(--color-text-primary)}
+.lsub{font-size:9px;color:var(--color-text-secondary)}
+.pill{display:inline-block;padding:2px 6px;border-radius:8px;font-size:8px;font-weight:500}
+.bnav{display:flex;border-top:0.5px solid var(--color-border-tertiary);padding:5px 0 3px}
+.bni{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px}
+.bni-dot{width:15px;height:15px;border-radius:3px}
+.bni-lbl{font-size:7px;color:var(--color-text-secondary)}
+.bni-lbl.a{color:var(--accent)}
+.msg-out{background:var(--accent-light);border-radius:7px 7px 2px 7px;padding:5px 8px;font-size:9px;color:#0C447C;max-width:72%;align-self:flex-end;margin:2px 0}
+.msg-in{background:var(--color-background-secondary);border-radius:7px 7px 7px 2px;padding:5px 8px;font-size:9px;color:var(--color-text-primary);max-width:72%;align-self:flex-start;margin:2px 0}
+.msg-t{font-size:7px;color:var(--color-text-secondary)}
+.chat-body{display:flex;flex-direction:column;padding:7px;gap:1px;flex:1}
+.chat-input-row{display:flex;gap:5px;padding:6px 9px;border-top:0.5px solid var(--color-border-tertiary);align-items:center}
+.ci-box{flex:1;border:0.5px solid var(--color-border-secondary);border-radius:14px;padding:4px 9px;font-size:9px;background:var(--color-background-secondary);color:var(--color-text-secondary)}
+.send-btn{width:22px;height:22px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.inv-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:0.5px solid var(--color-border-tertiary)}
+.divider{height:0.5px;background:var(--color-border-tertiary);margin:7px 0}
+.pb-track{height:5px;background:var(--color-background-secondary);border-radius:3px;overflow:hidden;margin-top:2px}
+.pb-fill{height:100%;border-radius:3px}
+.dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-top:2px}
+.tline-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;margin-top:2px}
+.tline{width:1px;background:var(--color-border-tertiary);flex:1;min-height:13px;margin:1px auto 0}
+.tl{display:flex;flex-direction:column;align-items:center;width:12px}
+.tr{flex:1;padding-bottom:5px}
+.trow{display:flex;gap:6px}
+.ttitle{font-size:9px;font-weight:500;color:var(--color-text-primary)}
+.tsub{font-size:8px;color:var(--color-text-secondary)}
+.search{display:flex;align-items:center;gap:5px;background:var(--color-background-secondary);border-radius:7px;padding:5px 9px;margin-bottom:7px;font-size:9px;color:var(--color-text-secondary)}
+.inp-fld{border:0.5px solid var(--color-border-secondary);border-radius:5px;padding:5px 7px;font-size:9px;background:var(--color-background-secondary);color:var(--color-text-secondary);margin-bottom:5px;width:100%}
+.inplbl{font-size:8px;color:var(--color-text-secondary);margin-bottom:2px}
+.btn-p{background:var(--accent);border-radius:6px;padding:7px;text-align:center;font-size:10px;font-weight:500;color:#fff;cursor:pointer;margin-top:6px}
+.btn-s{background:var(--color-background-secondary);border:0.5px solid var(--color-border-secondary);border-radius:6px;padding:6px;text-align:center;font-size:10px;color:var(--color-text-primary);cursor:pointer;margin-top:4px}
+.set-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:0.5px solid var(--color-border-tertiary)}
+.set-lbl{font-size:10px;color:var(--color-text-primary)}
+.set-val{font-size:9px;color:var(--color-text-secondary)}
+.toggle{width:26px;height:14px;background:var(--accent);border-radius:7px;position:relative;flex-shrink:0}
+.toggle-knob{width:10px;height:10px;background:#fff;border-radius:50%;position:absolute;top:2px;right:2px}
+.kanban-col{flex:1;min-width:0}
+.kh{font-size:8px;font-weight:500;padding:3px 4px;border-radius:4px;text-align:center;margin-bottom:3px}
+.kcard{border-radius:5px;padding:5px 6px;margin-bottom:3px;border-left:2px solid}
+.kcn{font-size:9px;font-weight:500;color:var(--color-text-primary)}
+.kcv{font-size:8px;color:var(--color-text-secondary)}
+.aging-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px}
+.aging-cell{background:var(--color-background-secondary);border-radius:6px;padding:7px;text-align:center}
+.aging-val{font-size:14px;font-weight:500}
+.aging-lbl{font-size:7px;color:var(--color-text-secondary)}
+.gst-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:0.5px solid var(--color-border-tertiary);font-size:9px}
+.prod-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:0.5px solid var(--color-border-tertiary)}
+.prn{font-size:9px;font-weight:500;color:var(--color-text-primary)}
+.prs{font-size:8px;color:var(--color-text-secondary)}
+.st-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:0.5px solid var(--color-border-tertiary)}
+.stn{font-size:9px;font-weight:500;color:var(--color-text-primary)}
+.sts{font-size:8px;color:var(--color-text-secondary)}
+.tenant-row{display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:0.5px solid var(--color-border-tertiary)}
+.notif-row{display:flex;gap:6px;padding:5px 0;border-bottom:0.5px solid var(--color-border-tertiary);align-items:flex-start}
+</style>
+</head>
+<body>
+<div class="showcase">
+
+<div class="hero">
+  <div class="hero-badge"><div class="hero-badge-dot"></div>CRM Suite — Mobile App</div>
+  <div class="hero-title">Every screen, every user</div>
+  <div class="hero-sub">Complete mobile wireframe showcase for the CRM SaaS platform across all 6 user roles</div>
+  <div class="feat-pills">
+    <span class="fp" style="background:#E6F1FB;color:#0C447C">Sales executive</span>
+    <span class="fp" style="background:#E1F5EE;color:#085041">Sales manager</span>
+    <span class="fp" style="background:#FAEEDA;color:#633806">Accounts</span>
+    <span class="fp" style="background:#EEEDFE;color:#3C3489">Company admin</span>
+    <span class="fp" style="background:#FAECE7;color:#712B13">Inventory</span>
+    <span class="fp" style="background:#FCEBEB;color:#791F1F">Super admin</span>
+  </div>
+</div>
+
+<!-- ONBOARDING -->
+<div class="sect">
+  <div class="sect-header">
+    <div class="sect-icon" style="background:#E6F1FB"><svg width="18" height="18" viewBox="0 0 18 18"><rect x="2" y="2" width="6" height="6" rx="1.5" fill="#185FA5"/><rect x="10" y="2" width="6" height="6" rx="1.5" fill="#185FA5" opacity=".4"/><rect x="2" y="10" width="6" height="6" rx="1.5" fill="#185FA5" opacity=".4"/><rect x="10" y="10" width="6" height="6" rx="1.5" fill="#185FA5"/></svg></div>
+    <div><div class="sect-title">Onboarding</div><div class="sect-sub">Splash · Login · Biometric authentication</div></div>
+  </div>
+  <div class="phones-row">
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="ph-status"><span class="ph-st">9:41</span><span class="ph-st">●●●</span></div>
+        <div class="screen-body" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 16px;background:#0C447C;min-height:390px">
+          <div style="width:60px;height:60px;border-radius:18px;background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;margin-bottom:16px;border:1px solid rgba(255,255,255,0.25)">
+            <svg width="30" height="30" viewBox="0 0 30 30"><rect x="2" y="2" width="11" height="11" rx="2.5" fill="#fff"/><rect x="17" y="2" width="11" height="11" rx="2.5" fill="#fff" opacity=".5"/><rect x="2" y="17" width="11" height="11" rx="2.5" fill="#fff" opacity=".5"/><rect x="17" y="17" width="11" height="11" rx="2.5" fill="#fff"/></svg>
+          </div>
+          <div style="font-size:20px;font-weight:500;color:#fff;margin-bottom:6px">CRM Suite</div>
+          <div style="font-size:11px;color:rgba(255,255,255,0.65);margin-bottom:40px;text-align:center">India's smartest sales<br>&amp; operations platform</div>
+          <div style="width:10px;height:10px;border-radius:50%;background:#fff;margin-bottom:32px"></div>
+          <div style="width:100%;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);border-radius:9px;padding:10px;text-align:center;font-size:11px;color:#fff;font-weight:500">Get started</div>
+          <div style="font-size:9px;color:rgba(255,255,255,0.5);margin-top:10px">Already have an account? Sign in</div>
+        </div>
+      </div>
+      <div class="phone-label">Splash</div>
+    </div>
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="ph-status"><span class="ph-st">9:41</span><span class="ph-st">●●●</span></div>
+        <div class="screen-body" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:22px 16px;min-height:390px">
+          <div style="width:44px;height:44px;border-radius:13px;background:#185FA5;display:flex;align-items:center;justify-content:center;margin-bottom:11px">
+            <svg width="22" height="22" viewBox="0 0 22 22"><rect x="2" y="2" width="8" height="8" rx="2" fill="#fff"/><rect x="12" y="2" width="8" height="8" rx="2" fill="#fff" opacity=".5"/><rect x="2" y="12" width="8" height="8" rx="2" fill="#fff" opacity=".5"/><rect x="12" y="12" width="8" height="8" rx="2" fill="#fff"/></svg>
+          </div>
+          <div style="font-size:15px;font-weight:500;color:var(--color-text-primary);margin-bottom:3px">CRM Suite</div>
+          <div style="font-size:10px;color:var(--color-text-secondary);margin-bottom:22px">Sign in to your account</div>
+          <div style="width:100%">
+            <div class="inplbl">Email</div><div class="inp-fld">rajesh@acmecorp.in</div>
+            <div class="inplbl">Password</div><div class="inp-fld">••••••••</div>
+            <div style="text-align:right;font-size:9px;color:#185FA5;margin-bottom:12px">Forgot password?</div>
+            <div class="btn-p">Sign in</div>
+            <div style="display:flex;align-items:center;gap:7px;margin:9px 0">
+              <div style="flex:1;height:0.5px;background:var(--color-border-tertiary)"></div>
+              <div style="font-size:8px;color:var(--color-text-secondary)">or</div>
+              <div style="flex:1;height:0.5px;background:var(--color-border-tertiary)"></div>
+            </div>
+            <div class="btn-s">&#x1F4F1; Biometric login</div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">Login</div>
+    </div>
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="ph-status"><span class="ph-st">9:41</span><span class="ph-st">●●●</span></div>
+        <div class="screen-body" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:26px 18px;min-height:390px">
+          <div style="width:54px;height:54px;border-radius:50%;background:#E6F1FB;display:flex;align-items:center;justify-content:center;margin-bottom:11px;border:2px solid #185FA5">
+            <svg width="26" height="26" viewBox="0 0 26 26"><circle cx="13" cy="9" r="4.5" fill="#185FA5"/><path d="M4 22c0-4.5 4-8 9-8s9 3.5 9 8" fill="none" stroke="#185FA5" stroke-width="2.2" stroke-linecap="round"/></svg>
+          </div>
+          <div style="font-size:13px;font-weight:500;color:var(--color-text-primary);margin-bottom:3px">Welcome back, Rajesh</div>
+          <div style="font-size:10px;color:var(--color-text-secondary);margin-bottom:22px">Use biometric to continue</div>
+          <div style="width:68px;height:68px;border-radius:50%;background:var(--color-background-secondary);border:1.5px solid var(--color-border-secondary);display:flex;align-items:center;justify-content:center;margin-bottom:16px">
+            <svg width="30" height="30" viewBox="0 0 30 30"><path d="M6 15C6 10 10 6 15 6s9 4 9 9" fill="none" stroke="#185FA5" stroke-width="2" stroke-linecap="round"/><circle cx="15" cy="15" r="4.5" fill="#185FA5"/><path d="M10.5 20c0-2.5 2-4.5 4.5-4.5s4.5 2 4.5 4.5" fill="none" stroke="#185FA5" stroke-width="1.5"/></svg>
+          </div>
+          <div style="font-size:10px;color:var(--color-text-secondary);margin-bottom:18px">Touch ID or Face ID</div>
+          <div style="width:100%;background:#185FA5;border-radius:8px;padding:9px;text-align:center;font-size:10px;font-weight:500;color:#fff">Authenticate</div>
+          <div style="font-size:9px;color:#185FA5;margin-top:9px">Use password instead</div>
+        </div>
+      </div>
+      <div class="phone-label">Biometric</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- SALES EXECUTIVE -->
+<div class="sect">
+  <div class="sect-header">
+    <div class="sect-icon" style="background:#E6F1FB"><svg width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="6" r="3.5" fill="#185FA5"/><path d="M2 16c0-3.5 3.1-6 7-6s7 2.5 7 6" fill="#185FA5" opacity=".5"/></svg></div>
+    <div><div class="sect-title">Sales executive</div><div class="sect-sub">Home · Leads list · Lead detail · Tasks · WhatsApp · Add lead</div></div>
+  </div>
+  <div class="phones-row">
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="ph-status"><span class="ph-st">9:41</span><span class="ph-st">●●●</span></div>
+        <div class="screen-body">
+          <div class="topbar"><div class="tbtitle">Good morning, Rajesh</div><div class="av" style="width:24px;height:24px;font-size:9px;background:#E6F1FB;color:#0C447C">RK</div></div>
+          <div class="body">
+            <div class="krow">
+              <div class="kc"><div class="kl">My leads</div><div class="kv">72</div><div class="kt" style="color:#27500A">+8 this week</div></div>
+              <div class="kc"><div class="kl">Won MTD</div><div class="kv">18</div><div class="kt" style="color:#27500A">25% conv.</div></div>
+              <div class="kc"><div class="kl">Revenue</div><div class="kv">&#8377;2.4L</div><div class="kt" style="color:#27500A">+31%</div></div>
+              <div class="kc"><div class="kl">Tasks</div><div class="kv" style="color:#E24B4A">6</div><div class="kt" style="color:#E24B4A">2 overdue</div></div>
+            </div>
+            <div class="sec">Today's tasks</div>
+            <div class="lrow"><div class="dot" style="background:#E24B4A"></div><div><div class="lname">Call Ramco Industries</div><div class="lsub">Overdue · &#8377;85K</div></div></div>
+            <div class="lrow"><div class="dot" style="background:#EF9F27"></div><div><div class="lname">Meeting: Tata Infra · 3pm</div><div class="lsub">Qualified · &#8377;1.2L</div></div></div>
+            <div class="sec">Recent leads</div>
+            <div class="lrow"><div class="av" style="width:22px;height:22px;font-size:8px;background:#E6F1FB;color:#0C447C">TI</div><div style="flex:1"><div class="lname">Tata Infra Ltd</div><div class="lsub">Google · &#8377;1.2L</div></div><span class="pill" style="background:#FAEEDA;color:#633806">Qualified</span></div>
+            <div class="lrow" style="border:none"><div class="av" style="width:22px;height:22px;font-size:8px;background:#EEEDFE;color:#3C3489">JB</div><div style="flex:1"><div class="lname">Jain Bros</div><div class="lsub">FB Ad · &#8377;55K</div></div><span class="pill" style="background:#E6F1FB;color:#0C447C">New</span></div>
+          </div>
+          <div class="bnav">
+            <div class="bni"><div class="bni-dot" style="background:#E6F1FB;border-radius:50%"></div><div class="bni-lbl a">Home</div></div>
+            <div class="bni"><div class="bni-dot" style="background:var(--color-background-secondary)"></div><div class="bni-lbl">Leads</div></div>
+            <div class="bni"><div class="bni-dot" style="background:var(--color-background-secondary)"></div><div class="bni-lbl">Tasks</div></div>
+            <div class="bni"><div class="bni-dot" style="background:var(--color-background-secondary)"></div><div class="bni-lbl">Chat</div></div>
+            <div class="bni"><div class="bni-dot" style="background:var(--color-background-secondary)"></div><div class="bni-lbl">Me</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">Home</div>
+    </div>
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="ph-status"><span class="ph-st">9:41</span><span class="ph-st">●●●</span></div>
+        <div class="screen-body">
+          <div class="topbar"><div class="tbtitle">My leads (72)</div></div>
+          <div class="body">
+            <div class="search">&#128269; Search leads…</div>
+            <div style="display:flex;gap:4px;margin-bottom:7px;flex-wrap:wrap">
+              <span class="pill" style="background:#E6F1FB;color:#0C447C">All (72)</span>
+              <span class="pill" style="background:var(--color-background-secondary);color:var(--color-text-secondary)">New (14)</span>
+              <span class="pill" style="background:var(--color-background-secondary);color:var(--color-text-secondary)">Proposal</span>
+              <span class="pill" style="background:var(--color-background-secondary);color:var(--color-text-secondary)">Won</span>
+            </div>
+            <div class="lrow"><div class="av" style="width:22px;height:22px;font-size:8px;background:#E6F1FB;color:#0C447C">TI</div><div style="flex:1"><div class="lname">Tata Infra Ltd</div><div class="lsub">Google · &#8377;1.2L</div></div><span class="pill" style="background:#FAEEDA;color:#633806">Qualified</span></div>
+            <div class="lrow"><div class="av" style="width:22px;height:22px;font-size:8px;background:#EEEDFE;color:#3C3489">RI</div><div style="flex:1"><div class="lname">Ramco Industries</div><div class="lsub">Referral · &#8377;85K</div></div><span class="pill" style="background:#EEEDFE;color:#3C3489">Proposal</span></div>
+            <div class="lrow"><div class="av" style="width:22px;height:22px;font-size:8px;background:#E1F5EE;color:#085041">SV</div><div style="flex:1"><div class="lname">SV Traders</div><div class="lsub">Website · &#8377;3.1L</div></div><span class="pill" style="background:#EEEDFE;color:#3C3489">Proposal</span></div>
+            <div class="lrow"><div class="av" style="width:22px;height:22px;font-size:8px;background:#EAF3DE;color:#27500A">AC</div><div style="flex:1"><div class="lname">Apex Mfg</div><div class="lsub">Google · &#8377;1.4L</div></div><span class="pill" style="background:#EAF3DE;color:#27500A">Won</span></div>
+            <div class="lrow" style="border:none"><div class="av" style="width:22px;height:22px;font-size:8px;background:#FCEBEB;color:#791F1F">NK</div><div style="flex:1"><div class="lname">Nile Corp</div><div class="lsub">Website · &#8377;62K</div></div><span class="pill" style="background:#FCEBEB;color:#791F1F">Lost</span></div>
+          </div>
+          <div class="bnav">
+            <div class="bni"><div class="bni-dot" style="background:var(--color-background-secondary)"></div><div class="bni-lbl">Home</div></div>
+            <div class="bni"><div class="bni-dot" style="background:#E6F1FB;border-radius:50%"></div><div class="bni-lbl a">Leads</div></div>
+            <div class="bni"><div class="bni-dot" style="background:var(--color-background-secondary)"></div><div class="bni-lbl">Tasks</div></div>
+            <div class="bni"><div class="bni-dot" style="background:var(--color-background-secondary)"></div><div class="bni-lbl">Chat</div></div>
+            <div class="bni"><div class="bni-dot" style="background:var(--color-background-secondary)"></div><div class="bni-lbl">Me</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">Leads list</div>
+    </div>
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="ph-status"><span class="ph-st">9:41</span><span class="ph-st">●●●</span></div>
+        <div class="screen-body">
+          <div class="topbar"><div class="tbback">&#8249; Leads</div><div class="tbtitle">Lead detail</div></div>
+          <div class="body">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px">
+              <div class="av" style="width:34px;height:34px;font-size:12px;background:#EEEDFE;color:#3C3489">RI</div>
+              <div style="flex:1"><div style="font-size:12px;font-weight:500;color:var(--color-text-primary)">Ramco Industries</div><div style="font-size:9px;color:var(--color-text-secondary)">Referral · Rajesh Kumar</div></div>
+              <span class="pill" style="background:#EEEDFE;color:#3C3489">Proposal</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:8px">
+              <div style="background:#E6F1FB;border-radius:5px;padding:5px;text-align:center"><div style="font-size:8px;color:#0C447C">Value</div><div style="font-size:11px;font-weight:500;color:#0C447C">&#8377;85K</div></div>
+              <div style="background:#FAEEDA;border-radius:5px;padding:5px;text-align:center"><div style="font-size:8px;color:#633806">Score</div><div style="font-size:11px;font-weight:500;color:#633806">74</div></div>
+              <div style="background:#E1F5EE;border-radius:5px;padding:5px;text-align:center"><div style="font-size:8px;color:#085041">Days</div><div style="font-size:11px;font-weight:500;color:#085041">12</div></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:8px">
+              <div style="background:#185FA5;border-radius:5px;padding:5px;text-align:center;font-size:9px;color:#fff;font-weight:500">Log call</div>
+              <div style="background:var(--color-background-secondary);border:0.5px solid var(--color-border-secondary);border-radius:5px;padding:5px;text-align:center;font-size:9px;color:var(--color-text-primary)">Send WA</div>
+              <div style="background:var(--color-background-secondary);border:0.5px solid var(--color-border-secondary);border-radius:5px;padding:5px;text-align:center;font-size:9px;color:var(--color-text-primary)">Quote</div>
+            </div>
+            <div class="sec">Activity timeline</div>
+            <div class="trow"><div class="tl"><div class="tline-dot" style="background:#185FA5"></div><div class="tline"></div></div><div class="tr"><div class="ttitle">Proposal sent via email</div><div class="tsub">Today · 10:15 am</div></div></div>
+            <div class="trow"><div class="tl"><div class="tline-dot" style="background:#1D9E75"></div><div class="tline"></div></div><div class="tr"><div class="ttitle">Call — 8 min, interested</div><div class="tsub">Yesterday · 2:40 pm</div></div></div>
+            <div class="trow"><div class="tl"><div class="tline-dot" style="background:#EF9F27"></div><div class="tline"></div></div><div class="tr"><div class="ttitle">Lead qualified</div><div class="tsub">3 days ago</div></div></div>
+            <div class="trow"><div class="tl"><div class="tline-dot" style="background:#B4B2A9"></div></div><div class="tr"><div class="ttitle">Created from Referral</div><div class="tsub">12 days ago</div></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">Lead detail</div>
+    </div>
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="ph-status"><span class="ph-st">9:41</span><span class="ph-st">●●●</span></div>
+        <div class="screen-body">
+          <div class="topbar"><div class="tbtitle">Tasks &amp; follow-ups</div></div>
+          <div class="body">
+            <div class="sec" style="color:#791F1F">Overdue (2)</div>
+            <div class="lrow"><div class="dot" style="background:#E24B4A"></div><div><div class="lname">Call Ramco Industries</div><div class="lsub">3 days overdue · &#8377;85K</div></div></div>
+            <div class="lrow"><div class="dot" style="background:#E24B4A"></div><div><div class="lname">Send quote — SV Traders</div><div class="lsub">1 day overdue · &#8377;3.1L</div></div></div>
+            <div class="sec">Today (3)</div>
+            <div class="lrow"><div class="dot" style="background:#EF9F27"></div><div><div class="lname">Meeting: Tata Infra · 3pm</div><div class="lsub">Qualified · &#8377;1.2L</div></div></div>
+            <div class="lrow"><div class="dot" style="background:#EF9F27"></div><div><div class="lname">WhatsApp: Jain Bros</div><div class="lsub">FB Ad · &#8377;55K</div></div></div>
+            <div class="lrow"><div class="dot" style="background:#185FA5"></div><div><div class="lname">Update notes — Mehta</div><div class="lsub">Contacted stage</div></div></div>
+            <div class="sec">This week</div>
+            <div class="lrow" style="border:none"><div class="dot" style="background:#B4B2A9"></div><div><div class="lname">Demo: Sunrise Pvt · Wed 2pm</div><div class="lsub">New lead · &#8377;45K</div></div></div>
+          </div>
+          <div class="bnav">
+            <div class="bni"><div class="bni-dot" style="background:var(--color-background-secondary)"></div><div class="bni-lbl">Home</div></div>
+            <div class="bni"><div class="bni-dot" style="background:var(--color-background-secondary)"></div><div class="bni-lbl">Leads</div></div>
+            <div class="bni"><div class="bni-dot" style="background:#E6F1FB;border-radius:50%"></div><div class="bni-lbl a">Tasks</div></div>
+            <div class="bni"><div class="bni-dot" style="background:var(--color-background-secondary)"></div><div class="bni-lbl">Chat</div></div>
+            <div class="bni"><div class="bni-dot" style="background:var(--color-background-secondary)"></div><div class="bni-lbl">Me</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">Tasks</div>
+    </div>
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="ph-status"><span class="ph-st">9:41</span><span class="ph-st">●●●</span></div>
+        <div class="screen-body" style="display:flex;flex-direction:column">
+          <div class="topbar"><div class="tbback">&#8249; Leads</div><div class="av" style="width:22px;height:22px;font-size:8px;background:#EEEDFE;color:#3C3489">RI</div><div style="flex:1"><div style="font-size:10px;font-weight:500;color:var(--color-text-primary)">Ramco Industries</div><div style="font-size:8px;color:var(--color-text-secondary)">+91 98100 55321</div></div></div>
+          <div class="chat-body">
+            <div style="text-align:center;font-size:8px;color:var(--color-text-secondary);margin:3px 0">Today</div>
+            <div class="msg-out">Hi Suresh ji, sharing the revised proposal for the valve order.</div>
+            <div class="msg-t" style="align-self:flex-end">10:12 ✓✓</div>
+            <div class="msg-in">Thanks. Can you adjust payment terms to 60 days?</div>
+            <div class="msg-t">10:45</div>
+            <div class="msg-out">Sure, I'll update and resend today.</div>
+            <div class="msg-t" style="align-self:flex-end">10:47 ✓✓</div>
+            <div class="msg-in">Also need GST invoice for the last order.</div>
+            <div class="msg-t">11:02</div>
+            <div style="background:#E1F5EE;border-radius:7px;padding:6px 8px;margin:2px 0;align-self:flex-start;max-width:80%"><div style="font-size:8px;color:#085041;font-weight:500">Invoice attached</div><div style="font-size:8px;color:#085041">INV-0271 · &#8377;92,500</div></div>
+          </div>
+          <div class="chat-input-row">
+            <div style="font-size:8px;color:#185FA5;padding:3px 6px;border:0.5px solid #185FA5;border-radius:10px">Template</div>
+            <div class="ci-box">Type a message…</div>
+            <div class="send-btn"><svg width="9" height="9" viewBox="0 0 9 9"><path d="M1 4.5h7M5 2l2.5 2.5L5 7" fill="none" stroke="#fff" stroke-width="1.2" stroke-linecap="round"/></svg></div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">WhatsApp chat</div>
+    </div>
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="ph-status"><span class="ph-st">9:41</span><span class="ph-st">●●●</span></div>
+        <div class="screen-body">
+          <div class="topbar"><div class="tbback">&#8249; Back</div><div class="tbtitle">New lead</div></div>
+          <div class="body">
+            <div class="inplbl">Contact name *</div><div class="inp-fld">Enter full name</div>
+            <div class="inplbl">Company</div><div class="inp-fld">Company name</div>
+            <div class="inplbl">Phone *</div><div class="inp-fld">+91 XXXXX XXXXX</div>
+            <div class="inplbl">Email</div><div class="inp-fld">email@company.com</div>
+            <div class="inplbl">Lead source</div>
+            <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">
+              <span class="pill" style="background:#E6F1FB;color:#0C447C">Facebook</span>
+              <span class="pill" style="background:var(--color-background-secondary);color:var(--color-text-secondary)">Google</span>
+              <span class="pill" style="background:var(--color-background-secondary);color:var(--color-text-secondary)">Website</span>
+              <span class="pill" style="background:var(--color-background-secondary);color:var(--color-text-secondary)">Referral</span>
+            </div>
+            <div class="inplbl">Est. value (&#8377;)</div><div class="inp-fld">0</div>
+            <div class="btn-p">Create lead</div>
+            <div class="btn-s">Save &amp; add task</div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">Add lead</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- SALES MANAGER -->
+<div class="sect">
+  <div class="sect-header">
+    <div class="sect-icon" style="background:#E1F5EE"><svg width="18" height="18" viewBox="0 0 18 18"><rect x="2" y="2" width="6" height="6" rx="1.5" fill="#1D9E75"/><rect x="10" y="2" width="6" height="6" rx="1.5" fill="#1D9E75" opacity=".5"/><rect x="2" y="10" width="6" height="6" rx="1.5" fill="#1D9E75" opacity=".5"/><rect x="10" y="10" width="6" height="6" rx="1.5" fill="#1D9E75"/></svg></div>
+    <div><div class="sect-title">Sales manager</div><div class="sect-sub">Home · Lead kanban · Performance report</div></div>
+  </div>
+  <div class="phones-row">
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="ph-status"><span class="ph-st">9:41</span><span class="ph-st">●●●</span></div>
+        <div class="screen-body">
+          <div class="topbar"><div class="tbtitle">Team overview</div><div class="av" style="width:24px;height:24px;font-size:9px;background:#E1F5EE;color:#085041">PM</div></div>
+          <div class="body">
+            <div class="krow">
+              <div class="kc"><div class="kl">Team leads</div><div class="kv">386</div><div class="kt" style="color:var(--color-text-secondary)">6 execs</div></div>
+              <div class="kc"><div class="kl">Converted</div><div class="kv">74</div><div class="kt" style="color:#27500A">19.2%</div></div>
+              <div class="kc"><div class="kl">Revenue</div><div class="kv">&#8377;8.9L</div><div class="kt" style="color:#27500A">+14%</div></div>
+              <div class="kc"><div class="kl">Overdue FU</div><div class="kv" style="color:#E24B4A">12</div><div class="kt" style="color:#E24B4A">Action!</div></div>
+            </div>
+            <div class="sec">Team performance</div>
+            <div class="lrow"><div class="av" style="width:22px;height:22px;font-size:8px;background:#E1F5EE;color:#085041">RK</div><div style="flex:1"><div class="lname">Rajesh K.</div><div class="lsub">72 leads · 25% · &#8377;2.4L</div></div><span class="pill" style="background:#EAF3DE;color:#27500A">Top</span></div>
+            <div class="lrow"><div class="av" style="width:22px;height:22px;font-size:8px;background:#EEEDFE;color:#3C3489">PV</div><div style="flex:1"><div class="lname">Priya V.</div><div class="lsub">65 leads · 22% · &#8377;1.9L</div></div><span class="pill" style="background:#E1F5EE;color:#085041">Good</span></div>
+            <div class="lrow"><div class="av" style="width:22px;height:22px;font-size:8px;background:#FAEEDA;color:#633806">AM</div><div style="flex:1"><div class="lname">Arjun M.</div><div class="lsub">58 leads · 16% · &#8377;1.2L</div></div><span class="pill" style="background:#FAEEDA;color:#633806">Avg</span></div>
+            <div class="lrow" style="border:none"><div class="av" style="width:22px;height:22px;font-size:8px;background:#FCEBEB;color:#791F1F">SK</div><div style="flex:1"><div class="lname">Sneha K.</div><div class="lsub">54 leads · 13% · &#8377;0.9L</div></div><span class="pill" style="background:#FCEBEB;color:#791F1F">Help</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">Manager home</div>
+    </div>
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="ph-status"><span class="ph-st">9:41</span><span class="ph-st">●●●</span></div>
+        <div class="screen-body">
+          <div class="topbar"><div class="tbtitle">Lead kanban</div></div>
+          <div class="body" style="padding:7px 8px">
+            <div style="display:flex;gap:5px">
+              <div class="kanban-col">
+                <div class="kh" style="background:#E6F1FB;color:#0C447C">New · 14</div>
+                <div class="kcard" style="background:var(--color-background-secondary);border-left-color:#378ADD"><div class="kcn">Sunrise Pvt</div><div class="kcv">&#8377;45K · FB</div></div>
+                <div class="kcard" style="background:var(--color-background-secondary);border-left-color:#378ADD"><div class="kcn">ABS Corp</div><div class="kcv">&#8377;1.2L · GG</div></div>
+              </div>
+              <div class="kanban-col">
+                <div class="kh" style="background:#E1F5EE;color:#085041">Cont · 20</div>
+                <div class="kcard" style="background:var(--color-background-secondary);border-left-color:#1D9E75"><div class="kcn">Reddy Mills</div><div class="kcv">&#8377;78K · Web</div></div>
+                <div class="kcard" style="background:var(--color-background-secondary);border-left-color:#1D9E75"><div class="kcn">Mehta Infra</div><div class="kcv">&#8377;2.5L · Ref</div></div>
+              </div>
+              <div class="kanban-col">
+                <div class="kh" style="background:#EEEDFE;color:#3C3489">Prop · 10</div>
+                <div class="kcard" style="background:var(--color-background-secondary);border-left-color:#7F77DD"><div class="kcn">Ramco Ind.</div><div class="kcv">&#8377;85K</div></div>
+                <div class="kcard" style="background:var(--color-background-secondary);border-left-color:#7F77DD"><div class="kcn">SV Traders</div><div class="kcv">&#8377;3.1L</div></div>
+              </div>
+              <div class="kanban-col">
+                <div class="kh" style="background:#EAF3DE;color:#27500A">Won · 12</div>
+                <div class="kcard" style="background:var(--color-background-secondary);border-left-color:#639922"><div class="kcn">Apex Mfg</div><div class="kcv">&#8377;1.4L</div></div>
+                <div class="kcard" style="background:var(--color-background-secondary);border-left-color:#639922"><div class="kcn">Nile Corp</div><div class="kcv">&#8377;62K</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">Lead kanban</div>
+    </div>
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="ph-status"><span class="ph-st">9:41</span><span class="ph-st">●●●</span></div>
+        <div class="screen-body">
+          <div class="topbar"><div class="tbtitle">Performance report</div><div style="font-size:8px;color:#185FA5">Apr 2025</div></div>
+          <div class="body">
+            <div class="krow">
+              <div class="kc"><div class="kl">Total leads</div><div class="kv">386</div></div>
+              <div class="kc"><div class="kl">Won</div><div class="kv" style="color:#27500A">74</div></div>
+              <div class="kc"><div class="kl">Lost</div><div class="kv" style="color:#E24B4A">42</div></div>
+              <div class="kc"><div class="kl">Conv.</div><div class="kv">19%</div></div>
+            </div>
+            <div class="sec">Executive targets</div>
+            <div style="margin-bottom:5px"><div style="display:flex;justify-content:space-between;font-size:8px;margin-bottom:2px"><span>Rajesh K.</span><span style="color:#27500A">69%</span></div><div class="pb-track"><div class="pb-fill" style="width:69%;background:#185FA5"></div></div></div>
+            <div style="margin-bottom:5px"><div style="display:flex;justify-content:space-between;font-size:8px;margin-bottom:2px"><span>Priya V.</span><span style="color:#27500A">63%</span></div><div class="pb-track"><div class="pb-fill" style="width:63%;background:#1D9E75"></div></div></div>
+            <div style="margin-bottom:5px"><div style="display:flex;justify-content:space-between;font-size:8px;margin-bottom:2px"><span>Dev T.</span><span>60%</span></div><div class="pb-track"><div class="pb-fill" style="width:60%;background:#7F77DD"></div></div></div>
+            <div style="margin-bottom:5px"><div style="display:flex;justify-content:space-between;font-size:8px;margin-bottom:2px"><span>Arjun M.</span><span>48%</span></div><div class="pb-track"><div class="pb-fill" style="width:48%;background:#EF9F27"></div></div></div>
+            <div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:8px;margin-bottom:2px"><span>Sneha K.</span><span style="color:#E24B4A">36%</span></div><div class="pb-track"><div class="pb-fill" style="width:36%;background:#E24B4A"></div></div></div>
+            <div class="sec">Lead sources</div>
+            <div class="lrow"><div style="width:7px;height:7px;background:#185FA5;border-radius:1px;flex-shrink:0"></div><div style="flex:1;margin-left:5px"><div class="lname">Facebook Ads</div></div><div style="font-size:9px;font-weight:500">38% · 24%</div></div>
+            <div class="lrow" style="border:none"><div style="width:7px;height:7px;background:#1D9E75;border-radius:1px;flex-shrink:0"></div><div style="flex:1;margin-left:5px"><div class="lname">Google Ads</div></div><div style="font-size:9px;font-weight:500">26% · 23%</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">Performance report</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ACCOUNTS -->
+<div class="sect">
+  <div class="sect-header">
+    <div class="sect-icon" style="background:#FAEEDA"><svg width="18" height="18" viewBox="0 0 18 18"><rect x="2" y="4" width="14" height="10" rx="2" fill="none" stroke="#BA7517" stroke-width="1.5"/><line x1="2" y1="8" x2="16" y2="8" stroke="#BA7517" stroke-width="1"/><circle cx="6" cy="12" r="1.2" fill="#BA7517"/></svg></div>
+    <div><div class="sect-title">Accounts</div><div class="sect-sub">Home · Invoices · Invoice viewer · GST report</div></div>
+  </div>
+  <div class="phones-row">
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="ph-status"><span class="ph-st">9:41</span><span class="ph-st">●●●</span></div>
+        <div class="screen-body">
+          <div class="topbar"><div class="tbtitle">Finance overview</div><div class="av" style="width:24px;height:24px;font-size:9px;background:#FAEEDA;color:#633806">AP</div></div>
+          <div class="body">
+            <div class="krow">
+              <div class="kc"><div class="kl">Receivables</div><div class="kv">&#8377;18.4L</div><div class="kt" style="color:#E24B4A">34 pending</div></div>
+              <div class="kc"><div class="kl">Collected</div><div class="kv">&#8377;9.2L</div><div class="kt" style="color:#27500A">+22%</div></div>
+              <div class="kc"><div class="kl">GST (Apr)</div><div class="kv">&#8377;1.84L</div><div class="kt" style="color:var(--color-text-secondary)">Due 20 May</div></div>
+              <div class="kc"><div class="kl">Overdue</div><div class="kv" style="color:#E24B4A">&#8377;6.4L</div><div class="kt" style="color:#E24B4A">34 inv.</div></div>
+            </div>
+            <div class="sec">Aging buckets</div>
+            <div class="aging-grid">
+              <div class="aging-cell"><div class="aging-val" style="color:#27500A">&#8377;7.2L</div><div class="aging-lbl">0–30 days</div></div>
+              <div class="aging-cell"><div class="aging-val" style="color:#BA7517">&#8377;3.8L</div><div class="aging-lbl">31–60 days</div></div>
+              <div class="aging-cell"><div class="aging-val" style="color:#E24B4A">&#8377;2.1L</div><div class="aging-lbl">61–90 days</div></div>
+              <div class="aging-cell"><div class="aging-val" style="color:#791F1F">&#8377;5.3L</div><div class="aging-lbl">90+ days</div></div>
+            </div>
+            <div class="sec">Overdue alerts</div>
+            <div class="lrow"><div class="dot" style="background:#E24B4A"></div><div style="flex:1"><div class="lname">Ramco Industries · INV-0284</div><div class="lsub">&#8377;1,85,000 · 49 days</div></div><div style="font-size:8px;color:#185FA5">WA</div></div>
+            <div class="lrow" style="border:none"><div class="dot" style="background:#E24B4A"></div><div style="flex:1"><div class="lname">SV Traders · INV-0271</div><div class="lsub">&#8377;92,500 · 43 days</div></div><div style="font-size:8px;color:#185FA5">WA</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">Accounts home</div>
+    </div>
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="ph-status"><span class="ph-st">9:41</span><span class="ph-st">●●●</span></div>
+        <div class="screen-body">
+          <div class="topbar"><div class="tbtitle">Invoices</div></div>
+          <div class="body">
+            <div class="search">&#128269; Search invoices…</div>
+            <div style="display:flex;gap:4px;margin-bottom:7px">
+              <span class="pill" style="background:#FAEEDA;color:#633806">All</span>
+              <span class="pill" style="background:var(--color-background-secondary);color:var(--color-text-secondary)">Paid</span>
+              <span class="pill" style="background:#FCEBEB;color:#791F1F">Overdue (34)</span>
+            </div>
+            <div class="inv-row"><div><div style="font-size:9px;font-weight:500;color:var(--color-text-primary)">INV-0284 · Ramco Ind.</div><div style="font-size:8px;color:var(--color-text-secondary)">12 Mar · 49 days</div></div><div style="text-align:right"><div style="font-size:9px;font-weight:500">&#8377;1,85,000</div><span class="pill" style="background:#FCEBEB;color:#791F1F">Overdue</span></div></div>
+            <div class="inv-row"><div><div style="font-size:9px;font-weight:500;color:var(--color-text-primary)">INV-0302 · Apex Mfg</div><div style="font-size:8px;color:var(--color-text-secondary)">1 Apr · 29 days</div></div><div style="text-align:right"><div style="font-size:9px;font-weight:500">&#8377;64,200</div><span class="pill" style="background:#FCEBEB;color:#791F1F">Overdue</span></div></div>
+            <div class="inv-row"><div><div style="font-size:9px;font-weight:500;color:var(--color-text-primary)">INV-0318 · Mehta Infra</div><div style="font-size:8px;color:var(--color-text-secondary)">5 Apr · 25 days</div></div><div style="text-align:right"><div style="font-size:9px;font-weight:500">&#8377;2,40,000</div><span class="pill" style="background:#FAEEDA;color:#633806">Pending</span></div></div>
+            <div class="inv-row" style="border:none"><div><div style="font-size:9px;font-weight:500;color:var(--color-text-primary)">INV-0330 · Nile Corp</div><div style="font-size:8px;color:var(--color-text-secondary)">15 Apr · Paid</div></div><div style="text-align:right"><div style="font-size:9px;font-weight:500">&#8377;62,000</div><span class="pill" style="background:#EAF3DE;color:#27500A">Paid</span></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">Invoices</div>
+    </div>
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="ph-status"><span class="ph-st">9:41</span><span class="ph-st">●●●</span></div>
+        <div class="screen-body">
+          <div class="topbar"><div class="tbback">&#8249; Back</div><div class="tbtitle">INV-0284</div></div>
+          <div class="body">
+            <div style="background:var(--color-background-secondary);border-radius:7px;padding:9px;margin-bottom:8px">
+              <div style="display:flex;justify-content:space-between;margin-bottom:5px"><div style="font-size:10px;font-weight:500">ACME CORP PVT LTD</div><span class="pill" style="background:#FCEBEB;color:#791F1F">Overdue</span></div>
+              <div style="font-size:8px;color:var(--color-text-secondary);margin-bottom:1px">GSTIN: 27AABCA1234A1Z5</div>
+              <div style="font-size:8px;color:var(--color-text-secondary)">Invoice: INV-0284 · 12 Mar 2025</div>
+              <div class="divider"></div>
+              <div style="font-size:8px;color:var(--color-text-secondary)">Bill to: Ramco Industries · 27AABCR1234A1Z5</div>
+            </div>
+            <div style="background:var(--color-background-secondary);border-radius:7px;padding:9px;margin-bottom:9px">
+              <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:0.5px solid var(--color-border-tertiary)"><div style="font-size:8px;color:var(--color-text-secondary)">Steel Valve 2" × 500</div><div style="font-size:8px;font-weight:500">&#8377;1,56,780</div></div>
+              <div class="gst-row"><div style="color:var(--color-text-secondary)">CGST (9%)</div><div style="font-weight:500">&#8377;14,110</div></div>
+              <div class="gst-row"><div style="color:var(--color-text-secondary)">SGST (9%)</div><div style="font-weight:500">&#8377;14,110</div></div>
+              <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:9px"><div style="font-weight:500">Total</div><div style="font-weight:500;color:#185FA5">&#8377;1,85,000</div></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
+              <div style="background:#185FA5;border-radius:6px;padding:7px;text-align:center;font-size:9px;font-weight:500;color:#fff">Record payment</div>
+              <div style="background:var(--color-background-secondary);border:0.5px solid var(--color-border-secondary);border-radius:6px;padding:7px;text-align:center;font-size:9px">Download PDF</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">Invoice viewer</div>
+    </div>
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="ph-status"><span class="ph-st">9:41</span><span class="ph-st">●●●</span></div>
+        <div class="screen-body">
+          <div class="topbar"><div class="tbtitle">GST report · Apr 2025</div></div>
+          <div class="body">
+            <div class="krow">
+              <div class="kc"><div class="kl">Taxable value</div><div class="kv">&#8377;12L</div></div>
+              <div class="kc"><div class="kl">Total GST</div><div class="kv" style="color:#185FA5">&#8377;2.16L</div></div>
+            </div>
+            <div class="sec">Tax breakup</div>
+            <div class="gst-row"><div style="color:var(--color-text-secondary)">CGST (9%)</div><div style="font-weight:500">&#8377;91,800</div></div>
+            <div class="gst-row"><div style="color:var(--color-text-secondary)">SGST (9%)</div><div style="font-weight:500">&#8377;91,800</div></div>
+            <div class="gst-row"><div style="color:var(--color-text-secondary)">IGST (18%)</div><div style="font-weight:500">&#8377;32,400</div></div>
+            <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:9px"><div style="font-weight:500">Total</div><div style="font-weight:500;color:#185FA5">&#8377;2,16,000</div></div>
+            <div class="divider"></div>
+            <div style="background:#E1F5EE;border-radius:6px;padding:8px;margin-bottom:8px"><div style="font-size:9px;font-weight:500;color:#085041">Filing reminders</div><div style="font-size:8px;color:#085041;margin-top:2px">GSTR-1 · Due 11 May 2025</div><div style="font-size:8px;color:#085041">GSTR-3B · Due 20 May 2025</div></div>
+            <div style="background:var(--color-background-secondary);border:0.5px solid var(--color-border-secondary);border-radius:6px;padding:7px;text-align:center;font-size:9px">Export GSTR-1 (Excel)</div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">GST report</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- INVENTORY -->
+<div class="sect">
+  <div class="sect-header">
+    <div class="sect-icon" style="background:#FAECE7"><svg width="18" height="18" viewBox="0 0 18 18"><rect x="2" y="11" width="14" height="5" rx="1.5" fill="#D85A30" opacity=".4"/><rect x="2" y="6" width="10" height="4" rx="1.5" fill="#D85A30" opacity=".7"/><rect x="2" y="2" width="7" height="3" rx="1" fill="#D85A30"/></svg></div>
+    <div><div class="sect-title">Inventory manager</div><div class="sect-sub">Stock overview · Adjustment · Purchase orders</div></div>
+  </div>
+  <div class="phones-row">
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="ph-status"><span class="ph-st">9:41</span><span class="ph-st">●●●</span></div>
+        <div class="screen-body">
+          <div class="topbar"><div class="tbtitle">Inventory</div></div>
+          <div class="body">
+            <div class="krow">
+              <div class="kc"><div class="kl">Total SKUs</div><div class="kv">148</div></div>
+              <div class="kc"><div class="kl">Low stock</div><div class="kv" style="color:#E24B4A">12</div></div>
+              <div class="kc"><div class="kl">Stock value</div><div class="kv">&#8377;24.6L</div></div>
+              <div class="kc"><div class="kl">Warehouses</div><div class="kv">3</div></div>
+            </div>
+            <div style="background:#FCEBEB;border-radius:6px;padding:6px 9px;margin-bottom:8px"><div style="font-size:9px;font-weight:500;color:#791F1F">Critical stock alert</div><div style="font-size:8px;color:#791F1F;margin-top:1px">Steel pipe 2" · Valve 2" · PVC fitting</div></div>
+            <div class="sec">Stock levels</div>
+            <div class="st-row"><div><div class="stn">Steel pipe 2"</div><div class="sts">SKU: SP-002 · Mumbai WH</div></div><div style="text-align:right"><div style="font-size:10px;font-weight:500;color:#E24B4A">8 units</div><span class="pill" style="background:#FCEBEB;color:#791F1F">Critical</span></div></div>
+            <div class="st-row"><div><div class="stn">Valve 2"</div><div class="sts">SKU: VL-002 · Mumbai WH</div></div><div style="text-align:right"><div style="font-size:10px;font-weight:500;color:#EF9F27">22 units</div><span class="pill" style="background:#FAEEDA;color:#633806">Low</span></div></div>
+            <div class="st-row"><div><div class="stn">PVC fitting 1"</div><div class="sts">SKU: PV-001 · Pune WH</div></div><div style="text-align:right"><div style="font-size:10px;font-weight:500;color:#27500A">180 units</div><span class="pill" style="background:#EAF3DE;color:#27500A">OK</span></div></div>
+            <div class="st-row" style="border:none"><div><div class="stn">Bolt set M10</div><div class="sts">SKU: BT-010 · Both WH</div></div><div style="text-align:right"><div style="font-size:10px;font-weight:500;color:#27500A">342 units</div><span class="pill" style="background:#EAF3DE;color:#27500A">OK</span></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">Stock overview</div>
+    </div>
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="ph-status"><span class="ph-st">9:41</span><span class="ph-st">●●●</span></div>
+        <div class="screen-body">
+          <div class="topbar"><div class="tbback">&#8249; Back</div><div class="tbtitle">Stock adjustment</div></div>
+          <div class="body">
+            <div class="inplbl">Product *</div>
+            <div style="border:0.5px solid var(--color-border-secondary);border-radius:5px;padding:5px 8px;font-size:9px;background:var(--color-background-secondary);color:var(--color-text-secondary);margin-bottom:5px;display:flex;justify-content:space-between">Select product <span>&#8250;</span></div>
+            <div class="inplbl">Warehouse</div>
+            <div style="border:0.5px solid var(--color-border-secondary);border-radius:5px;padding:5px 8px;font-size:9px;background:var(--color-background-secondary);color:var(--color-text-secondary);margin-bottom:5px;display:flex;justify-content:space-between">Mumbai Warehouse <span>&#8250;</span></div>
+            <div class="inplbl">Adjustment type</div>
+            <div style="display:flex;gap:5px;margin-bottom:7px">
+              <div style="flex:1;background:#E1F5EE;border-radius:5px;padding:6px;text-align:center;font-size:9px;font-weight:500;color:#085041">Stock In</div>
+              <div style="flex:1;background:var(--color-background-secondary);border:0.5px solid var(--color-border-secondary);border-radius:5px;padding:6px;text-align:center;font-size:9px;color:var(--color-text-secondary)">Stock Out</div>
+            </div>
+            <div class="inplbl">Quantity</div><div class="inp-fld">0</div>
+            <div class="inplbl">Reason</div>
+            <div style="border:0.5px solid var(--color-border-secondary);border-radius:5px;padding:5px 8px;font-size:9px;background:var(--color-background-secondary);color:var(--color-text-secondary);margin-bottom:5px;display:flex;justify-content:space-between">Purchase received <span>&#8250;</span></div>
+            <div class="inplbl">Reference / PO no.</div><div class="inp-fld">PO-0042</div>
+            <div style="background:#D85A30;border-radius:6px;padding:7px;text-align:center;font-size:10px;font-weight:500;color:#fff;margin-top:6px">Save adjustment</div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">Stock adjustment</div>
+    </div>
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="ph-status"><span class="ph-st">9:41</span><span class="ph-st">●●●</span></div>
+        <div class="screen-body">
+          <div class="topbar"><div class="tbtitle">Purchase orders</div></div>
+          <div class="body">
+            <div class="prod-row"><div><div class="prn">PO-0042 · Steel Suppliers</div><div class="prs">Steel pipe 2" · 500 units</div></div><div style="text-align:right"><div style="font-size:9px;font-weight:500">&#8377;1,25,000</div><span class="pill" style="background:#FAEEDA;color:#633806">Pending</span></div></div>
+            <div class="prod-row"><div><div class="prn">PO-0041 · Valve Co.</div><div class="prs">Valve 2" · 100 units</div></div><div style="text-align:right"><div style="font-size:9px;font-weight:500">&#8377;42,000</div><span class="pill" style="background:#E1F5EE;color:#085041">Received</span></div></div>
+            <div class="prod-row"><div><div class="prn">PO-0040 · PVC World</div><div class="prs">PVC fitting 1" · 1000 units</div></div><div style="text-align:right"><div style="font-size:9px;font-weight:500">&#8377;28,500</div><span class="pill" style="background:#E1F5EE;color:#085041">Received</span></div></div>
+            <div class="prod-row" style="border:none"><div><div class="prn">PO-0039 · Hardware Hub</div><div class="prs">Bolt M10 · 500 sets</div></div><div style="text-align:right"><div style="font-size:9px;font-weight:500">&#8377;15,000</div><span class="pill" style="background:#EAF3DE;color:#27500A">Closed</span></div></div>
+            <div style="background:#D85A30;border-radius:6px;padding:7px;text-align:center;font-size:10px;font-weight:500;color:#fff;margin-top:9px">Create purchase order</div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">Purchase orders</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- COMPANY ADMIN -->
+<div class="sect">
+  <div class="sect-header">
+    <div class="sect-icon" style="background:#EEEDFE"><svg width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="7" r="3.5" fill="#534AB7"/><path d="M2 16c0-3.5 3.1-5 7-5s7 1.5 7 5" fill="none" stroke="#534AB7" stroke-width="1.5"/><circle cx="15" cy="6" r="2.2" fill="#534AB7" opacity=".5"/></svg></div>
+    <div><div class="sect-title">Company admin</div><div class="sect-sub">Home · Users · Company settings</div></div>
+  </div>
+  <div class="phones-row">
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="ph-status"><span class="ph-st">9:41</span><span class="ph-st">●●●</span></div>
+        <div class="screen-body">
+          <div class="topbar"><div class="tbtitle">Company overview</div><div class="av" style="width:24px;height:24px;font-size:9px;background:#EEEDFE;color:#3C3489">CA</div></div>
+          <div class="body">
+            <div class="krow">
+              <div class="kc"><div class="kl">Total leads</div><div class="kv">1,284</div><div class="kt" style="color:#27500A">+18%</div></div>
+              <div class="kc"><div class="kl">Revenue</div><div class="kv">&#8377;12.7L</div><div class="kt" style="color:#27500A">72% target</div></div>
+              <div class="kc"><div class="kl">Profit MTD</div><div class="kv">&#8377;4.1L</div><div class="kt" style="color:#27500A">32% margin</div></div>
+              <div class="kc"><div class="kl">Pending</div><div class="kv" style="color:#E24B4A">&#8377;6.4L</div><div class="kt" style="color:#E24B4A">34 inv.</div></div>
+            </div>
+            <div class="sec">Alerts</div>
+            <div class="lrow"><div class="dot" style="background:#E24B4A"></div><div><div class="lname">3 products critical stock</div><div class="lsub">Steel pipe · Valve 2" · PVC</div></div></div>
+            <div class="lrow"><div class="dot" style="background:#EF9F27"></div><div><div class="lname">Subscription renews in 7 days</div><div class="lsub">Premium · &#8377;3,999/mo</div></div></div>
+            <div class="lrow" style="border:none"><div class="dot" style="background:#1D9E75"></div><div><div class="lname">5 leads won this week</div><div class="lsub">&#8377;4.8L total value</div></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">Admin home</div>
+    </div>
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="ph-status"><span class="ph-st">9:41</span><span class="ph-st">●●●</span></div>
+        <div class="screen-body">
+          <div class="topbar"><div class="tbtitle">Users (12)</div></div>
+          <div class="body">
+            <div class="lrow"><div class="av" style="width:22px;height:22px;font-size:8px;background:#E1F5EE;color:#085041">RK</div><div style="flex:1"><div class="lname">Rajesh Kumar</div><div class="lsub">rajesh@acme.in</div></div><span class="pill" style="background:#E1F5EE;color:#085041">Sales exec</span></div>
+            <div class="lrow"><div class="av" style="width:22px;height:22px;font-size:8px;background:#EEEDFE;color:#3C3489">PV</div><div style="flex:1"><div class="lname">Priya Verma</div><div class="lsub">priya@acme.in</div></div><span class="pill" style="background:#E1F5EE;color:#085041">Sales exec</span></div>
+            <div class="lrow"><div class="av" style="width:22px;height:22px;font-size:8px;background:#FAEEDA;color:#633806">PM</div><div style="flex:1"><div class="lname">Prakash Menon</div><div class="lsub">prakash@acme.in</div></div><span class="pill" style="background:#EEEDFE;color:#3C3489">Manager</span></div>
+            <div class="lrow"><div class="av" style="width:22px;height:22px;font-size:8px;background:#E6F1FB;color:#0C447C">AP</div><div style="flex:1"><div class="lname">Anita P.</div><div class="lsub">anita@acme.in</div></div><span class="pill" style="background:#FAEEDA;color:#633806">Accounts</span></div>
+            <div class="lrow" style="border:none"><div class="av" style="width:22px;height:22px;font-size:8px;background:#FCEBEB;color:#791F1F">SK</div><div style="flex:1"><div class="lname">Sneha Kumar</div><div class="lsub">sneha@acme.in</div></div><span class="pill" style="background:#FCEBEB;color:#791F1F">Suspended</span></div>
+            <div class="divider"></div>
+            <div style="background:#534AB7;border-radius:6px;padding:7px;text-align:center;font-size:10px;font-weight:500;color:#fff">Invite new user</div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">User management</div>
+    </div>
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="ph-status"><span class="ph-st">9:41</span><span class="ph-st">●●●</span></div>
+        <div class="screen-body">
+          <div class="topbar"><div class="tbtitle">Company settings</div></div>
+          <div class="body">
+            <div class="sec">Company details</div>
+            <div class="set-row"><div class="set-lbl">Company name</div><div style="display:flex;gap:3px;align-items:center"><div class="set-val">Acme Corp Pvt Ltd</div><span style="font-size:9px;color:var(--color-text-secondary)">&#8250;</span></div></div>
+            <div class="set-row"><div class="set-lbl">GSTIN</div><div style="display:flex;gap:3px;align-items:center"><div class="set-val">27AABCA1234A1Z5</div><span style="font-size:9px">&#8250;</span></div></div>
+            <div class="set-row"><div class="set-lbl">PAN</div><div style="display:flex;gap:3px;align-items:center"><div class="set-val">AABCA1234A</div><span style="font-size:9px">&#8250;</span></div></div>
+            <div class="sec">Financial</div>
+            <div class="set-row"><div class="set-lbl">Currency</div><div style="display:flex;gap:3px;align-items:center"><div class="set-val">INR (&#8377;)</div><span style="font-size:9px">&#8250;</span></div></div>
+            <div class="set-row"><div class="set-lbl">Invoice prefix</div><div style="display:flex;gap:3px;align-items:center"><div class="set-val">INV-</div><span style="font-size:9px">&#8250;</span></div></div>
+            <div class="set-row"><div class="set-lbl">Default GST %</div><div style="display:flex;gap:3px;align-items:center"><div class="set-val">18%</div><span style="font-size:9px">&#8250;</span></div></div>
+            <div class="sec">Bank account</div>
+            <div class="set-row"><div class="set-lbl">Bank name</div><div style="display:flex;gap:3px;align-items:center"><div class="set-val">HDFC Bank</div><span style="font-size:9px">&#8250;</span></div></div>
+            <div class="set-row"><div class="set-lbl">Account No.</div><div style="display:flex;gap:3px;align-items:center"><div class="set-val">&#8226;&#8226;&#8226;&#8226;4512</div><span style="font-size:9px">&#8250;</span></div></div>
+            <div class="sec">Regional</div>
+            <div class="set-row"><div class="set-lbl">Timezone</div><div style="display:flex;gap:3px;align-items:center"><div class="set-val">Asia/Kolkata</div><span style="font-size:9px">&#8250;</span></div></div>
+            <div class="set-row" style="border:none"><div class="set-lbl">Date format</div><div style="display:flex;gap:3px;align-items:center"><div class="set-val">DD/MM/YYYY</div><span style="font-size:9px">&#8250;</span></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">Company settings</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- SUPER ADMIN -->
+<div class="sect">
+  <div class="sect-header">
+    <div class="sect-icon" style="background:#FCEBEB"><svg width="18" height="18" viewBox="0 0 18 18"><rect x="2" y="2" width="14" height="14" rx="2.5" fill="none" stroke="#A32D2D" stroke-width="1.5"/><line x1="9" y1="5" x2="9" y2="13" stroke="#A32D2D" stroke-width="1.5"/><line x1="5" y1="9" x2="13" y2="9" stroke="#A32D2D" stroke-width="1.5"/></svg></div>
+    <div><div class="sect-title">Super admin</div><div class="sect-sub">Platform home · Tenants · SaaS billing</div></div>
+  </div>
+  <div class="phones-row">
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="ph-status"><span class="ph-st">9:41</span><span class="ph-st">●●●</span></div>
+        <div class="screen-body">
+          <div class="topbar"><div class="tbtitle">Platform overview</div><div class="av" style="width:24px;height:24px;font-size:9px;background:#FCEBEB;color:#791F1F">SA</div></div>
+          <div class="body">
+            <div class="krow">
+              <div class="kc"><div class="kl">MRR</div><div class="kv">&#8377;4.82L</div><div class="kt" style="color:#27500A">+11%</div></div>
+              <div class="kc"><div class="kl">Tenants</div><div class="kv">312</div><div class="kt" style="color:#27500A">+28</div></div>
+              <div class="kc"><div class="kl">Churn</div><div class="kv">2.4%</div><div class="kt" style="color:#27500A">&#8595; improving</div></div>
+              <div class="kc"><div class="kl">Failed pay.</div><div class="kv" style="color:#E24B4A">7</div><div class="kt" style="color:#E24B4A">&#8377;27,993</div></div>
+            </div>
+            <div class="sec">Plan breakdown</div>
+            <div style="margin-bottom:5px"><div style="display:flex;justify-content:space-between;font-size:8px;margin-bottom:2px"><span>Free (148)</span><span>47%</span></div><div class="pb-track"><div class="pb-fill" style="width:47%;background:#B4B2A9"></div></div></div>
+            <div style="margin-bottom:5px"><div style="display:flex;justify-content:space-between;font-size:8px;margin-bottom:2px"><span>Basic (104)</span><span>33%</span></div><div class="pb-track"><div class="pb-fill" style="width:33%;background:#378ADD"></div></div></div>
+            <div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:8px;margin-bottom:2px"><span>Premium (60)</span><span>19%</span></div><div class="pb-track"><div class="pb-fill" style="width:19%;background:#185FA5"></div></div></div>
+            <div class="sec">Alerts</div>
+            <div class="lrow"><div class="dot" style="background:#E24B4A"></div><div><div class="lname">7 payment failures — dunning</div><div class="lsub">&#8377;27,993 at risk</div></div></div>
+            <div class="lrow" style="border:none"><div class="dot" style="background:#1D9E75"></div><div><div class="lname">28 new signups this month</div><div class="lsub">8 upgraded to paid</div></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">Platform home</div>
+    </div>
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="ph-status"><span class="ph-st">9:41</span><span class="ph-st">●●●</span></div>
+        <div class="screen-body">
+          <div class="topbar"><div class="tbtitle">All tenants (312)</div></div>
+          <div class="body">
+            <div class="search">&#128269; Search tenants…</div>
+            <div style="display:flex;gap:4px;margin-bottom:7px">
+              <span class="pill" style="background:#E1F5EE;color:#085041">Active (305)</span>
+              <span class="pill" style="background:#FAEEDA;color:#633806">Dunning (7)</span>
+            </div>
+            <div class="tenant-row"><div class="av" style="width:22px;height:22px;font-size:8px;background:#E6F1FB;color:#0C447C">AC</div><div style="flex:1"><div class="lname">Acme Corp</div><div class="lsub">Premium · 24 users</div></div><span class="pill" style="background:#E1F5EE;color:#085041">Active</span></div>
+            <div class="tenant-row"><div class="av" style="width:22px;height:22px;font-size:8px;background:#E1F5EE;color:#085041">RI</div><div style="flex:1"><div class="lname">Ramco Inds</div><div class="lsub">Premium · 18 users</div></div><span class="pill" style="background:#E1F5EE;color:#085041">Active</span></div>
+            <div class="tenant-row"><div class="av" style="width:22px;height:22px;font-size:8px;background:#FAEEDA;color:#633806">SV</div><div style="flex:1"><div class="lname">SV Traders</div><div class="lsub">Basic · 8 users</div></div><span class="pill" style="background:#E1F5EE;color:#085041">Active</span></div>
+            <div class="tenant-row"><div class="av" style="width:22px;height:22px;font-size:8px;background:#EEEDFE;color:#3C3489">MI</div><div style="flex:1"><div class="lname">Mehta Infra</div><div class="lsub">Basic · 6 users</div></div><span class="pill" style="background:#FAEEDA;color:#633806">Dunning</span></div>
+            <div class="tenant-row" style="border:none"><div class="av" style="width:22px;height:22px;font-size:8px;background:#FCEBEB;color:#791F1F">JB</div><div style="flex:1"><div class="lname">Jain Bros</div><div class="lsub">Basic · 4 users</div></div><span class="pill" style="background:#FCEBEB;color:#791F1F">Churned</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">Tenants list</div>
+    </div>
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="ph-status"><span class="ph-st">9:41</span><span class="ph-st">●●●</span></div>
+        <div class="screen-body">
+          <div class="topbar"><div class="tbtitle">SaaS billing</div></div>
+          <div class="body">
+            <div class="krow">
+              <div class="kc"><div class="kl">MRR</div><div class="kv">&#8377;4.82L</div><div class="kt" style="color:#27500A">+11%</div></div>
+              <div class="kc"><div class="kl">ARR</div><div class="kv">&#8377;57.8L</div></div>
+            </div>
+            <div class="sec">Revenue by plan</div>
+            <div style="margin-bottom:5px"><div style="display:flex;justify-content:space-between;font-size:8px;margin-bottom:2px"><span>Premium × 60</span><span style="font-weight:500">&#8377;2.40L</span></div><div class="pb-track"><div class="pb-fill" style="width:100%;background:#185FA5"></div></div></div>
+            <div style="margin-bottom:5px"><div style="display:flex;justify-content:space-between;font-size:8px;margin-bottom:2px"><span>Basic × 104</span><span style="font-weight:500">&#8377;1.56L</span></div><div class="pb-track"><div class="pb-fill" style="width:65%;background:#378ADD"></div></div></div>
+            <div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:8px;margin-bottom:2px"><span>Free × 148</span><span>&#8377;0</span></div><div class="pb-track"><div class="pb-fill" style="width:2%;background:#B4B2A9"></div></div></div>
+            <div class="sec">Failed payments</div>
+            <div class="lrow"><div style="flex:1"><div class="lname">Mehta Infra — Retry 2/3</div><div class="lsub">Basic · &#8377;1,499</div></div><span class="pill" style="background:#FAEEDA;color:#633806">Retrying</span></div>
+            <div class="lrow"><div style="flex:1"><div class="lname">ABS Corp — Retry 1/3</div><div class="lsub">Basic · &#8377;1,499</div></div><span class="pill" style="background:#FAEEDA;color:#633806">Retrying</span></div>
+            <div class="lrow" style="border:none"><div style="flex:1"><div class="lname">Sunrise Pvt — Retry 3/3</div><div class="lsub">Basic · &#8377;1,499</div></div><span class="pill" style="background:#FCEBEB;color:#791F1F">Final</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">SaaS billing</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- SHARED -->
+<div class="sect">
+  <div class="sect-header">
+    <div class="sect-icon" style="background:var(--color-background-secondary)"><svg width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="6" fill="none" stroke="var(--color-text-secondary)" stroke-width="1.5"/><line x1="9" y1="6" x2="9" y2="9.5" stroke="var(--color-text-secondary)" stroke-width="1.5"/><circle cx="9" cy="12" r="0.8" fill="var(--color-text-secondary)"/></svg></div>
+    <div><div class="sect-title">Shared screens</div><div class="sect-sub">Notifications · Profile &amp; settings · Subscription</div></div>
+  </div>
+  <div class="phones-row">
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="ph-status"><span class="ph-st">9:41</span><span class="ph-st">●●●</span></div>
+        <div class="screen-body">
+          <div class="topbar"><div class="tbtitle">Notifications</div><div style="font-size:8px;color:#185FA5">Mark all read</div></div>
+          <div class="body">
+            <div class="sec">Today</div>
+            <div class="notif-row"><div class="dot" style="background:#E24B4A"></div><div><div class="lname">New lead assigned</div><div class="lsub">Tata Infra — from Google Ads</div><div style="font-size:7px;color:var(--color-text-secondary)">10 min ago</div></div></div>
+            <div class="notif-row"><div class="dot" style="background:#1D9E75"></div><div><div class="lname">Payment received</div><div class="lsub">Apex Mfg · &#8377;64,200</div><div style="font-size:7px;color:var(--color-text-secondary)">1 hr ago</div></div></div>
+            <div class="notif-row"><div class="dot" style="background:#EF9F27"></div><div><div class="lname">Follow-up overdue</div><div class="lsub">Ramco Industries · Call</div><div style="font-size:7px;color:var(--color-text-secondary)">2 hr ago</div></div></div>
+            <div class="notif-row"><div class="dot" style="background:#185FA5"></div><div><div class="lname">WhatsApp reply received</div><div class="lsub">SV Traders replied to invoice</div><div style="font-size:7px;color:var(--color-text-secondary)">3 hr ago</div></div></div>
+            <div class="sec">Yesterday</div>
+            <div class="notif-row"><div class="dot" style="background:#7F77DD"></div><div><div class="lname">Quotation approved</div><div class="lsub">QT-0142 · Mehta Infra</div><div style="font-size:7px;color:var(--color-text-secondary)">Yesterday</div></div></div>
+            <div class="notif-row" style="border:none"><div class="dot" style="background:#1D9E75"></div><div><div class="lname">Lead converted — won</div><div class="lsub">Nile Corp · &#8377;62,000</div><div style="font-size:7px;color:var(--color-text-secondary)">Yesterday</div></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">Notifications</div>
+    </div>
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="ph-status"><span class="ph-st">9:41</span><span class="ph-st">●●●</span></div>
+        <div class="screen-body">
+          <div class="topbar"><div class="tbtitle">Profile</div></div>
+          <div class="body">
+            <div style="text-align:center;margin-bottom:13px">
+              <div style="width:46px;height:46px;border-radius:50%;background:#E6F1FB;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:500;color:#0C447C;margin:0 auto 5px">RK</div>
+              <div style="font-size:13px;font-weight:500;color:var(--color-text-primary)">Rajesh Kumar</div>
+              <div style="font-size:9px;color:var(--color-text-secondary)">Sales Executive · Acme Corp</div>
+            </div>
+            <div class="divider"></div>
+            <div class="set-row"><div class="set-lbl">Display name</div><div style="display:flex;gap:3px"><div class="set-val">Rajesh Kumar</div><span style="font-size:9px">&#8250;</span></div></div>
+            <div class="set-row"><div class="set-lbl">Email</div><div style="display:flex;gap:3px"><div class="set-val">rajesh@acme.in</div><span style="font-size:9px">&#8250;</span></div></div>
+            <div class="divider"></div>
+            <div class="set-row"><div class="set-lbl">Push notifications</div><div class="toggle"><div class="toggle-knob"></div></div></div>
+            <div class="set-row"><div class="set-lbl">Biometric login</div><div class="toggle"><div class="toggle-knob"></div></div></div>
+            <div class="set-row"><div class="set-lbl">Language</div><div style="display:flex;gap:3px"><div class="set-val">English</div><span style="font-size:9px">&#8250;</span></div></div>
+            <div class="set-row" style="border:none"><div class="set-lbl">Dark mode</div><div style="width:26px;height:14px;background:var(--color-background-secondary);border:0.5px solid var(--color-border-secondary);border-radius:7px;position:relative"><div style="width:10px;height:10px;background:var(--color-text-secondary);border-radius:50%;position:absolute;top:2px;left:2px"></div></div></div>
+            <div class="divider"></div>
+            <div style="text-align:center;font-size:10px;color:#E24B4A;padding:7px 0">Sign out</div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">Profile &amp; settings</div>
+    </div>
+
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="ph-status"><span class="ph-st">9:41</span><span class="ph-st">●●●</span></div>
+        <div class="screen-body">
+          <div class="topbar"><div class="tbtitle">Subscription</div></div>
+          <div class="body">
+            <div style="background:#E6F1FB;border-radius:8px;padding:11px;margin-bottom:11px;border:1.5px solid #185FA5">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px">
+                <div style="font-size:12px;font-weight:500;color:#0C447C">Premium plan</div>
+                <span class="pill" style="background:#EAF3DE;color:#27500A">Active</span>
+              </div>
+              <div style="font-size:9px;color:#185FA5;margin-bottom:7px">&#8377;3,999 / month · Renews 7 May 2025</div>
+              <div style="font-size:8px;color:#0C447C;margin-bottom:2px">Unlimited users · Unlimited leads</div>
+              <div style="font-size:8px;color:#0C447C">25 GB storage · 10,000 WA msgs/mo</div>
+            </div>
+            <div class="sec">Usage this month</div>
+            <div style="margin-bottom:5px"><div style="display:flex;justify-content:space-between;font-size:8px;margin-bottom:2px"><span>Users</span><span>24 / &#8734;</span></div><div class="pb-track"><div class="pb-fill" style="width:60%;background:#185FA5"></div></div></div>
+            <div style="margin-bottom:5px"><div style="display:flex;justify-content:space-between;font-size:8px;margin-bottom:2px"><span>Leads</span><span>1,284 / &#8734;</span></div><div class="pb-track"><div class="pb-fill" style="width:45%;background:#1D9E75"></div></div></div>
+            <div style="margin-bottom:5px"><div style="display:flex;justify-content:space-between;font-size:8px;margin-bottom:2px"><span>Storage</span><span>12.4 / 25 GB</span></div><div class="pb-track"><div class="pb-fill" style="width:50%;background:#EF9F27"></div></div></div>
+            <div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:8px;margin-bottom:2px"><span>WhatsApp msgs</span><span>4,200 / 10,000</span></div><div class="pb-track"><div class="pb-fill" style="width:42%;background:#7F77DD"></div></div></div>
+            <div class="sec">Payment history</div>
+            <div class="lrow"><div style="flex:1"><div class="lname">Apr 2025 · &#8377;3,999</div><div class="lsub">Razorpay · 1 Apr</div></div><span class="pill" style="background:#EAF3DE;color:#27500A">Paid</span></div>
+            <div class="lrow" style="border:none"><div style="flex:1"><div class="lname">Mar 2025 · &#8377;3,999</div><div class="lsub">Razorpay · 1 Mar</div></div><span class="pill" style="background:#EAF3DE;color:#27500A">Paid</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">Subscription</div>
+    </div>
+
+  </div>
+</div>
+
+</div>
+</body>
+</html>

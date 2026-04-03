@@ -41,13 +41,16 @@ export default function Communication() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">Communication</h2>
-          <p className="text-slate-500 text-sm">Templates · Logs</p>
+          <h2 className="text-[16px] font-semibold text-slate-800 dark:text-slate-100">Communication</h2>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">Templates and delivery logs</p>
         </div>
         {tab === 'Templates' && (
-          <button onClick={() => setModal(true)} className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
+          <button
+            onClick={() => setModal(true)}
+            className="btn-wf-primary"
+          >
             + New Template
           </button>
         )}

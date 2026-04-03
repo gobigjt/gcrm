@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
 import Modal from '../../components/Modal';
 import Tabs  from '../../components/Tabs';
@@ -485,7 +486,16 @@ function DetailDrawer({ type, id, onClose, onRefresh }) {
 
 const TABS = ['Customers', 'Quotations', 'Orders', 'Invoices'];
 
+const SALES_TAB_BY_PARAM = {
+  customers: 'Customers',
+  quotations: 'Quotations',
+  orders: 'Orders',
+  invoices: 'Invoices',
+  payments: 'Invoices',
+};
+
 export default function Sales() {
+  const [searchParams] = useSearchParams();
   const [tab,       setTab]       = useState('Customers');
   const [data,      setData]      = useState([]);
   const [stats,     setStats]     = useState(null);
@@ -509,6 +519,13 @@ export default function Sales() {
     loadStats();
   }, []);
 
+  useEffect(() => {
+    const raw = (searchParams.get('tab') || '').toLowerCase().replace(/[\s_-]+/g, '');
+    const mapped = SALES_TAB_BY_PARAM[raw];
+    if (mapped) setTab(mapped);
+    else if (!searchParams.get('tab')) setTab('Customers');
+  }, [searchParams]);
+
   useEffect(() => { loadData(); }, [loadData]);
 
   const handleDelete = async (type, id, e) => {
@@ -525,20 +542,22 @@ export default function Sales() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-50 tracking-tight">Sales</h2>
-          <p className="text-slate-500 dark:text-slate-400 text-sm mt-0.5">Customers · Quotations · Orders · Invoices</p>
+          <h2 className="text-[16px] font-semibold text-slate-800 dark:text-slate-100">Sales</h2>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Customers, quotations, orders and invoices</p>
         </div>
-        <button onClick={() => setModal(tab === 'Customers' ? 'customer' : tabType[tab])}
-          className="bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white text-sm font-semibold px-4 py-2 rounded-xl shadow-sm transition-all active:scale-[0.98]">
+        <button
+          onClick={() => setModal(tab === 'Customers' ? 'customer' : tabType[tab])}
+          className="btn-wf-primary"
+        >
           + {tab === 'Customers' ? 'Customer' : tab.slice(0,-1)}
         </button>
       </div>
 
       {/* Stats */}
       {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
           <StatCard icon="👥" label="Active Customers"  value={stats.customers}            />
           <StatCard icon="📦" label="Open Orders"       value={stats.open_orders}          />
           <StatCard icon="💰" label="Revenue (Paid)"    value={fmt(stats.revenue)}         />
@@ -557,7 +576,7 @@ export default function Sales() {
       )}
 
       {/* Table */}
-      <div className="bg-white dark:bg-[#1a1d2e] rounded-2xl border border-slate-200/80 dark:border-slate-700/50 shadow-card overflow-hidden">
+      <div className="bg-white dark:bg-[#13152a] rounded-xl border border-slate-200 dark:border-slate-700/50 overflow-hidden">
         {data.length === 0 ? (
           <p className="text-center py-12 text-slate-400 dark:text-slate-500 text-sm">No records found</p>
         ) : tab === 'Customers' ? (

@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
 import Modal from '../../components/Modal';
 import Tabs  from '../../components/Tabs';
@@ -526,7 +527,18 @@ function FollowupsView({ onSelectLead }) {
 
 // ─── Main CRM Page ────────────────────────────────────────────
 
+const CRM_TAB_BY_PARAM = {
+  list: 'List',
+  leads: 'List',
+  contacts: 'List',
+  pipeline: 'Kanban',
+  kanban: 'Kanban',
+  followups: 'Follow-ups',
+  'follow-ups': 'Follow-ups',
+};
+
 export default function CRM() {
+  const [searchParams] = useSearchParams();
   const [leads,    setLeads]    = useState([]);
   const [stats,    setStats]    = useState(null);
   const [stages,   setStages]   = useState([]);
@@ -564,6 +576,13 @@ export default function CRM() {
     loadStats();
   }, []);
 
+  useEffect(() => {
+    const raw = (searchParams.get('tab') || '').toLowerCase().replace(/[\s_-]+/g, '');
+    const mapped = CRM_TAB_BY_PARAM[raw];
+    if (mapped) setTab(mapped);
+    else if (!searchParams.get('tab')) setTab('List');
+  }, [searchParams]);
+
   useEffect(() => { loadLeads(); }, [loadLeads]);
 
   const handleDelete = async (id, e) => {
@@ -582,15 +601,21 @@ export default function CRM() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-50 tracking-tight">CRM</h2>
-          <p className="text-slate-500 dark:text-slate-400 text-sm mt-0.5">Lead pipeline management</p>
+          <h2 className="text-[16px] font-semibold text-slate-800 dark:text-slate-100">Lead management</h2>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{leads.length.toLocaleString('en-IN')} leads across all sources</p>
         </div>
-        <button onClick={() => setAddModal(true)}
-          className="bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white text-sm font-semibold px-4 py-2 rounded-xl shadow-sm transition-all active:scale-[0.98]">
-          + New Lead
-        </button>
+        <div className="flex items-center gap-2">
+          <span className="px-2.5 py-1 rounded-full text-[11px] bg-[#f5f4ef] text-slate-600 dark:bg-slate-800 dark:text-slate-300">New</span>
+          <span className="px-2.5 py-1 rounded-full text-[11px] bg-[#f5f4ef] text-slate-600 dark:bg-slate-800 dark:text-slate-300">Won</span>
+          <button
+            onClick={() => setAddModal(true)}
+            className="btn-wf-primary"
+          >
+            + New Lead
+          </button>
+        </div>
       </div>
 
       {/* Stats row */}
@@ -603,7 +628,11 @@ export default function CRM() {
         </div>
       )}
 
-      <Tabs tabs={['List', 'Kanban', 'Follow-ups']} active={tab} onChange={setTab} />
+      <Tabs
+        tabs={['List', 'Pipeline', 'Follow-ups']}
+        active={tab === 'Kanban' ? 'Pipeline' : tab}
+        onChange={(v) => setTab(v === 'Pipeline' ? 'Kanban' : v)}
+      />
 
       {/* Filters */}
       {tab !== 'Follow-ups' && (
@@ -611,23 +640,23 @@ export default function CRM() {
           <input
             placeholder="Search name, phone, company…"
             value={search} onChange={e => setSearch(e.target.value)}
-            className={inputCls + ' flex-1 min-w-40'}
+            className={inputCls + ' flex-1 max-w-100'}
           />
-          <select className={selectCls} value={fStage} onChange={e => setFStage(e.target.value)}>
+          <select className={selectCls+'flex-1 max-w-40'} value={fStage} onChange={e => setFStage(e.target.value)}>
             <option value="">All Stages</option>
             {stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
-          <select className={selectCls} value={fSource} onChange={e => setFSource(e.target.value)}>
+          <select className={selectCls+'flex-1 max-w-40'} value={fSource} onChange={e => setFSource(e.target.value)}>
             <option value="">All Sources</option>
             {sources.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
-          <select className={selectCls} value={fPrio} onChange={e => setFPrio(e.target.value)}>
+          <select className={selectCls+'flex-1 max-w-40'} value={fPrio} onChange={e => setFPrio(e.target.value)}>
             <option value="">All Priority</option>
             <option value="hot">🔥 Hot</option>
             <option value="warm">☀️ Warm</option>
             <option value="cold">❄️ Cold</option>
           </select>
-          <select className={selectCls} value={fUser} onChange={e => setFUser(e.target.value)}>
+          <select className={selectCls+'flex-1 max-w-60'} value={fUser} onChange={e => setFUser(e.target.value)}>
             <option value="">All Reps</option>
             {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select>

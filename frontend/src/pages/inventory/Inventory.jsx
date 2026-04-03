@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
 import Table from '../../components/Table';
 import Tabs  from '../../components/Tabs';
@@ -8,7 +9,17 @@ import { Field, inputCls, FormActions } from '../../components/FormField';
 const TABS = ['Products','Warehouses','Low Stock','Movements'];
 const EMPTY = { name:'', sku:'', hsn_code:'', unit:'pcs', purchase_price:'', sale_price:'', gst_rate:'0', low_stock_alert:'0' };
 
+const INV_TAB_BY_PARAM = {
+  products: 'Products',
+  warehouses: 'Warehouses',
+  inventory: 'Warehouses',
+  lowstock: 'Low Stock',
+  low: 'Low Stock',
+  movements: 'Movements',
+};
+
 export default function Inventory() {
+  const [searchParams] = useSearchParams();
   const [tab, setTab] = useState('Products');
   const [products,   setProducts]   = useState([]);
   const [warehouses, setWarehouses] = useState([]);
@@ -26,6 +37,13 @@ export default function Inventory() {
   };
   useEffect(() => { loadAll(); }, []);
 
+  useEffect(() => {
+    const raw = (searchParams.get('tab') || '').toLowerCase().replace(/[\s_-]+/g, '');
+    const mapped = INV_TAB_BY_PARAM[raw];
+    if (mapped) setTab(mapped);
+    else if (!searchParams.get('tab')) setTab('Products');
+  }, [searchParams]);
+
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
   const handleSubmit = async (e) => {
@@ -38,14 +56,16 @@ export default function Inventory() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">Inventory</h2>
-          <p className="text-slate-500 text-sm">Products · Warehouses · Stock</p>
+          <h2 className="text-[16px] font-semibold text-slate-800 dark:text-slate-100">Inventory management</h2>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">Products, warehouses, low-stock alerts and movements</p>
         </div>
         {tab === 'Products' && (
-          <button onClick={() => setModal(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
+          <button
+            onClick={() => setModal(true)}
+            className="btn-wf-primary"
+          >
             + New Product
           </button>
         )}

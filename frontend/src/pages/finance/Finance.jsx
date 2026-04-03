@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
 import Table from '../../components/Table';
 import Tabs  from '../../components/Tabs';
@@ -437,7 +438,22 @@ const typeBadge = t => {
 };
 
 /* ── main ────────────────────────────────────────── */
+const FIN_TAB_BY_PARAM = {
+  overview: 'Overview',
+  accounts: 'Accounts',
+  journal: 'Journal Entries',
+  journals: 'Journal Entries',
+  expenses: 'Expenses',
+  reports: 'P&L Report',
+  pl: 'P&L Report',
+  pnl: 'P&L Report',
+  profit: 'P&L Report',
+  gst: 'GST Report',
+  tax: 'GST Report',
+};
+
 export default function Finance() {
+  const [searchParams] = useSearchParams();
   const [tab,      setTab]      = useState('Overview');
   const [summary,  setSummary]  = useState(null);
   const [accounts, setAccounts] = useState([]);
@@ -460,23 +476,28 @@ export default function Finance() {
 
   useEffect(() => { reload(); }, [reload]);
 
+  useEffect(() => {
+    const raw = (searchParams.get('tab') || '').toLowerCase().replace(/[\s_-]+/g, '');
+    const mapped = FIN_TAB_BY_PARAM[raw];
+    if (mapped) setTab(mapped);
+    else if (!searchParams.get('tab')) setTab('Overview');
+  }, [searchParams]);
+
   function closeModal() { setModal(null); reload(); }
 
   return (
     <div>
       {/* header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">Finance</h2>
-          <p className="text-slate-500 text-sm">Accounts · Journals · Expenses · Reports</p>
+          <h2 className="text-[16px] font-semibold text-slate-800 dark:text-slate-100">Finance</h2>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">Accounts, journals, expenses and tax reports</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => setModal('expense')}
-            className="bg-white border border-slate-200 text-slate-700 text-sm px-4 py-2 rounded-lg hover:bg-slate-50 font-medium">
+          <button onClick={() => setModal('expense')} className="btn-wf-secondary">
             + Add Expense
           </button>
-          <button onClick={() => setModal('journal')}
-            className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700 font-medium">
+          <button onClick={() => setModal('journal')} className="btn-wf-primary">
             + Journal Entry
           </button>
         </div>
@@ -484,7 +505,7 @@ export default function Finance() {
 
       {/* stats */}
       {summary && (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
           <StatCard label="Revenue"          value={fmt(summary.revenue)}         color="emerald" icon="💰" />
           <StatCard label="Expenses"         value={fmt(summary.expenses)}         color="red"     icon="📤" />
           <StatCard label="Net Profit"       value={fmt(summary.net_profit)}       color={summary.net_profit >= 0 ? 'blue' : 'red'} icon="📊" />

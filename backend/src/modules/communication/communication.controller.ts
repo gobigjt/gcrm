@@ -20,5 +20,6 @@ export class CommunicationController {
   @Delete('templates/:id')       deleteTemplate(@Param('id') id: string) { return this.svc.deleteTemplate(Number(id)); }
 
   @Get('logs')                   listLogs(@Query() q: any) { return this.svc.listLogs(q); }
+  @Get('whatsapp/inbox')         whatsappInbox() { return this.svc.listWhatsAppInbox(); }
   @Post('logs')                  createLog(@Body() b: any, @CurrentUser() u: any) { return this.svc.createLog({...b, sent_by: u.id}); }
 }

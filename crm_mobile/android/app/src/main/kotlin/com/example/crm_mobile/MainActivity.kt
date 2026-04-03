@@ -1,4 +1,4 @@
-package com.example.crm_mobile
+package com.example.ezcrm
 
 import io.flutter.embedding.android.FlutterActivity
 

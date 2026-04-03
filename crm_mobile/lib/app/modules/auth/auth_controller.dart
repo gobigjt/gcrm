@@ -20,6 +20,7 @@ class AuthController extends GetxController {
   final isBootstrapping = true.obs;
   final isLoggedIn = false.obs;
   final userName = 'Guest'.obs;
+  final userId = 0.obs;
   final role = ''.obs;
   final grantedPermissions = <String>{}.obs;
   final accessToken = ''.obs;
@@ -172,6 +173,7 @@ class AuthController extends GetxController {
     required String refresh,
   }) async {
     userName.value = (user['name'] ?? 'User').toString();
+    userId.value = (user['id'] as num? ?? 0).toInt();
     role.value = (user['role'] ?? '').toString();
     accessToken.value = access;
     refreshToken.value = refresh;
@@ -242,6 +244,7 @@ class AuthController extends GetxController {
     isLoggedIn.value = false;
     password.value = '';
     role.value = '';
+    userId.value = 0;
     accessToken.value = '';
     refreshToken.value = '';
     grantedPermissions.clear();

@@ -1,6 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Required to make network calls (DNS + HTTPS) -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <application
-        android:label="crm_mobile"
+        android:label="ezcrm"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

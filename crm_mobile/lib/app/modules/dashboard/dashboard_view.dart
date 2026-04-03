@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
-import '../../core/auth/role_permissions.dart';
+import '../../core/models/crm_models.dart';
 import '../../core/utils/ui_format.dart';
 import '../../routes/app_routes.dart';
 import '../../shared/widgets/app_error_banner.dart';
+import '../../shared/widgets/app_bottom_nav.dart';
 import '../auth/auth_controller.dart';
 import 'dashboard_controller.dart';
 
@@ -17,7 +18,7 @@ class DashboardView extends GetView<DashboardController> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('CRM Dashboard'),
+        title: const Text('eZCRM Dashboard'),
         actions: [
           Obx(
             () => IconButton(
@@ -86,17 +87,10 @@ class DashboardView extends GetView<DashboardController> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Welcome back, ${auth.userName.value}',
+                      'Good morning, ${auth.userName.value}',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                             color: Colors.white,
                             fontWeight: FontWeight.w700,
-                          ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      auth.role.value,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: Colors.white.withValues(alpha: 0.9),
                           ),
                     ),
                   ],
@@ -104,11 +98,6 @@ class DashboardView extends GetView<DashboardController> {
               ),
             ),
             const SizedBox(height: 12),
-            Text(
-              'Pull down to refresh dashboard stats.',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 8),
             Obx(
               () => AppErrorBanner(
                 message: controller.errorMessage.value,
@@ -116,17 +105,23 @@ class DashboardView extends GetView<DashboardController> {
               ),
             ),
             Obx(() => controller.isLoading.value ? const LinearProgressIndicator(minHeight: 3) : const SizedBox.shrink()),
-            const SizedBox(height: 20),
+            const SizedBox(height: 18),
             Obx(
               () => Wrap(
                 spacing: 12,
                 runSpacing: 12,
                 children: [
                   _StatCard(
-                    label: 'Open Leads',
+                    label: 'My leads',
                     value: '${controller.openLeads.value}',
                     icon: Icons.track_changes_rounded,
                     tint: const Color(0xFF8B5CF6),
+                  ),
+                  _StatCard(
+                    label: 'Won MTD',
+                    value: '${controller.activeOrders.value}',
+                    icon: Icons.trending_up_rounded,
+                    tint: const Color(0xFF27500A),
                   ),
                   _StatCard(
                     label: 'Revenue',
@@ -135,87 +130,66 @@ class DashboardView extends GetView<DashboardController> {
                     tint: const Color(0xFF10B981),
                   ),
                   _StatCard(
-                    label: 'Active Orders',
-                    value: '${controller.activeOrders.value}',
-                    icon: Icons.shopping_bag_rounded,
-                    tint: const Color(0xFFF59E0B),
-                  ),
-                  _StatCard(
-                    label: 'Employees',
-                    value: '${controller.employees.value}',
-                    icon: Icons.groups_rounded,
-                    tint: const Color(0xFF3B82F6),
+                    label: 'Tasks',
+                    value: '${controller.tasksCount.value}',
+                    hint: controller.tasksOverdueCount.value > 0 ? '${controller.tasksOverdueCount.value} overdue' : null,
+                    icon: Icons.task_alt_rounded,
+                    tint: const Color(0xFFE24B4A),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 28),
+            const SizedBox(height: 22),
             Text(
-              'Accessible Screens',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              'Today\'s tasks',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
-            Obx(
-              () => Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _NavChip(
-                    label: 'CRM',
-                    route: AppRoutes.crm,
-                    enabled: auth.hasPermission(AppPermissions.crm),
-                  ),
-                  _NavChip(
-                    label: 'Sales',
-                    route: AppRoutes.sales,
-                    enabled: auth.hasPermission(AppPermissions.sales),
-                  ),
-                  _NavChip(
-                    label: 'Purchase',
-                    route: AppRoutes.purchase,
-                    enabled: auth.hasPermission(AppPermissions.purchase),
-                  ),
-                  _NavChip(
-                    label: 'Inventory',
-                    route: AppRoutes.inventory,
-                    enabled: auth.hasPermission(AppPermissions.inventory),
-                  ),
-                  _NavChip(
-                    label: 'Production',
-                    route: AppRoutes.production,
-                    enabled: auth.hasPermission(AppPermissions.production),
-                  ),
-                  _NavChip(
-                    label: 'Comms',
-                    route: AppRoutes.communication,
-                    enabled: auth.hasPermission(AppPermissions.communication),
-                  ),
-                  _NavChip(
-                    label: 'Finance',
-                    route: AppRoutes.finance,
-                    enabled: auth.hasPermission(AppPermissions.finance),
-                  ),
-                  _NavChip(
-                    label: 'HR',
-                    route: AppRoutes.hr,
-                    enabled: auth.hasPermission(AppPermissions.hr),
-                  ),
-                  _NavChip(
-                    label: 'Settings',
-                    route: AppRoutes.settings,
-                    enabled: auth.hasPermission(AppPermissions.settings),
-                  ),
-                  _NavChip(
-                    label: 'Users',
-                    route: AppRoutes.users,
-                    enabled: auth.hasPermission(AppPermissions.users),
-                  ),
-                ],
-              ),
+            Obx(() {
+              final rows = controller.todayTasks;
+              if (rows.isEmpty) return const Text('No tasks due today');
+              return Column(
+                children: rows.map((f) {
+                  final dotColor = _isOverdue(f.dueDate) ? const Color(0xFFE24B4A) : const Color(0xFFEF9F27);
+                  final stage = (f.leadStage ?? '').trim().isEmpty ? 'Task' : f.leadStage!.trim();
+                  final score = f.leadScore ?? 0;
+                  final value = score > 0 ? formatCurrencyInr(score * 1000) : null;
+                  final subtitle = _isOverdue(f.dueDate)
+                      ? 'Overdue${value != null ? ' · $value' : ''}'
+                      : '$stage${value != null ? ' · $value' : ''}';
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _TaskRow(
+                      dotColor: dotColor,
+                      title: f.description,
+                      subtitle: subtitle,
+                    ),
+                  );
+                }).toList(),
+              );
+            }),
+            const SizedBox(height: 18),
+            Text(
+              'Recent leads',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
             ),
+            const SizedBox(height: 8),
+            Obx(() {
+              final list = controller.recentLeads;
+              if (list.isEmpty) return const Text('No recent leads');
+              return Column(
+                children: list.map((lead) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _LeadRow(lead: lead),
+                  );
+                }).toList(),
+              );
+            }),
           ],
         ),
       ),
+      bottomNavigationBar: const AppBottomNav(currentIndex: 0),
     );
   }
 }
@@ -224,12 +198,14 @@ class _StatCard extends StatelessWidget {
   const _StatCard({
     required this.label,
     required this.value,
+    this.hint,
     required this.icon,
     required this.tint,
   });
 
   final String label;
   final String value;
+  final String? hint;
   final IconData icon;
   final Color tint;
 
@@ -259,6 +235,16 @@ class _StatCard extends StatelessWidget {
                 value,
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
               ),
+              if (hint != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  hint!,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: tint,
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+              ],
             ],
           ),
         ),
@@ -267,23 +253,116 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-class _NavChip extends StatelessWidget {
-  const _NavChip({
-    required this.label,
-    required this.route,
-    required this.enabled,
+bool _isOverdue(dynamic dueDate) {
+  if (dueDate == null) return false;
+  final s = dueDate.toString();
+  final datePart = s.length >= 10 ? s.substring(0, 10) : s;
+  final d = DateTime.tryParse(datePart);
+  if (d == null) return false;
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  return d.isBefore(today);
+}
+
+class _TaskRow extends StatelessWidget {
+  const _TaskRow({
+    required this.dotColor,
+    required this.title,
+    required this.subtitle,
   });
 
-  final String label;
-  final String route;
-  final bool enabled;
+  final Color dotColor;
+  final String title;
+  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
-    return FilledButton.tonalIcon(
-      onPressed: enabled ? () => Get.toNamed(route) : null,
-      icon: Icon(enabled ? Icons.open_in_new_rounded : Icons.lock_outline_rounded, size: 18),
-      label: Text(enabled ? label : '$label (No access)'),
+    return Row(
+      children: [
+        Container(width: 8, height: 8, decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).hintColor),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LeadRow extends StatelessWidget {
+  const _LeadRow({required this.lead});
+
+  final CrmLead lead;
+
+  String _initials(String s) {
+    final parts = s.trim().split(RegExp(r'\\s+')).where((p) => p.isNotEmpty).toList();
+    if (parts.isEmpty) return '?';
+    if (parts.length == 1) {
+      final t = parts.first;
+      if (t.length >= 2) return t.substring(0, 2).toUpperCase();
+      return t.substring(0, 1).toUpperCase();
+    }
+    return (parts[0].substring(0, 1) + parts[1].substring(0, 1)).toUpperCase();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () {},
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 14,
+            backgroundColor: const Color(0xFFE6F1FB),
+            child: Text(
+              _initials(lead.company.isNotEmpty ? lead.company : lead.name),
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF0C447C)),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  lead.company.isNotEmpty ? lead.company : lead.name,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${lead.source} · ${lead.priority}',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).hintColor),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE6F1FB),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              lead.stage,
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF0C447C)),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

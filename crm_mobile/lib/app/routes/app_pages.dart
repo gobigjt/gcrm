@@ -26,6 +26,10 @@ import '../modules/settings/settings_controller.dart';
 import '../modules/settings/settings_view.dart';
 import '../modules/users/users_controller.dart';
 import '../modules/users/users_view.dart';
+import '../modules/tasks/tasks_controller.dart';
+import '../modules/tasks/tasks_view.dart';
+import '../modules/whatsapp_chat/whatsapp_chat_controller.dart';
+import '../modules/whatsapp_chat/whatsapp_chat_view.dart';
 import 'app_routes.dart';
 import 'permission_middleware.dart';
 
@@ -48,6 +52,14 @@ abstract class AppPages {
       page: () => const CrmView(),
       binding: BindingsBuilder(() {
         Get.lazyPut<CrmController>(() => CrmController());
+      }),
+      middlewares: [PermissionMiddleware(permission: AppPermissions.crm)],
+    ),
+    GetPage(
+      name: AppRoutes.tasks,
+      page: () => const TasksView(),
+      binding: BindingsBuilder(() {
+        Get.lazyPut<TasksController>(() => TasksController());
       }),
       middlewares: [PermissionMiddleware(permission: AppPermissions.crm)],
     ),
@@ -88,6 +100,15 @@ abstract class AppPages {
       page: () => const CommunicationView(),
       binding: BindingsBuilder(() {
         Get.lazyPut<CommunicationController>(() => CommunicationController());
+      }),
+      middlewares: [PermissionMiddleware(permission: AppPermissions.communication)],
+    ),
+    GetPage(
+      name: AppRoutes.whatsappChat,
+      page: () => const WhatsAppChatView(),
+      binding: BindingsBuilder(() {
+        final id = int.tryParse(Get.parameters['id'] ?? '') ?? 0;
+        Get.put<WhatsAppChatController>(WhatsAppChatController(leadId: id));
       }),
       middlewares: [PermissionMiddleware(permission: AppPermissions.communication)],
     ),

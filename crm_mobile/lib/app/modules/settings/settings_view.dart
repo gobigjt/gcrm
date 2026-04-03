@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import '../../core/models/settings_models.dart';
 import '../../core/utils/ui_format.dart';
 import '../../shared/widgets/app_error_banner.dart';
+import '../../shared/widgets/app_bottom_nav.dart';
 import 'settings_controller.dart';
 
 class SettingsView extends GetView<SettingsController> {
@@ -84,6 +85,7 @@ class SettingsView extends GetView<SettingsController> {
           ],
         );
       }),
+      bottomNavigationBar: const AppBottomNav(currentIndex: 4),
     );
   }
 
