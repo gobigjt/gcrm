@@ -13,5 +13,10 @@ WHERE email IN (
   'demo.super@example.com',
   'demo.manager@example.com',
   'demo.agent@example.com',
-  'demo.accountant@example.com'
+  'demo.accountant@example.com',
+  'demo.admin@example.com',
+  'demo.inventory@example.com',
+  'demo.hr@example.com',
+  'demo.sales.executive@example.com',
+  'demo.sales.manager@example.com'
 );

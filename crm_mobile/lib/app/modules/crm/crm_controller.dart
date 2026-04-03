@@ -11,6 +11,8 @@ class CrmController extends GetxController {
   final isLoading = false.obs;
   final isSubmitting = false.obs;
   final leads = <CrmLead>[].obs;
+  /// Full list for stage-filter chip counts (stays populated when filters apply).
+  final leadsAll = <CrmLead>[].obs;
   final stages = <CrmLookupItem>[].obs;
   final sources = <CrmLookupItem>[].obs;
   final selectedStageId = RxnInt();
@@ -31,6 +33,7 @@ class CrmController extends GetxController {
       final stagesRes = await _auth.authorizedRequest(method: 'GET', path: '/crm/leads/stages');
       final sourcesRes = await _auth.authorizedRequest(method: 'GET', path: '/crm/leads/sources');
       leads.assignAll((leadsRes as List).map((e) => CrmLead.fromJson(Map<String, dynamic>.from(e as Map))));
+      leadsAll.assignAll(leads);
       stages.assignAll((stagesRes as List).map((e) => CrmLookupItem.fromJson(Map<String, dynamic>.from(e as Map))));
       sources.assignAll((sourcesRes as List).map((e) => CrmLookupItem.fromJson(Map<String, dynamic>.from(e as Map))));
     } catch (e) {
@@ -52,6 +55,11 @@ class CrmController extends GetxController {
       final path = query.isEmpty ? '/crm/leads' : '/crm/leads?${query.join('&')}';
       final leadsRes = await _auth.authorizedRequest(method: 'GET', path: path);
       leads.assignAll((leadsRes as List).map((e) => CrmLead.fromJson(Map<String, dynamic>.from(e as Map))));
+      if (selectedStageId.value == null &&
+          selectedSourceId.value == null &&
+          searchQuery.value.trim().isEmpty) {
+        leadsAll.assignAll(leads);
+      }
     } catch (e) {
       errorMessage.value = userFriendlyError(e);
     } finally {

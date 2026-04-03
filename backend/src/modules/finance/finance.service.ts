@@ -107,7 +107,7 @@ export class FinanceService {
         (SELECT COALESCE(SUM(amount),0)       FROM expenses)                                               AS expenses,
         (SELECT COALESCE(SUM(total_amount),0) FROM invoices WHERE status IN ('unpaid','partial'))          AS receivable,
         (SELECT COALESCE(SUM(total_amount),0) FROM purchase_invoices)                                      AS payables,
-        (SELECT COUNT(*)::int                 FROM invoices WHERE status='overdue')                        AS overdue_invoices
+        (SELECT COUNT(*)::int                 FROM invoices WHERE status IN ('unpaid','partial') AND due_date < NOW()) AS overdue_invoices
     `);
     const r = res.rows[0];
     return {

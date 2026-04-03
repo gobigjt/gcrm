@@ -58,11 +58,15 @@ DELETE FROM permissions;
 
 -- ── Seed: roles ─────────────────────────────────────────────
 INSERT INTO roles (name, description, is_system) VALUES
-  ('Admin',      'Full system access',           TRUE),
-  ('Manager',    'Manage teams and operations',  TRUE),
-  ('Agent',      'Sales and CRM access',         TRUE),
-  ('Accountant', 'Finance and billing access',   TRUE),
-  ('HR',         'Human resources access',       TRUE)
+  ('Admin',           'Full system access',                        TRUE),
+  ('Super Admin',     'Platform operator (multi-tenant SaaS)',     TRUE),
+  ('Manager',         'Manage teams and operations',               TRUE),
+  ('Sales Manager',   'Team pipeline & ops (same as Manager)',     TRUE),
+  ('Agent',           'Sales and CRM access',                        TRUE),
+  ('Sales Executive', 'Field sales & CRM (same as Agent)',         TRUE),
+  ('Accountant',      'Finance and billing access',                TRUE),
+  ('Inventory',       'Stock, warehouse & purchase ops',           TRUE),
+  ('HR',              'Human resources access',                      TRUE)
 ON CONFLICT (name) DO NOTHING;
 
 -- ── Seed: permissions ───────────────────────────────────────
@@ -185,6 +189,15 @@ INSERT INTO role_permissions (role_id, permission_id)
   WHERE r.name = 'Manager'
 ON CONFLICT DO NOTHING;
 
+-- Sales Manager → same as Manager
+INSERT INTO role_permissions (role_id, permission_id)
+  SELECT r_new.id, rp.permission_id
+  FROM roles r_old
+  JOIN role_permissions rp ON rp.role_id = r_old.id
+  JOIN roles r_new ON r_new.name = 'Sales Manager'
+  WHERE r_old.name = 'Manager'
+ON CONFLICT DO NOTHING;
+
 -- Agent → crm + sales: view own/all, create, edit own only
 INSERT INTO role_permissions (role_id, permission_id)
   SELECT r.id, p.id FROM roles r
@@ -192,6 +205,15 @@ INSERT INTO role_permissions (role_id, permission_id)
     ON p.module IN ('crm','sales')
    AND p.action IN ('view','view_all','create','edit')
   WHERE r.name = 'Agent'
+ON CONFLICT DO NOTHING;
+
+-- Sales Executive → same as Agent
+INSERT INTO role_permissions (role_id, permission_id)
+  SELECT r_new.id, rp.permission_id
+  FROM roles r_old
+  JOIN role_permissions rp ON rp.role_id = r_old.id
+  JOIN roles r_new ON r_new.name = 'Sales Executive'
+  WHERE r_old.name = 'Agent'
 ON CONFLICT DO NOTHING;
 
 -- Accountant → finance + sales + purchase: view all, create, edit own
@@ -210,6 +232,20 @@ INSERT INTO role_permissions (role_id, permission_id)
     ON p.module IN ('hr','communication')
    AND p.action IN ('view','view_all','create','edit','edit_all')
   WHERE r.name = 'HR'
+ON CONFLICT DO NOTHING;
+
+-- Super Admin → same breadth as Admin (platform UI in mobile uses role name)
+INSERT INTO role_permissions (role_id, permission_id)
+  SELECT r.id, p.id FROM roles r, permissions p WHERE r.name = 'Super Admin'
+ON CONFLICT DO NOTHING;
+
+-- Inventory → stock + purchasing operations
+INSERT INTO role_permissions (role_id, permission_id)
+  SELECT r.id, p.id FROM roles r
+  JOIN permissions p
+    ON p.module IN ('inventory','purchase')
+   AND p.action IN ('view','view_all','create','create_all','edit','edit_all','delete')
+  WHERE r.name = 'Inventory'
 ON CONFLICT DO NOTHING;
 
 -- ============================================================

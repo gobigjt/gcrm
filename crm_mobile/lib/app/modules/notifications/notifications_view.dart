@@ -2,11 +2,28 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/models/notification_item.dart';
+import '../../core/navigation/notification_navigation.dart';
 import '../../shared/widgets/app_error_banner.dart';
+import '../../showcase/showcase_widgets.dart';
 import 'notifications_controller.dart';
 
 class NotificationsView extends GetView<NotificationsController> {
   const NotificationsView({super.key});
+
+  static DateTime? _parseDay(String createdAt) {
+    if (createdAt.isEmpty) return null;
+    final s = createdAt.length >= 10 ? createdAt.substring(0, 10) : createdAt;
+    return DateTime.tryParse(s);
+  }
+
+  static String _bucketLabel(DateTime? d, DateTime today) {
+    if (d == null) return 'Earlier';
+    final day = DateTime(d.year, d.month, d.day);
+    final t0 = DateTime(today.year, today.month, today.day);
+    if (day == t0) return 'Today';
+    if (day == t0.subtract(const Duration(days: 1))) return 'Yesterday';
+    return 'Earlier';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -14,6 +31,10 @@ class NotificationsView extends GetView<NotificationsController> {
       appBar: AppBar(
         title: const Text('Notifications'),
         actions: [
+          TextButton(
+            onPressed: () => controller.markAllRead(),
+            child: const Text('Mark all read'),
+          ),
           IconButton(
             onPressed: controller.load,
             icon: const Icon(Icons.refresh_rounded),
@@ -21,11 +42,9 @@ class NotificationsView extends GetView<NotificationsController> {
           ),
           PopupMenuButton<String>(
             onSelected: (v) {
-              if (v == 'read-all') controller.markAllRead();
               if (v == 'clear-read') controller.clearRead();
             },
             itemBuilder: (_) => const [
-              PopupMenuItem(value: 'read-all', child: Text('Mark all read')),
               PopupMenuItem(value: 'clear-read', child: Text('Clear read')),
             ],
           ),
@@ -50,18 +69,53 @@ class NotificationsView extends GetView<NotificationsController> {
               if (controller.items.isEmpty) {
                 return const Center(child: Text('No notifications yet'));
               }
+              final today = DateTime.now();
+              final sorted = List<NotificationItem>.from(controller.items)
+                ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+              final sections = <String, List<NotificationItem>>{};
+              for (final it in sorted) {
+                final d = _parseDay(it.createdAt);
+                final key = _bucketLabel(d, today);
+                sections.putIfAbsent(key, () => []).add(it);
+              }
+
+              const order = ['Today', 'Yesterday', 'Earlier'];
+              final children = <Widget>[];
+              for (final key in order) {
+                final rows = sections[key];
+                if (rows == null || rows.isEmpty) continue;
+                children.add(
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+                    child: ShowcaseSectionTitle(key),
+                  ),
+                );
+                for (final it in rows) {
+                  children.add(
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: _NotificationTile(
+                        item: it,
+                        onMarkRead: () => controller.markRead(it.id),
+                        onOpenTarget: () async {
+                          if (openNotificationTarget(it.link)) {
+                            await controller.markRead(it.id);
+                          }
+                        },
+                      ),
+                    ),
+                  );
+                }
+              }
+
               return Stack(
                 children: [
                   RefreshIndicator(
                     onRefresh: controller.load,
-                    child: ListView.separated(
-                      padding: const EdgeInsets.all(16),
-                      itemBuilder: (_, i) => _NotificationTile(
-                        item: controller.items[i],
-                        onMarkRead: () => controller.markRead(controller.items[i].id),
-                      ),
-                      separatorBuilder: (_, __) => const SizedBox(height: 8),
-                      itemCount: controller.items.length,
+                    child: ListView(
+                      padding: const EdgeInsets.only(bottom: 24),
+                      children: children,
                     ),
                   ),
                   if (controller.isMutating.value)
@@ -77,10 +131,15 @@ class NotificationsView extends GetView<NotificationsController> {
 }
 
 class _NotificationTile extends StatelessWidget {
-  const _NotificationTile({required this.item, required this.onMarkRead});
+  const _NotificationTile({
+    required this.item,
+    required this.onMarkRead,
+    required this.onOpenTarget,
+  });
 
   final NotificationItem item;
   final VoidCallback onMarkRead;
+  final VoidCallback onOpenTarget;
 
   @override
   Widget build(BuildContext context) {
@@ -91,8 +150,12 @@ class _NotificationTile extends StatelessWidget {
     final module = item.module;
     final time = _fmtDate(item.createdAt);
 
+    final canOpen = parseLeadIdFromNotificationLink(item.link) != null;
+
     return Card(
+      margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
+        onTap: canOpen ? onOpenTarget : null,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         leading: CircleAvatar(
           radius: 8,
@@ -122,8 +185,24 @@ class _NotificationTile extends StatelessWidget {
           ],
         ),
         trailing: isRead
-            ? const Icon(Icons.done_all_rounded, color: Colors.green)
-            : TextButton(onPressed: onMarkRead, child: const Text('Read')),
+            ? canOpen
+                ? IconButton(
+                    onPressed: onOpenTarget,
+                    icon: const Icon(Icons.chevron_right_rounded),
+                    tooltip: 'Open lead',
+                  )
+                : const Icon(Icons.done_all_rounded, color: Colors.green)
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (canOpen)
+                    TextButton(
+                      onPressed: onOpenTarget,
+                      child: const Text('Open'),
+                    ),
+                  TextButton(onPressed: onMarkRead, child: const Text('Read')),
+                ],
+              ),
       ),
     );
   }

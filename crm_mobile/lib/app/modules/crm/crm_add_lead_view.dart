@@ -110,17 +110,27 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final border = OutlineInputBorder(
       borderRadius: BorderRadius.circular(10),
-      borderSide: const BorderSide(color: Color(0xFFD7DADF)),
+      borderSide: BorderSide(
+        color: scheme.outline.withValues(alpha: isDark ? 0.7 : 1),
+        width: 1,
+      ),
     );
     final denseInput = InputDecorationTheme(
       isDense: true,
+      filled: true,
+      fillColor: isDark ? const Color(0xFF0F172A) : Colors.white,
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
       border: border,
       enabledBorder: border,
       focusedBorder: border.copyWith(
-        borderSide: const BorderSide(color: Color(0xFFB7D6F2), width: 1.2),
+        borderSide: BorderSide(
+          color: scheme.primary,
+          width: 1.4,
+        ),
       ),
     );
     return Scaffold(
@@ -159,33 +169,57 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
                   children: [
                     TextField(
                       controller: nameCtrl,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Contact name *',
                         hintText: 'Enter full name',
+                        floatingLabelBehavior: FloatingLabelBehavior.always,
+                        labelStyle: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: scheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: companyCtrl,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Company',
                         hintText: 'Company name',
+                        floatingLabelBehavior: FloatingLabelBehavior.always,
+                        labelStyle: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: scheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: phoneCtrl,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Phone *',
                         hintText: '+91 XXXXX XXXXX',
+                        floatingLabelBehavior: FloatingLabelBehavior.always,
+                        labelStyle: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: scheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: emailCtrl,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Email',
                         hintText: 'email@company.com',
+                        floatingLabelBehavior: FloatingLabelBehavior.always,
+                        labelStyle: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: scheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
                   ],
@@ -195,38 +229,49 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
               _sectionLabel(context, 'Lead source'),
               const SizedBox(height: 8),
               Obx(
-                () => SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: controller.sources
-                        .map(
-                          (s) {
-                            final selected = sourceId.value == s.id;
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 6),
-                              child: ChoiceChip(
-                                labelPadding: const EdgeInsets.symmetric(horizontal: 4),
-                                visualDensity: const VisualDensity(horizontal: -2, vertical: -2),
-                                label: Text(
-                                  s.name,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: selected ? const Color(0xFF0C447C) : Theme.of(context).hintColor,
-                                    fontWeight: FontWeight.w600,
+                () {
+                  final scheme = Theme.of(context).colorScheme;
+                  final isDark = Theme.of(context).brightness == Brightness.dark;
+                  final selectedBg = const Color(0xFFE6F1FB);
+                  final selectedFg = const Color(0xFF0C447C);
+                  final unselectedBg = isDark ? scheme.surfaceContainerHighest : const Color(0xFFF3F4F6);
+                  final unselectedFg = scheme.onSurfaceVariant;
+                  final selectedBorder = const Color(0xFFB7D6F2);
+                  final unselectedBorder = scheme.outline.withValues(alpha: 0.5);
+
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: controller.sources
+                          .map(
+                            (s) {
+                              final selected = sourceId.value == s.id;
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 6),
+                                child: ChoiceChip(
+                                  labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+                                  visualDensity: const VisualDensity(horizontal: -2, vertical: -2),
+                                  label: Text(
+                                    s.name,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: selected ? selectedFg : unselectedFg,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
+                                  selected: selected,
+                                  selectedColor: selectedBg,
+                                  backgroundColor: unselectedBg,
+                                  side: BorderSide(color: selected ? selectedBorder : unselectedBorder),
+                                  onSelected: (_) => sourceId.value = s.id,
                                 ),
-                                selected: selected,
-                                selectedColor: const Color(0xFFE6F1FB),
-                                backgroundColor: const Color(0xFFF3F4F6),
-                                side: BorderSide(color: selected ? const Color(0xFFB7D6F2) : const Color(0xFFE5E7EB)),
-                                onSelected: (_) => sourceId.value = s.id,
-                              ),
-                            );
-                          },
-                        )
-                        .toList(),
-                  ),
-                ),
+                              );
+                            },
+                          )
+                          .toList(),
+                    ),
+                  );
+                },
               ),
               const SizedBox(height: 12),
               _sectionLabel(context, 'Task (optional)'),
@@ -239,16 +284,28 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
                       controller: dueDateCtrl,
                       readOnly: true,
                       onTap: () => pickDateIntoController(context: context, controller: dueDateCtrl),
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Task Due Date',
                         suffixIcon: Icon(Icons.calendar_today_rounded),
+                        floatingLabelBehavior: FloatingLabelBehavior.always,
+                        labelStyle: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: scheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: taskDescCtrl,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Task Description',
+                        floatingLabelBehavior: FloatingLabelBehavior.always,
+                        labelStyle: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: scheme.onSurfaceVariant,
+                        ),
                       ),
                       minLines: 2,
                       maxLines: 3,
@@ -256,7 +313,7 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
                   ],
                 ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 18),
               Obx(() {
                 final busy = controller.isSubmitting.value;
                 final loading = const SizedBox(
@@ -271,9 +328,9 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
                       onPressed: busy ? null : _saveLeadOnly,
                       style: FilledButton.styleFrom(
                         backgroundColor: const Color(0xFF185FA5),
-                        foregroundColor: Colors.white,
+                        foregroundColor: const Color(0xFFFFFFFF),
                         padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       ),
                       child: busy ? loading : const Text('Create lead'),
                     ),
@@ -282,9 +339,9 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
                       onPressed: busy ? null : _saveLeadAndTask,
                       style: OutlinedButton.styleFrom(
                         foregroundColor: const Color(0xFF0C447C),
-                        side: const BorderSide(color: Color(0xFFD7DADF)),
+                        side: BorderSide(color: Theme.of(context).dividerColor, width: 1),
                         padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       ),
                       child: busy ? loading : const Text('Save & add task'),
                     ),

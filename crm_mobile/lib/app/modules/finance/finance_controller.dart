@@ -17,6 +17,9 @@ class FinanceController extends GetxController {
   final plRows = <PLReportRow>[].obs;
   final gstInvoices = <GstInvoiceRow>[].obs;
   final gstTotals = Rxn<GstTotals>();
+  /// Accounts invoices list filter: `all` | `paid` | `overdue` (client-side, showcase).
+  final invoiceListFilter = 'all'.obs;
+  final invoiceSearchQuery = ''.obs;
 
   @override
   void onInit() {

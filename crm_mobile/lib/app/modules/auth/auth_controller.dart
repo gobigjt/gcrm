@@ -7,6 +7,7 @@ import '../../core/network/api_client.dart';
 import '../../core/network/error_utils.dart';
 import '../../core/auth/role_permissions.dart';
 import '../../core/storage/secure_storage_service.dart';
+import '../../core/auth/role_home_route.dart';
 import '../../routes/app_routes.dart';
 
 class AuthController extends GetxController {
@@ -48,7 +49,9 @@ class AuthController extends GetxController {
       await _storage.saveSession(accessToken: access, refreshToken: refresh, user: user);
       await _applySession(user: user, access: access, refresh: refresh);
       isLoggedIn.value = true;
-      Get.offAllNamed(AppRoutes.dashboard);
+      Get.offAllNamed(
+        resolveRoleHome(roleName: role.value, hasPermission: hasPermission),
+      );
     } catch (e) {
       Get.snackbar('Login failed', userFriendlyError(e));
     } finally {
@@ -106,7 +109,7 @@ class AuthController extends GetxController {
       } catch (_) {}
     }
     await _clearLocalSession();
-    Get.offAllNamed(AppRoutes.login);
+    Get.offAllNamed(AppRoutes.splash);
   }
 
   bool hasPermission(String permission) {

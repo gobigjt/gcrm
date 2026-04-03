@@ -1,11 +1,15 @@
 import { Body, Controller, Get, NotFoundException, Param, Post } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiParam } from '@nestjs/swagger';
 import { DatabaseService } from '../../database/database.service';
+import { LeadsService } from './leads.service';
 
 @ApiTags('Lead Capture')
 @Controller('capture')
 export class LeadCaptureController {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly leads: LeadsService,
+  ) {}
 
   @Get(':formKey')
   @ApiOperation({ summary: 'Get form fields by form key (public)' })
@@ -43,21 +47,16 @@ export class LeadCaptureController {
 
     let leadId: number | null = null;
     if (name || email || phone) {
-      const leadRes = await this.db.query(
-        `INSERT INTO leads (name, email, phone, source_id, stage_id, assigned_to, notes)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)
-         RETURNING id`,
-        [
-          name,
-          email,
-          phone,
-          form.default_source_id || null,
-          form.default_stage_id  || null,
-          form.assigned_to       || null,
-          body.message || body.notes || null,
-        ],
-      );
-      leadId = leadRes.rows[0]?.id ?? null;
+      const lead = await this.leads.create({
+        name,
+        email,
+        phone,
+        source_id: form.default_source_id ?? null,
+        stage_id: form.default_stage_id ?? null,
+        assigned_to: form.assigned_to ?? null,
+        notes: body.message || body.notes || null,
+      });
+      leadId = lead?.id ?? null;
     }
 
     return {

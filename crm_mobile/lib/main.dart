@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import 'app/core/theme/app_theme.dart';
+import 'app/core/navigation/deep_link_controller.dart';
 import 'app/modules/auth/auth_controller.dart';
 import 'app/routes/app_pages.dart';
 import 'app/routes/app_routes.dart';
@@ -23,8 +24,9 @@ class CrmMobileApp extends StatelessWidget {
       themeMode: ThemeMode.system,
       initialBinding: BindingsBuilder(() {
         Get.put(AuthController(), permanent: true);
+        Get.put(DeepLinkController(), permanent: true);
       }),
-      initialRoute: AppRoutes.login,
+      initialRoute: AppRoutes.splash,
       getPages: AppPages.routes,
     );
   }

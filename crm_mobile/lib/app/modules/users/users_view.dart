@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../routes/app_routes.dart';
 import '../../shared/widgets/app_error_banner.dart';
+import '../../shared/widgets/role_aware_bottom_nav.dart';
 import 'users_controller.dart';
 
 class UsersView extends GetView<UsersController> {
@@ -59,6 +61,7 @@ class UsersView extends GetView<UsersController> {
           ),
         );
       }),
+      bottomNavigationBar: const RoleAwareBottomNav(currentRoute: AppRoutes.users),
     );
   }
 

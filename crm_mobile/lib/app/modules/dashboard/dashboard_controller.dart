@@ -19,6 +19,12 @@ class DashboardController extends GetxController {
   final todayTasks = <CrmFollowupRow>[].obs;
   final recentLeads = <CrmLead>[].obs;
   final errorMessage = ''.obs;
+  /// From assigned leads fetch (for KPI subtitles).
+  final assignedLeadsCount = 0.obs;
+  final newLeadsThisWeek = 0.obs;
+  /// From `/settings/dashboard` (company-wide).
+  final openLeadsNew7d = 0.obs;
+  final overdueInvoices = 0.obs;
 
   @override
   void onInit() {
@@ -71,6 +77,8 @@ class DashboardController extends GetxController {
       revenue.value = stats.revenue;
       activeOrders.value = stats.activeOrders;
       employees.value = stats.totalEmployees;
+      openLeadsNew7d.value = stats.openLeadsNew7d;
+      overdueInvoices.value = stats.overdueInvoices;
       unreadNotifications.value = ((unread as Map)['count'] as num? ?? 0).toInt();
 
       if (followupsRaw != null) {
@@ -112,13 +120,18 @@ class DashboardController extends GetxController {
           return m['is_converted'] != true;
         }).toList();
 
-        // Keep it small for the home preview.
-        final mapped = rawList
-            .take(4)
-            .map((e) => CrmLead.fromJson(Map<String, dynamic>.from(e as Map)))
-            .toList();
+        final allAssigned =
+            rawList.map((e) => CrmLead.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+        assignedLeadsCount.value = allAssigned.length;
 
-        recentLeads.assignAll(mapped);
+        final weekAgo = DateTime.now().subtract(const Duration(days: 7));
+        newLeadsThisWeek.value = allAssigned.where((l) => !l.createdAt.isBefore(weekAgo)).length;
+
+        // Keep it small for the home preview.
+        recentLeads.assignAll(allAssigned.take(4).toList());
+      } else {
+        assignedLeadsCount.value = 0;
+        newLeadsThisWeek.value = 0;
       }
     } catch (e) {
       errorMessage.value = userFriendlyError(e);

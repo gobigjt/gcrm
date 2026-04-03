@@ -3,7 +3,8 @@ import 'package:get/get.dart';
 
 import '../../core/utils/ui_format.dart';
 import '../../shared/widgets/app_error_banner.dart';
-import '../../shared/widgets/app_bottom_nav.dart';
+import '../../routes/app_routes.dart';
+import '../../shared/widgets/role_aware_bottom_nav.dart';
 import 'communication_controller.dart';
 
 class CommunicationView extends GetView<CommunicationController> {
@@ -65,7 +66,7 @@ class CommunicationView extends GetView<CommunicationController> {
             ),
           ],
         ),
-        bottomNavigationBar: const AppBottomNav(currentIndex: 3),
+        bottomNavigationBar: const RoleAwareBottomNav(currentRoute: AppRoutes.communication),
       ),
     );
   }

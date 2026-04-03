@@ -86,19 +86,51 @@ export class SettingsService {
     const cacheKey = 'dashboard:stats';
     const cached = await this.cache.get(cacheKey);
     if (cached) return cached;
-    const [leads, invoices, orders, employees] = await Promise.all([
+    const [leads, invoices, orders, employees, openNew7d, overdueInv, usersActive] = await Promise.all([
       this.db.query('SELECT COUNT(*) FROM leads WHERE is_converted=FALSE'),
       this.db.query("SELECT COALESCE(SUM(total_amount),0) AS revenue FROM invoices WHERE status='paid'"),
       this.db.query("SELECT COUNT(*) FROM sales_orders WHERE status NOT IN ('delivered','cancelled')"),
       this.db.query('SELECT COUNT(*) FROM employees WHERE is_active=TRUE'),
+      this.db.query(
+        `SELECT COUNT(*) FROM leads WHERE is_converted=FALSE AND created_at >= NOW() - INTERVAL '7 days'`,
+      ),
+      this.db.query(
+        `SELECT COUNT(*) FROM invoices WHERE status <> 'paid' AND due_date IS NOT NULL AND due_date < CURRENT_DATE`,
+      ),
+      this.db.query('SELECT COUNT(*) FROM users WHERE is_active=TRUE'),
     ]);
     const stats = {
-      open_leads:      Number(leads.rows[0].count),
-      revenue:         Number(invoices.rows[0].revenue),
-      active_orders:   Number(orders.rows[0].count),
-      total_employees: Number(employees.rows[0].count),
+      open_leads:          Number(leads.rows[0].count),
+      revenue:             Number(invoices.rows[0].revenue),
+      active_orders:       Number(orders.rows[0].count),
+      total_employees:     Number(employees.rows[0].count),
+      open_leads_new_7d:   Number(openNew7d.rows[0].count),
+      overdue_invoices:    Number(overdueInv.rows[0].count),
+      active_users:        Number(usersActive.rows[0].count),
     };
     await this.cache.set(cacheKey, stats, 60);
     return stats;
+  }
+
+  /** Real aggregates for Super Admin platform screens (single-tenant DB today). */
+  async getPlatformSummary() {
+    const [users, leads, unpaidInv, overdueFu, products, warehouses] = await Promise.all([
+      this.db.query('SELECT COUNT(*) FROM users WHERE is_active=TRUE'),
+      this.db.query('SELECT COUNT(*) FROM leads'),
+      this.db.query("SELECT COUNT(*) FROM invoices WHERE status <> 'paid'"),
+      this.db.query(
+        `SELECT COUNT(*) FROM lead_followups WHERE is_done=FALSE AND due_date::date < CURRENT_DATE`,
+      ),
+      this.db.query('SELECT COUNT(*) FROM products WHERE is_active=TRUE'),
+      this.db.query('SELECT COUNT(*) FROM warehouses WHERE is_active=TRUE'),
+    ]);
+    return {
+      active_users:       Number(users.rows[0].count),
+      leads_total:        Number(leads.rows[0].count),
+      unpaid_invoices:    Number(unpaidInv.rows[0].count),
+      overdue_followups:  Number(overdueFu.rows[0].count),
+      active_products:    Number(products.rows[0].count),
+      warehouses:         Number(warehouses.rows[0].count),
+    };
   }
 }
