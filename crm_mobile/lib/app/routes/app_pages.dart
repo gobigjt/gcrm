@@ -2,9 +2,11 @@ import 'package:get/get.dart';
 
 import '../core/auth/role_permissions.dart';
 import '../modules/auth/auth_view.dart';
+import '../modules/auth/splash_view.dart';
 import '../modules/communication/communication_controller.dart';
 import '../modules/communication/communication_view.dart';
 import '../modules/crm/crm_controller.dart';
+import '../modules/crm/crm_lead_detail_view.dart';
 import '../modules/crm/crm_view.dart';
 import '../modules/dashboard/dashboard_controller.dart';
 import '../modules/dashboard/dashboard_view.dart';
@@ -30,11 +32,33 @@ import '../modules/tasks/tasks_controller.dart';
 import '../modules/tasks/tasks_view.dart';
 import '../modules/whatsapp_chat/whatsapp_chat_controller.dart';
 import '../modules/whatsapp_chat/whatsapp_chat_view.dart';
+import '../modules/roles/admin/admin_overview_controller.dart';
+import '../modules/roles/admin/company_admin_home_view.dart';
+import '../modules/roles/accounts/accounts_gst_report_view.dart';
+import '../modules/roles/accounts/accounts_home_view.dart';
+import '../modules/roles/accounts/accounts_invoices_view.dart';
+import '../modules/roles/inventory/inventory_role_home_view.dart';
+import '../modules/roles/inventory/stock_adjust_view.dart';
+import '../modules/roles/manager/crm_kanban_view.dart';
+import '../modules/roles/manager/manager_home_view.dart';
+import '../modules/roles/manager/manager_overview_controller.dart';
+import '../modules/roles/manager/sales_performance_view.dart';
+import '../modules/roles/shared/profile_view.dart';
+import '../modules/roles/shared/subscription_view.dart';
+import '../modules/roles/super_admin/platform_home_view.dart';
+import '../modules/roles/super_admin/platform_summary_controller.dart';
+import '../modules/roles/super_admin/saas_billing_view.dart';
+import '../modules/roles/super_admin/tenants_list_view.dart';
 import 'app_routes.dart';
 import 'permission_middleware.dart';
+import 'super_admin_middleware.dart';
 
 abstract class AppPages {
   static final routes = <GetPage<dynamic>>[
+    GetPage(
+      name: AppRoutes.splash,
+      page: () => const SplashView(),
+    ),
     GetPage(
       name: AppRoutes.login,
       page: () => const AuthView(),
@@ -53,6 +77,14 @@ abstract class AppPages {
       binding: BindingsBuilder(() {
         Get.lazyPut<CrmController>(() => CrmController());
       }),
+      middlewares: [PermissionMiddleware(permission: AppPermissions.crm)],
+    ),
+    GetPage(
+      name: AppRoutes.leadDetail,
+      page: () {
+        final id = int.tryParse(Get.parameters['id'] ?? '') ?? 0;
+        return CrmLeadDetailView(leadId: id);
+      },
       middlewares: [PermissionMiddleware(permission: AppPermissions.crm)],
     ),
     GetPage(
@@ -151,6 +183,119 @@ abstract class AppPages {
         Get.lazyPut<NotificationsController>(() => NotificationsController());
       }),
       middlewares: [PermissionMiddleware(permission: AppPermissions.dashboard)],
+    ),
+
+    // Showcase personas — Sales manager
+    GetPage(
+      name: AppRoutes.managerHome,
+      page: () => const ManagerHomeView(),
+      binding: BindingsBuilder(() {
+        Get.lazyPut<ManagerOverviewController>(() => ManagerOverviewController(), fenix: true);
+      }),
+      middlewares: [PermissionMiddleware(permission: AppPermissions.crm)],
+    ),
+    GetPage(
+      name: AppRoutes.crmKanban,
+      page: () => const CrmKanbanView(),
+      binding: BindingsBuilder(() {
+        Get.lazyPut<CrmController>(() => CrmController(), fenix: true);
+      }),
+      middlewares: [PermissionMiddleware(permission: AppPermissions.crm)],
+    ),
+    GetPage(
+      name: AppRoutes.salesPerformance,
+      page: () => const SalesPerformanceView(),
+      binding: BindingsBuilder(() {
+        Get.lazyPut<ManagerOverviewController>(() => ManagerOverviewController(), fenix: true);
+      }),
+      middlewares: [PermissionMiddleware(permission: AppPermissions.crm)],
+    ),
+
+    // Accounts
+    GetPage(
+      name: AppRoutes.accountsHome,
+      page: () => const AccountsHomeView(),
+      binding: BindingsBuilder(() {
+        Get.lazyPut<FinanceController>(() => FinanceController(), fenix: true);
+      }),
+      middlewares: [PermissionMiddleware(permission: AppPermissions.finance)],
+    ),
+    GetPage(
+      name: AppRoutes.accountsInvoices,
+      page: () => const AccountsInvoicesView(),
+      binding: BindingsBuilder(() {
+        Get.lazyPut<FinanceController>(() => FinanceController(), fenix: true);
+      }),
+      middlewares: [PermissionMiddleware(permission: AppPermissions.finance)],
+    ),
+    GetPage(
+      name: AppRoutes.accountsGst,
+      page: () => const AccountsGstReportView(),
+      binding: BindingsBuilder(() {
+        Get.lazyPut<FinanceController>(() => FinanceController(), fenix: true);
+      }),
+      middlewares: [PermissionMiddleware(permission: AppPermissions.finance)],
+    ),
+
+    // Inventory persona home
+    GetPage(
+      name: AppRoutes.inventoryHome,
+      page: () => const InventoryRoleHomeView(),
+      binding: BindingsBuilder(() {
+        Get.lazyPut<InventoryController>(() => InventoryController(), fenix: true);
+      }),
+      middlewares: [PermissionMiddleware(permission: AppPermissions.inventory)],
+    ),
+    GetPage(
+      name: AppRoutes.stockAdjust,
+      page: () => const StockAdjustView(),
+      binding: BindingsBuilder(() {
+        Get.lazyPut<InventoryController>(() => InventoryController(), fenix: true);
+      }),
+      middlewares: [PermissionMiddleware(permission: AppPermissions.inventory)],
+    ),
+
+    // Company admin
+    GetPage(
+      name: AppRoutes.adminHome,
+      page: () => const CompanyAdminHomeView(),
+      binding: BindingsBuilder(() {
+        Get.lazyPut<AdminOverviewController>(() => AdminOverviewController(), fenix: true);
+      }),
+      middlewares: [
+        PermissionMiddleware(permission: AppPermissions.users),
+      ],
+    ),
+
+    // Super admin (role gate + any permission bypass not needed)
+    GetPage(
+      name: AppRoutes.platformHome,
+      page: () => const PlatformHomeView(),
+      binding: BindingsBuilder(() {
+        Get.lazyPut<PlatformSummaryController>(() => PlatformSummaryController());
+      }),
+      middlewares: [SuperAdminMiddleware()],
+    ),
+    GetPage(
+      name: AppRoutes.tenantsList,
+      page: () => const TenantsListView(),
+      middlewares: [SuperAdminMiddleware()],
+    ),
+    GetPage(
+      name: AppRoutes.saasBilling,
+      page: () => const SaasBillingView(),
+      middlewares: [SuperAdminMiddleware()],
+    ),
+
+    GetPage(
+      name: AppRoutes.subscription,
+      page: () => const SubscriptionView(),
+      middlewares: [PermissionMiddleware(permission: AppPermissions.settings)],
+    ),
+    GetPage(
+      name: AppRoutes.profile,
+      page: () => const ProfileView(),
+      middlewares: [PermissionMiddleware(permission: AppPermissions.settings)],
     ),
   ];
 }

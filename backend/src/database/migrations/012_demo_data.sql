@@ -6,6 +6,7 @@
 --   demo.manager@example.com    — Manager
 --   demo.agent@example.com      — Agent
 --   demo.accountant@example.com — Accountant
+-- (Also run migration 017 for Admin, Inventory, HR demo users + Inventory role.)
 --
 -- Safe to apply on top of existing seeds (003–011). Uses
 -- ON CONFLICT / WHERE NOT EXISTS so re-running this file

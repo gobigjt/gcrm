@@ -4,7 +4,9 @@ import 'package:get/get.dart';
 import '../../core/models/crm_models.dart';
 import '../../core/utils/ui_format.dart';
 import '../../shared/widgets/app_error_banner.dart';
-import '../../shared/widgets/app_bottom_nav.dart';
+import '../../routes/app_routes.dart';
+import '../../shared/widgets/role_aware_bottom_nav.dart';
+import '../../showcase/showcase_widgets.dart';
 import 'tasks_controller.dart';
 
 class TasksView extends GetView<TasksController> {
@@ -14,7 +16,7 @@ class TasksView extends GetView<TasksController> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Tasks'),
+        title: const Text('Tasks & follow-ups'),
         actions: [
           IconButton(
             onPressed: controller.load,
@@ -80,44 +82,49 @@ class TasksView extends GetView<TasksController> {
               Widget section(String title, int count, Color dotColor, List<CrmFollowupRow> rows) {
                 if (rows.isEmpty) return const SizedBox.shrink();
                 return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
                       child: Row(
                         children: [
                           Container(width: 7, height: 7, decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle)),
                           const SizedBox(width: 8),
                           Text(
                             '$title ($count)'.toUpperCase(),
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  color: dotColor,
-                                  letterSpacing: 0.35,
-                                ),
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: dotColor,
+                              letterSpacing: 0.35,
+                            ),
                           ),
                         ],
                       ),
                     ),
-                    ...rows.map((f) {
-                      final score = f.leadScore ?? 0;
-                      final value = score > 0 ? formatCurrencyInr(score * 1000) : null;
-                      final stage = (f.leadStage ?? '').trim().isEmpty ? 'Task' : f.leadStage!.trim();
-                      final sub = title == 'Overdue'
-                          ? 'Overdue${value != null ? ' · $value' : ''}'
-                          : '$stage${value != null ? ' · $value' : ''}';
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Column(
+                        children: rows.map((f) {
+                          final score = f.leadScore ?? 0;
+                          final value = score > 0 ? formatCurrencyInr(score * 1000) : null;
+                          final stage = (f.leadStage ?? '').trim().isEmpty ? 'Task' : f.leadStage!.trim();
+                          final sub = title == 'Overdue'
+                              ? 'Overdue${value != null ? ' · $value' : ''}'
+                              : '$stage${value != null ? ' · $value' : ''}';
 
-                      return Card(
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                          title: Text(f.description),
-                          subtitle: Text(sub),
-                          trailing: TextButton(
-                            onPressed: controller.isSubmitting.value ? null : () => controller.markDone(f),
-                            child: const Text('Done'),
-                          ),
-                        ),
-                      );
-                    }),
+                          return ShowcaseListRow(
+                            dotColor: dotColor,
+                            title: f.description,
+                            subtitle: sub,
+                            trailing: TextButton(
+                              onPressed: controller.isSubmitting.value ? null : () => controller.markDone(f),
+                              child: const Text('Done'),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
                   ],
                 );
               }
@@ -141,8 +148,7 @@ class TasksView extends GetView<TasksController> {
           ),
         ],
       ),
-      bottomNavigationBar: const AppBottomNav(currentIndex: 2),
+      bottomNavigationBar: const RoleAwareBottomNav(currentRoute: AppRoutes.tasks),
     );
   }
 }
-

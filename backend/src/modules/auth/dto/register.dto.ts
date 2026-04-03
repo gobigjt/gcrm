@@ -15,8 +15,31 @@ export class RegisterDto {
   @MinLength(6)
   password: string;
 
-  @ApiPropertyOptional({ enum: ['Super Admin','Admin','Manager','Agent','Accountant','HR'], default: 'Agent' })
+  @ApiPropertyOptional({
+    enum: [
+      'Super Admin',
+      'Admin',
+      'Manager',
+      'Sales Manager',
+      'Agent',
+      'Sales Executive',
+      'Accountant',
+      'Inventory',
+      'HR',
+    ],
+    default: 'Agent',
+  })
   @IsOptional()
-  @IsIn(['Super Admin','Admin','Manager','Agent','Accountant','HR'])
+  @IsIn([
+    'Super Admin',
+    'Admin',
+    'Manager',
+    'Sales Manager',
+    'Agent',
+    'Sales Executive',
+    'Accountant',
+    'Inventory',
+    'HR',
+  ])
   role?: string;
 }

@@ -41,15 +41,18 @@ class InventoryProduct {
 
 class InventoryWarehouse {
   InventoryWarehouse({
+    this.id,
     required this.name,
     required this.location,
   });
 
+  final int? id;
   final String name;
   final String location;
 
   factory InventoryWarehouse.fromJson(Map<String, dynamic> json) {
     return InventoryWarehouse(
+      id: _parseInt(json['id']),
       name: (json['name'] ?? '').toString(),
       location: (json['location'] ?? '—').toString(),
     );

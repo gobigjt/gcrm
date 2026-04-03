@@ -4,7 +4,8 @@ import 'package:get/get.dart';
 import '../../core/models/settings_models.dart';
 import '../../core/utils/ui_format.dart';
 import '../../shared/widgets/app_error_banner.dart';
-import '../../shared/widgets/app_bottom_nav.dart';
+import '../../routes/app_routes.dart';
+import '../../shared/widgets/role_aware_bottom_nav.dart';
 import 'settings_controller.dart';
 
 class SettingsView extends GetView<SettingsController> {
@@ -63,6 +64,26 @@ class SettingsView extends GetView<SettingsController> {
               ),
             ),
             const SizedBox(height: 12),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.person_rounded),
+                title: const Text('Profile'),
+                subtitle: const Text('Account & preferences'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Get.toNamed(AppRoutes.profile),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.card_membership_rounded),
+                title: const Text('Subscription'),
+                subtitle: const Text('Plan & billing (showcase)'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Get.toNamed(AppRoutes.subscription),
+              ),
+            ),
+            const SizedBox(height: 12),
             Text('Module Access', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             ...controller.modules.map((m) {
@@ -85,7 +106,7 @@ class SettingsView extends GetView<SettingsController> {
           ],
         );
       }),
-      bottomNavigationBar: const AppBottomNav(currentIndex: 4),
+      bottomNavigationBar: const RoleAwareBottomNav(currentRoute: AppRoutes.settings),
     );
   }
 

@@ -141,7 +141,7 @@ export class SalesService {
     return inv.rows[0] ? { ...inv.rows[0], items: items.rows, payments: pays.rows } : null;
   }
   async createInvoice(data: any, items: any[]) {
-    return this.db.transaction(async (client) => {
+    const row = await this.db.transaction(async (client) => {
       let subtotal = 0, cgst = 0, sgst = 0, igst = 0;
       for (const it of items) {
         subtotal += Number(it.unit_price) * Number(it.quantity);
@@ -159,6 +159,8 @@ export class SalesService {
           [ir.rows[0].id, it.product_id, it.description, it.quantity, it.unit_price, it.gst_rate||0, it.cgst||0, it.sgst||0, it.igst||0, it.total]);
       return ir.rows[0];
     });
+    await this.cache.del('dashboard:stats');
+    return row;
   }
   async stats() {
     const res = await this.db.query(`
@@ -176,14 +178,17 @@ export class SalesService {
   async deleteCustomer(id: number)   { await this.db.query('DELETE FROM customers WHERE id=$1', [id]); await this.cache.delPattern('customers:*'); }
   async deleteQuotation(id: number)  { await this.db.query('DELETE FROM quotations WHERE id=$1', [id]); }
   async deleteOrder(id: number)      { await this.db.query('DELETE FROM sales_orders WHERE id=$1', [id]); }
-  async deleteInvoice(id: number)    { await this.db.query('DELETE FROM invoices WHERE id=$1', [id]); }
+  async deleteInvoice(id: number) {
+    await this.db.query('DELETE FROM invoices WHERE id=$1', [id]);
+    await this.cache.del('dashboard:stats');
+  }
 
   async patchQuotation(id: number, status: string) {
     return (await this.db.query('UPDATE quotations SET status=$1 WHERE id=$2 RETURNING *', [status, id])).rows[0];
   }
 
   async addPayment(invoiceId: number, data: any) {
-    return this.db.transaction(async (client) => {
+    const row = await this.db.transaction(async (client) => {
       const pr = await client.query(
         'INSERT INTO payments (invoice_id,amount,payment_date,method,reference,notes,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
         [invoiceId, data.amount, data.payment_date||new Date().toISOString().split('T')[0], data.method||'bank_transfer', data.reference, data.notes, data.created_by],
@@ -196,5 +201,7 @@ export class SalesService {
       await client.query('UPDATE invoices SET status=$1 WHERE id=$2', [status, invoiceId]);
       return pr.rows[0];
     });
+    await this.cache.del('dashboard:stats');
+    return row;
   }
 }

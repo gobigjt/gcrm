@@ -1,13 +1,42 @@
 import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { RedisService }    from '../../redis/redis.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class LeadsService {
   constructor(
     private readonly db: DatabaseService,
     private readonly cache: RedisService,
+    private readonly notifications: NotificationsService,
   ) {}
+
+  private async invalidateDashboardCache() {
+    await this.cache.del('dashboard:stats');
+  }
+
+  /** Absolute URL if `WEB_APP_ORIGIN` is set (e.g. https://app.example.com); else path-only for same-origin clients. */
+  private crmLeadWebLink(leadId: number): string {
+    const path = `/crm?lead=${leadId}`;
+    const base = (process.env.WEB_APP_ORIGIN || '').trim().replace(/\/$/, '');
+    return base ? `${base}${path}` : path;
+  }
+
+  private async notifyCrmLead(userId: number, lead: { id: number; name: string; company?: string | null }, title: string, body?: string | null) {
+    if (!userId) return;
+    try {
+      await this.notifications.create({
+        user_id: userId,
+        title,
+        body: body ?? (lead.company ? String(lead.company) : 'Open to view details'),
+        type: 'info',
+        module: 'crm',
+        link: this.crmLeadWebLink(lead.id),
+      });
+    } catch {
+      /* notification failure must not break CRM */
+    }
+  }
 
   async list(filters: any) {
     const conds: string[] = [];
@@ -57,11 +86,21 @@ export class LeadsService {
        data.priority || 'warm',
        data.custom_fields ? JSON.stringify(data.custom_fields) : null],
     );
+    const row = res.rows[0];
     await this.cache.delPattern('leads:*');
-    return res.rows[0];
+    await this.invalidateDashboardCache();
+    if (row.assigned_to) {
+      await this.notifyCrmLead(Number(row.assigned_to), row, `New lead assigned: ${row.name}`);
+    }
+    return row;
   }
 
   async update(id: number, data: any) {
+    let prevAssignee: number | null | undefined;
+    if (data.assigned_to !== undefined) {
+      const cur = await this.get(id);
+      prevAssignee = cur ? (cur.assigned_to != null ? Number(cur.assigned_to) : null) : null;
+    }
     const fields = ['name','email','phone','company','source_id','stage_id','assigned_to','notes','priority','custom_fields','is_converted','lead_score'];
     const sets: string[] = [];
     const vals: any[] = [];
@@ -79,12 +118,23 @@ export class LeadsService {
       `UPDATE leads SET ${sets.join(',')} WHERE id=$${i} RETURNING *`, vals,
     );
     await this.cache.del(`lead:${id}`);
-    return res.rows[0];
+    await this.invalidateDashboardCache();
+    const updated = res.rows[0];
+    if (
+      data.assigned_to !== undefined &&
+      updated &&
+      data.assigned_to != null &&
+      Number(data.assigned_to) !== (prevAssignee ?? null)
+    ) {
+      await this.notifyCrmLead(Number(data.assigned_to), updated, `Lead reassigned to you: ${updated.name}`);
+    }
+    return updated;
   }
 
   async remove(id: number) {
     await this.db.query('DELETE FROM leads WHERE id=$1', [id]);
     await this.cache.del(`lead:${id}`);
+    await this.invalidateDashboardCache();
   }
 
   async stages()  { return (await this.db.query('SELECT * FROM lead_stages ORDER BY position')).rows; }
@@ -154,7 +204,19 @@ export class LeadsService {
       'INSERT INTO lead_followups (lead_id,assigned_to,due_date,description) VALUES ($1,$2,$3,$4) RETURNING *',
       [leadId, data.assigned_to || null, data.due_date, data.description || null],
     );
-    return res.rows[0];
+    await this.invalidateDashboardCache();
+    const row = res.rows[0];
+    if (row.assigned_to) {
+      const lead = await this.get(leadId);
+      const name = lead?.name ?? 'Lead';
+      await this.notifyCrmLead(
+        Number(row.assigned_to),
+        { id: leadId, name, company: lead?.company },
+        'Follow-up scheduled',
+        row.description || null,
+      );
+    }
+    return row;
   }
 
   async allFollowups(filters: any) {
@@ -186,6 +248,7 @@ export class LeadsService {
     const res = await this.db.query(
       'UPDATE lead_followups SET is_done=TRUE WHERE id=$1 RETURNING *', [fid],
     );
+    await this.invalidateDashboardCache();
     return res.rows[0];
   }
 }

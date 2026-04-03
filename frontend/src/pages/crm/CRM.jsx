@@ -1,6 +1,7 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
+import { buildAppCrmLeadUrl, buildWebCrmLeadUrl } from '../../utils/crmLeadLinks';
 import Modal from '../../components/Modal';
 import Tabs  from '../../components/Tabs';
 import { Field, inputCls, selectCls, FormActions } from '../../components/FormField';
@@ -37,14 +38,17 @@ const StageBadge = ({ s }) => (
   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STAGE_COLORS[s] || 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>{s || '—'}</span>
 );
 
-const StatCard = ({ label, value, sub, color }) => (
-  <div className="bg-white dark:bg-[#1a1d2e] rounded-2xl border border-slate-200/80 dark:border-slate-700/50 shadow-card px-5 py-4 flex items-center gap-4">
+const StatCard = ({ label, value, sub, color, wireHint }) => (
+  <div className="bg-[#fafaf8] dark:bg-[#1a1d2e] rounded-xl border border-[#e8e6e0] dark:border-slate-700/50 shadow-sm px-4 py-3 flex items-center gap-3">
     <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${color}`}>
       <span className="text-lg">{sub}</span>
     </div>
-    <div>
-      <p className="text-2xl font-bold text-slate-800 dark:text-slate-100 leading-none">{value}</p>
-      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{label}</p>
+    <div className="min-w-0">
+      <p className="text-[11px] text-slate-500 dark:text-slate-400 uppercase tracking-wide font-semibold">{label}</p>
+      <p className="text-xl font-bold text-slate-800 dark:text-slate-100 leading-tight mt-0.5">{value}</p>
+      {wireHint && (
+        <p className="text-[10px] text-emerald-700 dark:text-emerald-400 mt-1 font-medium">{wireHint}</p>
+      )}
     </div>
   </div>
 );
@@ -143,7 +147,6 @@ function LeadModal({ lead, stages, sources, users, onClose, onSaved }) {
 // ─── Lead Drawer ─────────────────────────────────────────────
 
 function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
-  const [drawerTab, setDrawerTab]   = useState('Info');
   const [activities, setActivities] = useState([]);
   const [followups,  setFollowups]  = useState([]);
   const [actForm,    setActForm]    = useState({ type: 'note', description: '' });
@@ -151,6 +154,8 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
   const [saving,     setSaving]     = useState(false);
   const [detail,     setDetail]     = useState(lead);
   const [editing,    setEditing]    = useState(false);
+  const [copyLabel,    setCopyLabel]    = useState('');
+  const [copyAppLabel, setCopyAppLabel] = useState('');
 
   const reload = useCallback(() => {
     api.get(`/crm/leads/${lead.id}`).then(r => setDetail(r.data.lead || r.data));
@@ -194,9 +199,42 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
     ? `https://wa.me/${detail.phone.replace(/\D/g, '')}`
     : null;
 
+  const copyLeadLink = async () => {
+    const basePath = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+    const url = buildWebCrmLeadUrl({
+      origin: window.location.origin,
+      basePath,
+      leadId: lead.id,
+    });
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopyLabel('Copied');
+    } catch {
+      setCopyLabel('Failed');
+    }
+    window.setTimeout(() => setCopyLabel(''), 2000);
+  };
+
+  const copyAppLeadLink = async () => {
+    const url = buildAppCrmLeadUrl(lead.id);
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopyAppLabel('Copied');
+    } catch {
+      setCopyAppLabel('Failed');
+    }
+    window.setTimeout(() => setCopyAppLabel(''), 2000);
+  };
+
   const ACTIVITY_ICONS = {
     note: '📝', call: '📞', email: '📧', meeting: '🤝', whatsapp: '💬', sms: '💬',
   };
+
+  const leadScore = detail?.lead_score ?? 0;
+  const valueStr = `Rs ${(Number(leadScore) * 1000).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+  const daysOpen = detail?.created_at
+    ? Math.max(0, Math.floor((Date.now() - new Date(detail.created_at).getTime()) / 86400000))
+    : '—';
 
   return (
     <div className="fixed inset-0 z-40 flex">
@@ -237,80 +275,101 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
                 💬 WhatsApp
               </a>
             )}
+            <button type="button" onClick={copyLeadLink}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+              {copyLabel || '🔗 Copy link'}
+            </button>
+            <button type="button" title="Opens EZCRM app when installed (ezcrm://)" onClick={copyAppLeadLink}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+              {copyAppLabel || '📱 App link'}
+            </button>
             <button onClick={() => setEditing(true)}
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-brand-50 dark:bg-brand-900/20 text-brand-600 dark:text-brand-400 text-xs font-medium hover:bg-brand-100 dark:hover:bg-brand-900/30 transition-colors ml-auto">
               ✏️ Edit
             </button>
           </div>
-        </div>
 
-        {/* Tabs */}
-        <div className="px-5 border-b border-slate-100 dark:border-slate-700/50 flex-shrink-0">
-          <div className="flex gap-0">
-            {['Info', 'Activities', 'Follow-ups'].map(t => (
-              <button key={t} onClick={() => setDrawerTab(t)}
-                className={`px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors ${drawerTab === t
-                  ? 'border-brand-500 text-brand-600 dark:text-brand-400'
-                  : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}>
-                {t}
-              </button>
-            ))}
+          {/* Showcase-style quick actions */}
+          <div className="grid grid-cols-3 gap-2 mt-3">
+            <button type="button"
+              onClick={() => setActForm({ type: 'call', description: '' })}
+              className="h-11 rounded-xl bg-[#185FA5] text-white text-[11px] font-semibold flex items-center justify-center gap-1 hover:opacity-95">
+              📞 Log call
+            </button>
+            {whatsappUrl ? (
+              <a href={whatsappUrl} target="_blank" rel="noreferrer"
+                className="h-11 rounded-xl border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 text-[11px] font-semibold flex items-center justify-center gap-1 hover:bg-slate-50 dark:hover:bg-slate-800">
+              💬 WA
+              </a>
+            ) : (
+              <span className="h-11 rounded-xl border border-dashed border-slate-200 dark:border-slate-600 text-slate-400 text-[10px] flex items-center justify-center">No phone</span>
+            )}
+            <button type="button"
+              onClick={() => setActForm({ type: 'note', description: 'Quote — ' })}
+              className="h-11 rounded-xl border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 text-[11px] font-semibold flex items-center justify-center gap-1 hover:bg-slate-50 dark:hover:bg-slate-800">
+              📄 Quote
+            </button>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 mt-3">
+            <div className="rounded-lg bg-[#E6F1FB] dark:bg-blue-900/20 px-2 py-2 text-center">
+              <p className="text-[10px] text-[#0C447C] dark:text-blue-300 font-medium">Value</p>
+              <p className="text-xs font-bold text-[#0C447C] dark:text-blue-200">{valueStr}</p>
+            </div>
+            <div className="rounded-lg bg-[#FAEEDA] dark:bg-amber-900/20 px-2 py-2 text-center">
+              <p className="text-[10px] text-[#633806] dark:text-amber-300 font-medium">Score</p>
+              <p className="text-xs font-bold text-[#633806] dark:text-amber-200">{leadScore}</p>
+            </div>
+            <div className="rounded-lg bg-[#E1F5EE] dark:bg-emerald-900/20 px-2 py-2 text-center">
+              <p className="text-[10px] text-[#085041] dark:text-emerald-300 font-medium">Days</p>
+              <p className="text-xs font-bold text-[#085041] dark:text-emerald-200">{daysOpen}</p>
+            </div>
           </div>
         </div>
 
-        {/* Body */}
+        {/* Single scroll: info + timeline + follow-ups (wireframe / mobile parity) */}
         <div className="flex-1 overflow-y-auto">
-
-          {/* ── Info ── */}
-          {drawerTab === 'Info' && (
-            <div className="p-5 space-y-4">
-              {/* Stage change */}
-              <div>
-                <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-2">Move Stage</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {stages.map(s => (
-                    <button key={s.id} onClick={() => changeStage(s.id)}
-                      className={`px-3 py-1 rounded-full text-xs font-medium transition-all border ${detail?.stage === s.name
-                        ? `${STAGE_COLORS[s.name] || 'bg-brand-100 text-brand-700'} border-current`
-                        : 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-slate-400'}`}>
-                      {s.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Details grid */}
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  ['Email',    detail?.email    || '—'],
-                  ['Phone',    detail?.phone    || '—'],
-                  ['Company',  detail?.company  || '—'],
-                  ['Source',   detail?.source   || '—'],
-                  ['Assigned', detail?.assigned_name || 'Unassigned'],
-                  ['Created',  formatDate(detail?.created_at)],
-                ].map(([k, v]) => (
-                  <div key={k} className="bg-slate-50 dark:bg-slate-800/50 rounded-xl px-3 py-2.5">
-                    <p className="text-xs text-slate-400 dark:text-slate-500 mb-0.5">{k}</p>
-                    <p className="text-sm font-medium text-slate-700 dark:text-slate-200 break-all">{v}</p>
-                  </div>
+          <div className="p-5 space-y-5">
+            <div>
+              <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-2">Move Stage</p>
+              <div className="flex flex-wrap gap-1.5">
+                {stages.map(s => (
+                  <button key={s.id} type="button" onClick={() => changeStage(s.id)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition-all border ${detail?.stage === s.name
+                      ? `${STAGE_COLORS[s.name] || 'bg-brand-100 text-brand-700'} border-current`
+                      : 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-slate-400'}`}>
+                    {s.name}
+                  </button>
                 ))}
               </div>
-
-              {/* Notes */}
-              {detail?.notes && (
-                <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200/60 dark:border-amber-800/30 rounded-xl p-3">
-                  <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-1">Notes</p>
-                  <p className="text-sm text-amber-800 dark:text-amber-300 whitespace-pre-wrap">{detail.notes}</p>
-                </div>
-              )}
             </div>
-          )}
 
-          {/* ── Activities ── */}
-          {drawerTab === 'Activities' && (
-            <div className="p-5 space-y-4">
-              {/* Log activity form */}
-              <form onSubmit={logActivity} className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3 space-y-2">
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                ['Email',    detail?.email    || '—'],
+                ['Phone',    detail?.phone    || '—'],
+                ['Company',  detail?.company  || '—'],
+                ['Source',   detail?.source   || '—'],
+                ['Assigned', detail?.assigned_name || 'Unassigned'],
+                ['Created',  formatDate(detail?.created_at)],
+              ].map(([k, v]) => (
+                <div key={k} className="bg-slate-50 dark:bg-slate-800/50 rounded-xl px-3 py-2.5">
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mb-0.5">{k}</p>
+                  <p className="text-sm font-medium text-slate-700 dark:text-slate-200 break-all">{v}</p>
+                </div>
+              ))}
+            </div>
+
+            {detail?.notes && (
+              <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200/60 dark:border-amber-800/30 rounded-xl p-3">
+                <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-1">Notes</p>
+                <p className="text-sm text-amber-800 dark:text-amber-300 whitespace-pre-wrap">{detail.notes}</p>
+              </div>
+            )}
+
+            <div>
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Activity timeline</p>
+              <form onSubmit={logActivity} className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3 space-y-2 mb-4">
                 <div className="flex gap-2">
                   <select className={selectCls + ' flex-shrink-0 w-32'} value={actForm.type}
                     onChange={e => setActForm(f => ({ ...f, type: e.target.value }))}>
@@ -334,35 +393,29 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
                 </div>
               </form>
 
-              {/* Timeline */}
               <div className="space-y-3">
                 {activities.length === 0 && (
-                  <p className="text-center text-sm text-slate-400 dark:text-slate-500 py-4">No activities yet</p>
+                  <p className="text-center text-sm text-slate-400 dark:text-slate-500 py-2">No activities yet</p>
                 )}
                 {activities.map(a => (
                   <div key={a.id} className="flex gap-3">
-                    <div className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-sm flex-shrink-0 mt-0.5">
-                      {ACTIVITY_ICONS[a.type] || '📝'}
+                    <div className="w-2 flex justify-center flex-shrink-0">
+                      <div className="w-2 h-2 rounded-full bg-[#534AB7] mt-1.5" />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">{a.user_name || 'System'}</span>
-                        <span className="text-xs text-slate-400 dark:text-slate-500">{timeAgo(a.created_at)}</span>
-                      </div>
-                      <p className="text-sm text-slate-600 dark:text-slate-300">{a.description}</p>
+                    <div className="flex-1 min-w-0 rounded-xl border border-slate-100 dark:border-slate-700/50 px-3 py-2 bg-white dark:bg-slate-800/40">
+                      <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{a.description}</p>
+                      <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
+                        {a.type} · {timeAgo(a.created_at)}
+                      </p>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
-          )}
 
-          {/* ── Follow-ups ── */}
-          {drawerTab === 'Follow-ups' && (
-            <div className="p-5 space-y-4">
-              {/* Add follow-up form */}
-              <form onSubmit={addFollowup} className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3 space-y-2">
-                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Add Task / Reminder</p>
+            <div>
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Follow-ups</p>
+              <form onSubmit={addFollowup} className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3 space-y-2 mb-4">
                 <Field label="Due Date">
                   <input type="datetime-local" className={inputCls}
                     value={fuForm.due_date} onChange={e => setFuForm(f => ({ ...f, due_date: e.target.value }))}
@@ -380,10 +433,9 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
                 </div>
               </form>
 
-              {/* List */}
               <div className="space-y-2">
                 {followups.length === 0 && (
-                  <p className="text-center text-sm text-slate-400 dark:text-slate-500 py-4">No tasks scheduled</p>
+                  <p className="text-center text-sm text-slate-400 dark:text-slate-500 py-2">No tasks scheduled</p>
                 )}
                 {followups.map(f => (
                   <div key={f.id} className={`flex items-start gap-3 p-3 rounded-xl border ${f.is_done
@@ -391,7 +443,7 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
                     : new Date(f.due_date) < new Date()
                       ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/30'
                       : 'bg-white dark:bg-slate-800/50 border-slate-200 dark:border-slate-700/50'}`}>
-                    <button onClick={() => !f.is_done && markDone(f.id)}
+                    <button type="button" onClick={() => !f.is_done && markDone(f.id)}
                       className={`w-5 h-5 rounded-full border-2 flex-shrink-0 mt-0.5 transition-colors ${f.is_done
                         ? 'bg-emerald-500 border-emerald-500'
                         : 'border-slate-300 dark:border-slate-600 hover:border-brand-500'}`}>
@@ -409,7 +461,7 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
                 ))}
               </div>
             </div>
-          )}
+          </div>
         </div>
       </div>
 
@@ -537,8 +589,18 @@ const CRM_TAB_BY_PARAM = {
   'follow-ups': 'Follow-ups',
 };
 
+function stageCount(stats, name) {
+  return stats?.by_stage?.find((s) => s.name === name)?.count ?? 0;
+}
+
+function stageCountLike(stats, substr) {
+  const row = stats?.by_stage?.find((s) => (s.name || '').toLowerCase().includes(substr.toLowerCase()));
+  return row?.count ?? 0;
+}
+
 export default function CRM() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const openedLeadFromUrl = useRef(null);
   const [leads,    setLeads]    = useState([]);
   const [stats,    setStats]    = useState(null);
   const [stages,   setStages]   = useState([]);
@@ -547,6 +609,7 @@ export default function CRM() {
   const [tab,      setTab]      = useState('List');
   const [drawer,   setDrawer]   = useState(null);
   const [addModal, setAddModal] = useState(false);
+  const [dashEx, setDashEx] = useState(null);
 
   // Filters
   const [search,   setSearch]   = useState('');
@@ -573,17 +636,57 @@ export default function CRM() {
     api.get('/crm/leads/stages').then(r => setStages(r.data || []));
     api.get('/crm/leads/sources').then(r => setSources(r.data || []));
     api.get('/crm/leads/assignees').then(r => setUsers(r.data || []));
-    loadStats();
+    api.get('/settings/dashboard').then((r) => setDashEx(r.data || null)).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
 
   useEffect(() => {
     const raw = (searchParams.get('tab') || '').toLowerCase().replace(/[\s_-]+/g, '');
     const mapped = CRM_TAB_BY_PARAM[raw];
-    if (mapped) setTab(mapped);
-    else if (!searchParams.get('tab')) setTab('List');
+    const id = requestAnimationFrame(() => {
+      if (mapped) setTab(mapped);
+      else if (!searchParams.get('tab')) setTab('List');
+    });
+    return () => cancelAnimationFrame(id);
   }, [searchParams]);
 
   useEffect(() => { loadLeads(); }, [loadLeads]);
+
+  /** Open drawer from `/crm?lead=123` or `?openLead=123` (email / push deep link). */
+  useEffect(() => {
+    const raw = searchParams.get('lead') || searchParams.get('openLead');
+    if (!raw || !/^\d+$/.test(raw)) {
+      openedLeadFromUrl.current = null;
+      return;
+    }
+    if (openedLeadFromUrl.current === raw) return;
+    openedLeadFromUrl.current = raw;
+    api
+      .get(`/crm/leads/${raw}`)
+      .then((r) => {
+        const row = r.data.lead || r.data;
+        if (row?.id) setDrawer(row);
+      })
+      .catch(() => {});
+  }, [searchParams]);
+
+  const handleCloseDrawer = useCallback(() => {
+    setDrawer(null);
+    const sp = new URLSearchParams(searchParams);
+    let changed = false;
+    if (sp.has('lead')) {
+      sp.delete('lead');
+      changed = true;
+    }
+    if (sp.has('openLead')) {
+      sp.delete('openLead');
+      changed = true;
+    }
+    if (changed) setSearchParams(sp, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const handleDelete = async (id, e) => {
     e.stopPropagation();
@@ -600,16 +703,18 @@ export default function CRM() {
 
   return (
     <div>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      {/* Header — EZcrm_web_1-style */}
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
         <div>
-          <h2 className="text-[16px] font-semibold text-slate-800 dark:text-slate-100">Lead management</h2>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{leads.length.toLocaleString('en-IN')} leads across all sources</p>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">Home / CRM / Leads</p>
+          <h2 className="text-[16px] font-semibold text-slate-800 dark:text-slate-100 mt-0.5">
+            My leads ({leads.length.toLocaleString('en-IN')})
+          </h2>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Search and filter your pipeline</p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="px-2.5 py-1 rounded-full text-[11px] bg-[#f5f4ef] text-slate-600 dark:bg-slate-800 dark:text-slate-300">New</span>
-          <span className="px-2.5 py-1 rounded-full text-[11px] bg-[#f5f4ef] text-slate-600 dark:bg-slate-800 dark:text-slate-300">Won</span>
+        <div className="flex items-center gap-2 flex-shrink-0">
           <button
+            type="button"
             onClick={() => setAddModal(true)}
             className="btn-wf-primary"
           >
@@ -621,10 +726,29 @@ export default function CRM() {
       {/* Stats row */}
       {stats && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-          <StatCard label="Total Leads"    value={stats.total}          sub="◎" color="bg-brand-50 dark:bg-brand-900/20 text-brand-500 dark:text-brand-400" />
-          <StatCard label="Hot Leads"      value={stats.hot}            sub="🔥" color="bg-red-50 dark:bg-red-900/20 text-red-500" />
-          <StatCard label="Won"            value={stats.by_stage?.find(s => s.name === 'Won')?.count || 0} sub="✅" color="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-500" />
-          <StatCard label="Conversion"     value={`${stats.conversion}%`} sub="📈" color="bg-violet-50 dark:bg-violet-900/20 text-violet-500" />
+          <StatCard
+            label="Total Leads"
+            value={stats.total}
+            sub="◎"
+            color="bg-brand-50 dark:bg-brand-900/20 text-brand-500 dark:text-brand-400"
+            wireHint={[
+              dashEx?.open_leads_new_7d ? `${dashEx.open_leads_new_7d} new opens (7d)` : null,
+              dashEx?.overdue_invoices ? `${dashEx.overdue_invoices} overdue invoices` : null,
+            ].filter(Boolean).join(' · ') || undefined}
+          />
+          <StatCard label="Hot Leads" value={stats.hot} sub="🔥" color="bg-red-50 dark:bg-red-900/20 text-red-500" />
+          <StatCard
+            label="Won"
+            value={stats.by_stage?.find((s) => s.name === 'Won')?.count || 0}
+            sub="✅"
+            color="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-500"
+          />
+          <StatCard
+            label="Conversion"
+            value={`${stats.conversion}%`}
+            sub="📈"
+            color="bg-violet-50 dark:bg-violet-900/20 text-violet-500"
+          />
         </div>
       )}
 
@@ -633,6 +757,40 @@ export default function CRM() {
         active={tab === 'Kanban' ? 'Pipeline' : tab}
         onChange={(v) => setTab(v === 'Pipeline' ? 'Kanban' : v)}
       />
+
+      {/* Stage chips (showcase / mobile parity) */}
+      {tab !== 'Follow-ups' && stats && (() => {
+        const newSt = stages.find((s) => s.name === 'New');
+        const propSt = stages.find((s) => (s.name || '').toLowerCase().includes('proposal'));
+        const wonSt = stages.find((s) => s.name === 'Won');
+        const chipList = [
+          { key: 'all', stageId: '', label: `All (${stats.total})` },
+          ...(newSt ? [{ key: 'new', stageId: String(newSt.id), label: `New (${stageCount(stats, 'New')})` }] : []),
+          ...(propSt ? [{ key: 'prop', stageId: String(propSt.id), label: `Proposal (${stageCountLike(stats, 'proposal')})` }] : []),
+          ...(wonSt ? [{ key: 'won', stageId: String(wonSt.id), label: `Won (${stageCount(stats, 'Won')})` }] : []),
+        ];
+        return (
+          <div className="flex gap-2 overflow-x-auto pb-2 mb-3 -mx-1 px-1 scrollbar-thin">
+            {chipList.map((c) => {
+              const selected = (fStage || '') === c.stageId;
+              return (
+                <button
+                  key={c.key}
+                  type="button"
+                  onClick={() => setFStage(c.stageId)}
+                  className={`flex-shrink-0 px-3 py-2 rounded-full text-xs font-bold border transition-colors ${
+                    selected
+                      ? 'bg-[#E6F1FB] border-[#185FA5] text-[#0C447C]'
+                      : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-slate-300'
+                  }`}
+                >
+                  {c.label}
+                </button>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* Filters */}
       {tab !== 'Follow-ups' && (
@@ -748,7 +906,7 @@ export default function CRM() {
         <LeadDrawer
           lead={drawer}
           stages={stages} sources={sources} users={users}
-          onClose={() => setDrawer(null)}
+          onClose={handleCloseDrawer}
           onUpdated={() => { loadLeads(); loadStats(); }}
         />
       )}

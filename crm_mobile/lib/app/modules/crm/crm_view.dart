@@ -4,7 +4,9 @@ import 'package:get/get.dart';
 import '../../core/models/crm_models.dart';
 import '../../core/utils/ui_format.dart';
 import '../../shared/widgets/app_error_banner.dart';
-import '../../shared/widgets/app_bottom_nav.dart';
+import '../../routes/app_routes.dart';
+import '../../shared/widgets/role_aware_bottom_nav.dart';
+import '../../showcase/showcase_widgets.dart';
 import 'crm_add_lead_view.dart';
 import 'crm_controller.dart';
 import 'crm_lead_detail_view.dart';
@@ -16,9 +18,13 @@ class CrmView extends GetView<CrmController> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('CRM Leads'),
+        title: Obx(() => Text('My leads (${controller.leads.length})')),
         actions: [
-          IconButton(onPressed: controller.loadInitial, icon: const Icon(Icons.refresh_rounded), tooltip: 'Refresh'),
+          IconButton(
+            onPressed: controller.loadInitial,
+            icon: const Icon(Icons.refresh_rounded),
+            tooltip: '',
+          ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -26,7 +32,7 @@ class CrmView extends GetView<CrmController> {
         icon: const Icon(Icons.add_rounded),
         label: const Text('New Lead'),
       ),
-      bottomNavigationBar: const AppBottomNav(currentIndex: 1),
+      bottomNavigationBar: const RoleAwareBottomNav(currentRoute: AppRoutes.crm),
       body: Column(
         children: [
           Padding(
@@ -36,22 +42,15 @@ class CrmView extends GetView<CrmController> {
                 TextField(
                   decoration: const InputDecoration(
                     prefixIcon: Icon(Icons.search_rounded),
-                    labelText: 'Search leads…',
+                    hintText: 'Search leads…',
+                    isDense: true,
                   ),
                   onChanged: (v) => controller.searchQuery.value = v,
                   textInputAction: TextInputAction.search,
                   onSubmitted: (_) => controller.applyFilters(),
                 ),
                 const SizedBox(height: 10),
-                Text(
-                  'STAGE FILTERS',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).hintColor,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.35,
-                      ),
-                ),
-                const SizedBox(height: 8),
+                const ShowcaseSectionTitle('Stage filters'),
                 Obx(() {
                   int? stageIdFor(String keyword) {
                     final k = keyword.toLowerCase();
@@ -59,6 +58,10 @@ class CrmView extends GetView<CrmController> {
                       if (s.name.toLowerCase().contains(k)) return s.id;
                     }
                     return null;
+                  }
+
+                  int countMatching(bool Function(String st) pred) {
+                    return controller.leadsAll.where((l) => pred(l.stage.toLowerCase())).length;
                   }
 
                   final newId = stageIdFor('new');
@@ -72,36 +75,46 @@ class CrmView extends GetView<CrmController> {
                     controller.applyFilters();
                   }
 
-                  return Wrap(
-                    spacing: 8,
-                    children: [
-                      ChoiceChip(
-                        label: const Text('All'),
-                        selected: selected == null,
-                        onSelected: (_) => setStage(null),
-                      ),
-                      ChoiceChip(
-                        label: const Text('New'),
-                        selected: selected != null && selected == newId,
-                        onSelected: (v) {
-                          if (v && newId != null) setStage(newId);
-                        },
-                      ),
-                      ChoiceChip(
-                        label: const Text('Proposal'),
-                        selected: selected != null && selected == proposalId,
-                        onSelected: (v) {
-                          if (v && proposalId != null) setStage(proposalId);
-                        },
-                      ),
-                      ChoiceChip(
-                        label: const Text('Won'),
-                        selected: selected != null && selected == wonId,
-                        onSelected: (v) {
-                          if (v && wonId != null) setStage(wonId);
-                        },
-                      ),
-                    ],
+                  final allN = controller.leadsAll.length;
+                  final newN = countMatching((s) => s.contains('new'));
+                  final propN = countMatching((s) => s.contains('proposal'));
+                  final wonN = countMatching((s) => s.contains('won'));
+
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        _StagePillChip(
+                          label: 'All ($allN)',
+                          selected: selected == null,
+                          onTap: () => setStage(null),
+                        ),
+                        const SizedBox(width: 8),
+                        _StagePillChip(
+                          label: 'New ($newN)',
+                          selected: selected != null && selected == newId,
+                          onTap: () {
+                            if (newId != null) setStage(newId);
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        _StagePillChip(
+                          label: 'Proposal ($propN)',
+                          selected: selected != null && selected == proposalId,
+                          onTap: () {
+                            if (proposalId != null) setStage(proposalId);
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        _StagePillChip(
+                          label: 'Won ($wonN)',
+                          selected: selected != null && selected == wonId,
+                          onTap: () {
+                            if (wonId != null) setStage(wonId);
+                          },
+                        ),
+                      ],
+                    ),
                   );
                 }),
               ],
@@ -170,26 +183,6 @@ class _LeadCard extends StatelessWidget {
     final source = lead.source;
     final value = (lead.leadScore * 1000).toInt();
 
-    Color pillBg;
-    Color pillFg;
-    final s = stage.toLowerCase();
-    if (s.contains('won')) {
-      pillBg = const Color(0xFFEAF3DE);
-      pillFg = const Color(0xFF27500A);
-    } else if (s.contains('qualified')) {
-      pillBg = const Color(0xFFFAEEDA);
-      pillFg = const Color(0xFF633806);
-    } else if (s.contains('proposal')) {
-      pillBg = const Color(0xFFEEEDFE);
-      pillFg = const Color(0xFF3C3489);
-    } else if (s.contains('lost')) {
-      pillBg = const Color(0xFFFCEBEB);
-      pillFg = const Color(0xFF791F1F);
-    } else {
-      pillBg = const Color(0xFFEEEDFE);
-      pillFg = const Color(0xFF3C3489);
-    }
-
     final initialsSource = (lead.company.isNotEmpty ? lead.company : lead.name).trim();
     final parts = initialsSource.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
     final initials =
@@ -228,17 +221,7 @@ class _LeadCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: pillBg,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  stage,
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: pillFg),
-                ),
-              ),
+              ShowcaseStagePill(stage),
             ],
           ),
         ),
@@ -248,3 +231,53 @@ class _LeadCard extends StatelessWidget {
 }
 
 // (intentionally no priority chip: the showcase uses a stage pill instead)
+
+class _StagePillChip extends StatelessWidget {
+  const _StagePillChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    const selectedBg = Color(0xFFE6F1FB);
+    const selectedFg = Color(0xFF0C447C);
+    const selectedBorder = Color(0xFF185FA5);
+    final unselectedBg = scheme.surfaceContainerHighest;
+    final unselectedFg = scheme.onSurfaceVariant;
+    final unselectedBorder = scheme.outline.withValues(alpha: 0.45);
+
+    return Material(
+      color: selected ? selectedBg : unselectedBg,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: selected ? selectedBorder : unselectedBorder,
+              width: selected ? 1.5 : 1,
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: selected ? selectedFg : unselectedFg,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

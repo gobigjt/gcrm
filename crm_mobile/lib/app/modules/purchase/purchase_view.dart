@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/utils/ui_format.dart';
+import '../../routes/app_routes.dart';
 import '../../shared/widgets/app_error_banner.dart';
+import '../../shared/widgets/role_aware_bottom_nav.dart';
 import 'purchase_controller.dart';
 
 class PurchaseView extends GetView<PurchaseController> {
@@ -63,6 +65,7 @@ class PurchaseView extends GetView<PurchaseController> {
             ),
           ],
         ),
+        bottomNavigationBar: const RoleAwareBottomNav(currentRoute: AppRoutes.purchase),
       ),
     );
   }

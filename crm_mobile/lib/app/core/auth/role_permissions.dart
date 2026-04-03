@@ -1,5 +1,14 @@
+/// Backend `roles.name` values (see backend/src/database/schema.sql).
 class AppRoles {
+  static const admin = 'Admin';
   static const superAdmin = 'Super Admin';
+  static const manager = 'Manager';
+  static const salesManager = 'Sales Manager';
+  static const agent = 'Agent';
+  static const salesExecutive = 'Sales Executive';
+  static const accountant = 'Accountant';
+  static const inventory = 'Inventory';
+  static const hr = 'HR';
 }
 
 class AppPermissions {

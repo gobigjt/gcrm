@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/utils/ui_format.dart';
+import '../../routes/app_routes.dart';
 import '../../shared/widgets/app_error_banner.dart';
+import '../../shared/widgets/role_aware_bottom_nav.dart';
 import 'inventory_controller.dart';
 
 class InventoryView extends GetView<InventoryController> {
@@ -74,6 +76,7 @@ class InventoryView extends GetView<InventoryController> {
             ),
           ],
         ),
+        bottomNavigationBar: const RoleAwareBottomNav(currentRoute: AppRoutes.inventory),
       ),
     );
   }

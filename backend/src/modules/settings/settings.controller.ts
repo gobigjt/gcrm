@@ -33,4 +33,10 @@ export class SettingsController {
   }
 
   @Get('dashboard')     getDashboardStats() { return this.svc.getDashboardStats(); }
+
+  @UseGuards(RolesGuard) @Roles('Super Admin')
+  @Get('platform/summary')
+  platformSummary() {
+    return this.svc.getPlatformSummary();
+  }
 }

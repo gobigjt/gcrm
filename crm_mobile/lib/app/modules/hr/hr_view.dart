@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/utils/ui_format.dart';
+import '../../routes/app_routes.dart';
 import '../../shared/widgets/app_error_banner.dart';
+import '../../shared/widgets/role_aware_bottom_nav.dart';
 import 'hr_controller.dart';
 
 class HrView extends GetView<HrController> {
@@ -44,6 +46,7 @@ class HrView extends GetView<HrController> {
           }
           return const SizedBox.shrink();
         }),
+        bottomNavigationBar: const RoleAwareBottomNav(currentRoute: AppRoutes.hr),
         body: Obx(() {
           if (controller.isLoading.value) {
             return const Center(child: CircularProgressIndicator());
