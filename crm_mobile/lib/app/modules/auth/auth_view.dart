@@ -58,7 +58,7 @@ class AuthView extends GetView<AuthController> {
                           ),
                           const SizedBox(height: 16),
                           Text(
-                            'CRM Mobile',
+                            'EZCRM',
                             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                                   fontWeight: FontWeight.w800,
                                 ),
@@ -88,7 +88,7 @@ class AuthView extends GetView<AuthController> {
                               prefixIcon: Icon(Icons.lock_outline_rounded),
                             ),
                           ),
-                          const SizedBox(height: 20),
+                          const SizedBox(height: 18),
                           Obx(
                             () => FilledButton(
                               onPressed: controller.isLoading.value ? null : controller.login,
@@ -99,6 +99,50 @@ class AuthView extends GetView<AuthController> {
                                       child: CircularProgressIndicator(strokeWidth: 2),
                                     )
                                   : const Text('Login'),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Divider(
+                                  color: Theme.of(context).dividerColor,
+                                  thickness: 0.8,
+                                  height: 1,
+                                ),
+                              ),
+                              const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 10),
+                                child: Text(
+                                  'OR',
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                              Expanded(
+                                child: Divider(
+                                  color: Theme.of(context).dividerColor,
+                                  thickness: 0.8,
+                                  height: 1,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          FilledButton.tonal(
+                            onPressed: () {
+                              Get.snackbar(
+                                'Biometric login',
+                                'Not implemented in this prototype. You can still log in with password.',
+                                snackPosition: SnackPosition.BOTTOM,
+                              );
+                            },
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.fingerprint_rounded, size: 18),
+                                SizedBox(width: 8),
+                                Text('Biometric login'),
+                              ],
                             ),
                           ),
                         ],

@@ -1,0 +1,413 @@
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { DatabaseService } from '../../database/database.service';
+
+@Injectable()
+export class LeadPlatformsService {
+  constructor(private readonly db: DatabaseService) {}
+
+  private GRAPH_VERSION = process.env.FACEBOOK_GRAPH_API_VERSION || 'v20.0';
+  private GRAPH_BASE = `https://graph.facebook.com/${this.GRAPH_VERSION}`;
+
+  /**
+   * Best-effort page identifier extraction from a Facebook Page URL.
+   * - If URL contains numeric id somewhere → return that number.
+   * - Else return the last non-empty path segment (usually the username).
+   */
+  private pageIdFromUrl(pageUrl: string): string | null {
+    const u = pageUrl?.trim();
+    if (!u) return null;
+
+    // Keep original for query parsing; also strip querystring / fragment for path parsing
+    const cleanPath = u.split('?')[0].split('#')[0].trim();
+
+    // 1) numeric page id
+    const digitsMatch =
+      cleanPath.match(/\/(\d{5,})[\/]?/) ||
+      u.match(/[?&]id=(\d{5,})/);
+    if (digitsMatch?.[1]) return digitsMatch[1];
+
+    // 2) username / slug
+    try {
+      const withoutProto = cleanPath.replace(/^https?:\/\//, '');
+      const path = withoutProto.split('/').slice(1).join('/'); // remove host
+      const parts = path.split('/').filter(Boolean);
+      const last = parts[parts.length - 1];
+      return last || null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async listFacebookPages() {
+    return (
+      await this.db.query(
+        `
+        SELECT
+          p.id,
+          p.page_id,
+          p.page_url,
+          p.page_name,
+          p.lead_source_id,
+          ls.name AS lead_source_name,
+          p.created_at
+        FROM lead_platform_facebook_pages p
+        LEFT JOIN lead_sources ls ON ls.id = p.lead_source_id
+        ORDER BY p.created_at DESC
+        `,
+      )
+    ).rows;
+  }
+
+  private async defaultLeadSourceId(): Promise<number | null> {
+    const res = await this.db.query(`SELECT id FROM lead_sources WHERE name='Facebook Ads' LIMIT 1`);
+    return res.rows[0]?.id ?? null;
+  }
+
+  async upsertFacebookPage(dto: {
+    page_id?: string | null;
+    page_url?: string | null;
+    page_name?: string | null;
+    page_access_token?: string | null;
+    lead_source_id?: number | null;
+  }) {
+    let pageId = dto.page_id?.trim() || null;
+    const pageUrl = dto.page_url?.trim() || null;
+    if (!pageId && pageUrl) {
+      pageId = this.pageIdFromUrl(pageUrl);
+    }
+    if (!pageId) throw new BadRequestException('Provide page_url or page_id');
+
+    const pageName = dto.page_name?.trim() || null;
+    const accessToken = dto.page_access_token?.trim() || null;
+
+    let leadSourceId = dto.lead_source_id ?? null;
+    if (leadSourceId == null) {
+      leadSourceId = await this.defaultLeadSourceId();
+    }
+
+    return (
+      await this.db.query(
+        `
+        INSERT INTO lead_platform_facebook_pages (page_id, page_url, page_name, page_access_token, lead_source_id)
+        VALUES ($1,$2,$3,$4,$5)
+        ON CONFLICT (page_id) DO UPDATE SET
+          page_url = EXCLUDED.page_url,
+          page_name = EXCLUDED.page_name,
+          page_access_token = EXCLUDED.page_access_token,
+          lead_source_id = EXCLUDED.lead_source_id,
+          updated_at = NOW()
+        RETURNING id
+        `,
+        [pageId, pageUrl, pageName, accessToken, leadSourceId],
+      )
+    ).rows[0]?.id;
+  }
+
+  async deleteFacebookPage(id: number) {
+    const res = await this.db.query('DELETE FROM lead_platform_facebook_pages WHERE id=$1 RETURNING id', [id]);
+    if (!res.rows[0]) throw new NotFoundException('Facebook page not found');
+    return true;
+  }
+
+  private async leadStageIdOrDefault(): Promise<number | null> {
+    const res = await this.db.query(`SELECT id FROM lead_stages WHERE name='New' LIMIT 1`);
+    return res.rows[0]?.id ?? null;
+  }
+
+  private toMapFieldData(fieldData: any): Record<string, string> {
+    // field_data usually comes as: [{ name: 'email', values: ['x@y.com'] }, ...]
+    if (!fieldData) return {};
+    try {
+      if (Array.isArray(fieldData)) {
+        const out: Record<string, string> = {};
+        for (const item of fieldData) {
+          const key = String(item?.name ?? '').trim();
+          if (!key) continue;
+          const vals = item?.values;
+          if (Array.isArray(vals) && vals.length > 0) out[key] = String(vals[0]);
+          else if (vals != null) out[key] = String(vals);
+        }
+        return out;
+      }
+      if (typeof fieldData === 'object') {
+        return Object.fromEntries(
+          Object.entries(fieldData).map(([k, v]: any) => [k, Array.isArray(v) ? String(v[0] ?? '') : String(v ?? '')]),
+        );
+      }
+    } catch (_) {}
+    return {};
+  }
+
+  private extractLeadFromFieldData(map: Record<string, string>) {
+    const getFirst = (...keys: string[]) => {
+      for (const k of keys) {
+        const v = map[k];
+        if (v && v.trim()) return v.trim();
+      }
+      return null;
+    };
+
+    const fullName = getFirst('full_name', 'fullName', 'name');
+    const firstName = getFirst('first_name', 'firstName');
+    const lastName = getFirst('last_name', 'lastName');
+    const email = getFirst('email', 'email_address', 'emailAddress');
+    const phone = getFirst('phone_number', 'phone', 'mobile_number', 'mobile', 'phoneNumber');
+    const company = getFirst('company_name', 'company', 'organization', 'org');
+
+    const name =
+      fullName ||
+      [firstName, lastName].filter(Boolean).join(' ').trim() ||
+      email ||
+      phone ||
+      'Facebook Lead';
+
+    return {
+      name,
+      email: email,
+      phone: phone,
+      company: company,
+    };
+  }
+
+  private async fbFetchJson(url: string) {
+    const res = await fetch(url, { method: 'GET' });
+    const txt = await res.text();
+    if (!res.ok) {
+      throw new BadRequestException(`Facebook Graph API error (${res.status}): ${txt}`);
+    }
+    try {
+      return JSON.parse(txt);
+    } catch (_) {
+      throw new BadRequestException('Facebook Graph API returned invalid JSON');
+    }
+  }
+
+  private async fbGetAllPages(endpointUrl: string, { limitPerPage = 100 } = {}) {
+    // Minimal pagination helper that follows `paging.next` when present.
+    // Caps to avoid infinite loops.
+    const out: any[] = [];
+    let url = endpointUrl;
+    let guard = 0;
+
+    while (url && guard++ < 10) {
+      const data = await this.fbFetchJson(url);
+      const chunk = data?.data;
+      if (Array.isArray(chunk)) out.push(...chunk);
+      url = data?.paging?.next ?? null;
+      // If the API returns all results in one page, `paging.next` will be absent.
+      // `limitPerPage` is applied by caller if supported.
+    }
+    return out;
+  }
+
+  async syncFacebookPageLeads(platformRecordId: number) {
+    const platformRes = await this.db.query(
+      `SELECT * FROM lead_platform_facebook_pages WHERE id=$1`,
+      [platformRecordId],
+    );
+    const platform = platformRes.rows[0];
+    if (!platform) throw new NotFoundException('Facebook page not found');
+
+    if (!platform.page_access_token?.trim()) {
+      throw new BadRequestException('Missing page_access_token for this Facebook Page');
+    }
+
+    const pageId = String(platform.page_id);
+    const accessToken = platform.page_access_token.trim();
+    const leadSourceId = platform.lead_source_id;
+
+    if (!pageId) throw new BadRequestException('Facebook page_id is missing');
+
+    const stageId = await this.leadStageIdOrDefault();
+    const srcId = leadSourceId ?? (await this.defaultLeadSourceId());
+
+    // 1) Fetch leadgen forms for the page
+    const formsUrl = new URL(`${this.GRAPH_BASE}/${pageId}/leadgen_forms`);
+    formsUrl.searchParams.set('access_token', accessToken);
+    formsUrl.searchParams.set('limit', '100');
+    // fields selection is optional; keep small
+    formsUrl.searchParams.set('fields', 'id,name');
+
+    const forms = await this.fbGetAllPages(formsUrl.toString());
+
+    const createdLeads: number[] = [];
+    let importedCount = 0;
+
+    // 2) For each form, fetch leads/submissions
+    for (const f of forms) {
+      const formId = String(f?.id ?? '');
+      if (!formId) continue;
+
+      const leadsUrl = new URL(`${this.GRAPH_BASE}/${formId}/leads`);
+      leadsUrl.searchParams.set('access_token', accessToken);
+      leadsUrl.searchParams.set('limit', '100');
+      leadsUrl.searchParams.set('fields', 'id,created_time,field_data');
+
+      const fbLeads = await this.fbGetAllPages(leadsUrl.toString());
+
+      for (const fbLead of fbLeads) {
+        const facebookLeadId = String(fbLead?.id ?? '');
+        if (!facebookLeadId) continue;
+
+        // Skip if already imported
+        const exists = await this.db.query(
+          `SELECT id FROM lead_platform_facebook_leads WHERE facebook_lead_id=$1`,
+          [facebookLeadId],
+        );
+        if (exists.rows[0]) continue;
+
+        const createdTime = fbLead?.created_time ? new Date(fbLead.created_time).toISOString() : null;
+        const fieldDataMap = this.toMapFieldData(fbLead?.field_data);
+        const extracted = this.extractLeadFromFieldData(fieldDataMap);
+
+        // 3) Import into CRM leads
+        const insertLeadRes = await this.db.query(
+          `
+          INSERT INTO leads (name,email,phone,company,source_id,stage_id,assigned_to,notes,priority,custom_fields)
+          VALUES ($1,$2,$3,$4,$5,$6,NULL,$7,$8,$9)
+          RETURNING id
+          `,
+          [
+            extracted.name,
+            extracted.email,
+            extracted.phone,
+            extracted.company,
+            srcId,
+            stageId,
+            `Facebook lead import (form: ${formId})`,
+            'warm',
+            JSON.stringify({
+              facebook_lead_id: facebookLeadId,
+              facebook_form_id: formId,
+              facebook_page_id: pageId,
+              field_data: fieldDataMap,
+            }),
+          ],
+        );
+        const crmLeadId = insertLeadRes.rows[0]?.id;
+
+        // 4) Store mapping row
+        await this.db.query(
+          `
+          INSERT INTO lead_platform_facebook_leads
+            (page_id, form_id, facebook_lead_id, created_time, field_data, raw_data, crm_lead_id)
+          VALUES
+            ($1,$2,$3,$4,$5,$6,$7)
+          `,
+          [
+            pageId,
+            formId,
+            facebookLeadId,
+            createdTime,
+            JSON.stringify(fieldDataMap),
+            JSON.stringify(fbLead),
+            crmLeadId ?? null,
+          ],
+        );
+
+        importedCount++;
+        if (crmLeadId) createdLeads.push(crmLeadId);
+      }
+    }
+
+    return { importedCount, createdLeads };
+  }
+
+  /**
+   * Tokenless import: store Facebook leads you've received externally (webhook payload,
+   * manual export, etc.) into CRM and dedupe by facebook_lead_id.
+   *
+   * This intentionally does not call the Graph API, so it does not require
+   * `page_access_token`.
+   */
+  async importFacebookPageLeads(
+    platformRecordId: number,
+    dto: { form_id?: string | null; leads: any[] },
+  ) {
+    const platformRes = await this.db.query(
+      `SELECT * FROM lead_platform_facebook_pages WHERE id=$1`,
+      [platformRecordId],
+    );
+    const platform = platformRes.rows[0];
+    if (!platform) throw new NotFoundException('Facebook page not found');
+
+    if (!Array.isArray(dto.leads) || dto.leads.length === 0) {
+      throw new BadRequestException('leads must be a non-empty array');
+    }
+
+    const pageId = String(platform.page_id ?? '');
+    if (!pageId) throw new BadRequestException('Facebook page_id is missing on this connection');
+
+    const stageId = await this.leadStageIdOrDefault();
+    const srcId = platform.lead_source_id ?? (await this.defaultLeadSourceId());
+    const formIdFromDto = dto.form_id?.toString().trim() || null;
+
+    let importedCount = 0;
+
+    for (const fbLead of dto.leads) {
+      const facebookLeadId = String(fbLead?.id ?? '').trim();
+      if (!facebookLeadId) continue;
+
+      // Dedupe
+      const exists = await this.db.query(
+        `SELECT id FROM lead_platform_facebook_leads WHERE facebook_lead_id=$1`,
+        [facebookLeadId],
+      );
+      if (exists.rows[0]) continue;
+
+      const createdTime = fbLead?.created_time ? new Date(fbLead.created_time).toISOString() : null;
+      const fieldDataMap = this.toMapFieldData(fbLead?.field_data);
+      const extracted = this.extractLeadFromFieldData(fieldDataMap);
+      const formId = String(fbLead?.form_id ?? formIdFromDto ?? '').trim() || null;
+
+      const insertLeadRes = await this.db.query(
+        `
+          INSERT INTO leads (name,email,phone,company,source_id,stage_id,assigned_to,notes,priority,custom_fields)
+          VALUES ($1,$2,$3,$4,$5,$6,NULL,$7,$8,$9)
+          RETURNING id
+        `,
+        [
+          extracted.name,
+          extracted.email,
+          extracted.phone,
+          extracted.company,
+          srcId,
+          stageId,
+          `Facebook lead import (manual)`,
+          'warm',
+          JSON.stringify({
+            facebook_lead_id: facebookLeadId,
+            facebook_form_id: formId,
+            facebook_page_id: pageId,
+            field_data: fieldDataMap,
+          }),
+        ],
+      );
+
+      const crmLeadId = insertLeadRes.rows[0]?.id ?? null;
+
+      await this.db.query(
+        `
+          INSERT INTO lead_platform_facebook_leads
+            (page_id, form_id, facebook_lead_id, created_time, field_data, raw_data, crm_lead_id)
+          VALUES
+            ($1,$2,$3,$4,$5,$6,$7)
+        `,
+        [
+          pageId,
+          formId,
+          facebookLeadId,
+          createdTime,
+          JSON.stringify(fieldDataMap),
+          JSON.stringify(fbLead),
+          crmLeadId,
+        ],
+      );
+
+      importedCount++;
+    }
+
+    return { importedCount };
+  }
+}
+

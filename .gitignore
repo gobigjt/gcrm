@@ -39,12 +39,12 @@ coverage/
 **/build/
 
 # Generated platform tooling
-crm_mobile/android/.gradle/
-crm_mobile/android/local.properties
-crm_mobile/ios/Pods/
-crm_mobile/ios/Flutter/ephemeral/
-crm_mobile/macos/Pods/
-crm_mobile/macos/Flutter/ephemeral/
+ezcrm/android/.gradle/
+ezcrm/android/local.properties
+ezcrm/ios/Pods/
+ezcrm/ios/Flutter/ephemeral/
+ezcrm/macos/Pods/
+ezcrm/macos/Flutter/ephemeral/
 
 # Misc
 *.tmp

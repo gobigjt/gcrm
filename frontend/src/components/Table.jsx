@@ -1,12 +1,12 @@
 export default function Table({ cols, rows, empty = 'No records found' }) {
   return (
-    <div className="bg-white dark:bg-[#1a1d2e] rounded-2xl border border-slate-200/80 dark:border-slate-700/50 shadow-card overflow-hidden">
+    <div className="bg-white dark:bg-[#13152a] rounded-xl border border-slate-200 dark:border-slate-700/50 overflow-hidden">
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-[12px]">
           <thead>
-            <tr className="bg-slate-50/80 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-700/50">
+            <tr className="bg-[#f5f4ef] dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700/50">
               {cols.map(c => (
-                <th key={c} className="px-5 py-3 text-left text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest whitespace-nowrap">
+                <th key={c} className="px-4 py-2.5 text-left text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-[0.04em] whitespace-nowrap">
                   {c}
                 </th>
               ))}
@@ -23,9 +23,9 @@ export default function Table({ cols, rows, empty = 'No records found' }) {
                 </td>
               </tr>
             ) : rows.map((row, i) => (
-              <tr key={i} className="border-b border-slate-100 dark:border-slate-700/40 last:border-0 hover:bg-brand-50/40 dark:hover:bg-brand-900/10 transition-colors duration-100">
+              <tr key={i} className="border-b border-slate-200/80 dark:border-slate-700/40 last:border-0 hover:bg-[#f5f4ef] dark:hover:bg-slate-800/30 transition-colors duration-100">
                 {row.map((cell, j) => (
-                  <td key={j} className="px-5 py-3.5 text-slate-700 dark:text-slate-300 whitespace-nowrap">{cell ?? '—'}</td>
+                  <td key={j} className="px-4 py-2.5 text-slate-800 dark:text-slate-200 whitespace-nowrap">{cell ?? '—'}</td>
                 ))}
               </tr>
             ))}

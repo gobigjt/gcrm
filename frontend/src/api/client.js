@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { AxiosHeaders } from 'axios';
 
 // Dev: leave unset → `/api` (Vite proxy → backend). Production: set in `.env.production`, e.g.
 //   VITE_API_BASE_URL=https://your-api.up.railway.app/api
@@ -6,48 +6,84 @@ const API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, ''
 
 const api = axios.create({ baseURL: API_BASE });
 
-// ── Request: attach access token ──────────────────────────────
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
+// In-memory access token — always in sync with localStorage after login/refresh (avoids re-reading races).
+// Refresh only runs from the 401 response handler, never from the request interceptor.
+let accessTokenMem = localStorage.getItem('access_token');
 
-// ── Response: auto-refresh on 401 ────────────────────────────
-// Backend rotates refresh tokens on every /auth/refresh. Parallel refresh calls
-// revoke each other's tokens → some requests stay on stale access tokens and get 401.
-// All 401s must await the same in-flight refresh promise (no queue + second refresh).
-
-let refreshPromise = null;
+function setAccessToken(token) {
+  accessTokenMem = token;
+  if (token) localStorage.setItem('access_token', token);
+  else localStorage.removeItem('access_token');
+}
 
 function clearSession() {
+  accessTokenMem = null;
   localStorage.removeItem('access_token');
   localStorage.removeItem('refresh_token');
   localStorage.removeItem('user');
+  delete api.defaults.headers.common.Authorization;
+}
+
+/** Sync memory when another tab or legacy code updates localStorage (best-effort). */
+function readAccessToken() {
+  const fromStore = localStorage.getItem('access_token');
+  if (fromStore !== accessTokenMem) accessTokenMem = fromStore;
+  return accessTokenMem;
+}
+
+// Single in-flight refresh — backend rotates refresh tokens; never parallel refresh calls.
+let refreshing = null;
+
+function isAuthRequestUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  return (
+    url.includes('/auth/login')
+    || url.includes('/auth/register')
+    || url.includes('/auth/refresh')
+  );
 }
 
 function refreshSession() {
-  if (!refreshPromise) {
-    const refreshToken = localStorage.getItem('refresh_token');
-    if (!refreshToken) {
-      return Promise.reject(new Error('No refresh token'));
-    }
-    refreshPromise = axios
-      .post(`${API_BASE}/auth/refresh`, { refresh_token: refreshToken })
-      .then(({ data }) => {
-        const { access_token, refresh_token: newRefresh } = data;
-        localStorage.setItem('access_token', access_token);
-        localStorage.setItem('refresh_token', newRefresh);
-        api.defaults.headers.common.Authorization = `Bearer ${access_token}`;
-        return access_token;
-      })
-      .finally(() => {
-        refreshPromise = null;
-      });
+  if (refreshing) return refreshing;
+
+  const refreshToken = localStorage.getItem('refresh_token');
+  if (!refreshToken) {
+    return Promise.reject(new Error('No refresh token'));
   }
-  return refreshPromise;
+
+  refreshing = axios
+    .post(`${API_BASE}/auth/refresh`, { refresh_token: refreshToken })
+    .then((res) => {
+      const d = res.data;
+      const access_token = d?.access_token;
+      const newRefresh = d?.refresh_token;
+      if (!access_token || !newRefresh) {
+        throw new Error('Invalid refresh response');
+      }
+      setAccessToken(access_token);
+      localStorage.setItem('refresh_token', newRefresh);
+      api.defaults.headers.common.Authorization = `Bearer ${access_token}`;
+      return access_token;
+    })
+    .finally(() => {
+      refreshing = null;
+    });
+
+  return refreshing;
 }
 
+// ── Request: attach token (sync — no await, no refresh here) ──
+api.interceptors.request.use((config) => {
+  const token = readAccessToken();
+  if (token) {
+    const h = AxiosHeaders.from(config.headers);
+    h.set('Authorization', `Bearer ${token}`);
+    config.headers = h;
+  }
+  return config;
+});
+
+// ── Response: refresh only on 401, then retry once ──
 api.interceptors.response.use(
   (res) => res,
   async (err) => {
@@ -61,7 +97,7 @@ api.interceptors.response.use(
     }
 
     const url = typeof original.url === 'string' ? original.url : '';
-    if (url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/refresh')) {
+    if (isAuthRequestUrl(url)) {
       return Promise.reject(err);
     }
 
@@ -74,15 +110,11 @@ api.interceptors.response.use(
     original._retry = true;
 
     try {
-      await refreshSession();
-      if (original.headers) {
-        if (typeof original.headers.delete === 'function') {
-          original.headers.delete('Authorization');
-        } else {
-          delete original.headers.Authorization;
-        }
-      }
-      return api(original);
+      const accessToken = await refreshSession();
+      const headers = AxiosHeaders.from(original.headers);
+      headers.set('Authorization', `Bearer ${accessToken}`);
+      original.headers = headers;
+      return api.request(original);
     } catch {
       clearSession();
       window.location.href = '/login';
@@ -91,4 +123,11 @@ api.interceptors.response.use(
   },
 );
 
+/** Call after login so memory + storage stay aligned. */
+export function persistAccessToken(access_token) {
+  setAccessToken(access_token);
+  api.defaults.headers.common.Authorization = `Bearer ${access_token}`;
+}
+
+export { clearSession };
 export default api;

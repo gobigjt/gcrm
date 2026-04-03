@@ -15,7 +15,14 @@ class ApiClient {
     defaultValue: 'http://10.0.2.2:4000/api',
   );
 
-  Uri _uri(String path) => Uri.parse('$baseUrl$path');
+  Uri _uri(String path) {
+    // Defensive: `--dart-define` / env values sometimes contain whitespace.
+    // Also avoid accidental double slashes when `baseUrl` ends with `/`.
+    final raw = baseUrl.trim();
+    final b = raw.endsWith('/') ? raw.substring(0, raw.length - 1) : raw;
+    final p = path.startsWith('/') ? path : '/$path';
+    return Uri.parse('$b$p');
+  }
 
   Future<dynamic> request({
     required String method,

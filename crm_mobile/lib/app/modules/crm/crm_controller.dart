@@ -15,6 +15,7 @@ class CrmController extends GetxController {
   final sources = <CrmLookupItem>[].obs;
   final selectedStageId = RxnInt();
   final selectedSourceId = RxnInt();
+  final searchQuery = ''.obs;
 
   @override
   void onInit() {
@@ -46,6 +47,8 @@ class CrmController extends GetxController {
       final query = <String>[];
       if (selectedStageId.value != null) query.add('stage_id=${selectedStageId.value}');
       if (selectedSourceId.value != null) query.add('source_id=${selectedSourceId.value}');
+      final q = searchQuery.value.trim();
+      if (q.isNotEmpty) query.add('search=${Uri.encodeComponent(q)}');
       final path = query.isEmpty ? '/crm/leads' : '/crm/leads?${query.join('&')}';
       final leadsRes = await _auth.authorizedRequest(method: 'GET', path: path);
       leads.assignAll((leadsRes as List).map((e) => CrmLead.fromJson(Map<String, dynamic>.from(e as Map))));
@@ -56,11 +59,12 @@ class CrmController extends GetxController {
     }
   }
 
-  Future<void> createLead({
+  Future<int?> createLead({
     required String name,
     String? email,
     String? phone,
     String? company,
+    int? sourceId,
   }) async {
     isSubmitting.value = true;
     try {
@@ -70,10 +74,32 @@ class CrmController extends GetxController {
         'phone': (phone ?? '').trim().isEmpty ? null : phone!.trim(),
         'company': (company ?? '').trim().isEmpty ? null : company!.trim(),
         'priority': 'warm',
-        if (selectedSourceId.value != null) 'source_id': selectedSourceId.value,
+        if (sourceId != null) 'source_id': sourceId,
         if (selectedStageId.value != null) 'stage_id': selectedStageId.value,
       };
-      await _auth.authorizedRequest(method: 'POST', path: '/crm/leads', body: body);
+      final created = await _auth.authorizedRequest(method: 'POST', path: '/crm/leads', body: body);
+      await applyFilters();
+      final rawId = (created as Map<String, dynamic>)['id'];
+      if (rawId is int) return rawId;
+      if (rawId is num) return rawId.toInt();
+      return int.tryParse(rawId?.toString() ?? '');
+    } finally {
+      isSubmitting.value = false;
+    }
+  }
+
+  Future<void> addFollowup({
+    required int leadId,
+    required String dueDate,
+    required String description,
+  }) async {
+    isSubmitting.value = true;
+    try {
+      await _auth.authorizedRequest(
+        method: 'POST',
+        path: '/crm/leads/$leadId/followups',
+        body: {'due_date': dueDate, 'description': description},
+      );
       await applyFilters();
     } finally {
       isSubmitting.value = false;

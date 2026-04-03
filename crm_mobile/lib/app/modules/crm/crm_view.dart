@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/models/crm_models.dart';
+import '../../core/utils/ui_format.dart';
 import '../../shared/widgets/app_error_banner.dart';
+import '../../shared/widgets/app_bottom_nav.dart';
+import 'crm_add_lead_view.dart';
 import 'crm_controller.dart';
 import 'crm_lead_detail_view.dart';
 
@@ -19,58 +22,89 @@ class CrmView extends GetView<CrmController> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _openCreateLeadSheet(context),
+        onPressed: () => Get.to(() => const CrmAddLeadView()),
         icon: const Icon(Icons.add_rounded),
         label: const Text('New Lead'),
       ),
+      bottomNavigationBar: const AppBottomNav(currentIndex: 1),
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            child: Obx(
-              () => Row(
-                children: [
-                  Expanded(
-                    child: DropdownButtonFormField<int?>(
-                      value: controller.selectedStageId.value,
-                      items: [
-                        const DropdownMenuItem<int?>(value: null, child: Text('All Stages')),
-                        ...controller.stages.map(
-                          (s) => DropdownMenuItem<int?>(
-                            value: s.id,
-                            child: Text(s.name.isEmpty ? 'Stage' : s.name),
-                          ),
-                        ),
-                      ],
-                      onChanged: (v) => controller.selectedStageId.value = v,
-                      decoration: const InputDecoration(labelText: 'Stage'),
-                    ),
+            child: Column(
+              children: [
+                TextField(
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.search_rounded),
+                    labelText: 'Search leads…',
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: DropdownButtonFormField<int?>(
-                      value: controller.selectedSourceId.value,
-                      items: [
-                        const DropdownMenuItem<int?>(value: null, child: Text('All Sources')),
-                        ...controller.sources.map(
-                          (s) => DropdownMenuItem<int?>(
-                            value: s.id,
-                            child: Text(s.name.isEmpty ? 'Source' : s.name),
-                          ),
-                        ),
-                      ],
-                      onChanged: (v) => controller.selectedSourceId.value = v,
-                      decoration: const InputDecoration(labelText: 'Source'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  IconButton(
-                    onPressed: controller.applyFilters,
-                    icon: const Icon(Icons.filter_alt_rounded),
-                    tooltip: 'Apply filters',
-                  ),
-                ],
-              ),
+                  onChanged: (v) => controller.searchQuery.value = v,
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: (_) => controller.applyFilters(),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'STAGE FILTERS',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).hintColor,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.35,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                Obx(() {
+                  int? stageIdFor(String keyword) {
+                    final k = keyword.toLowerCase();
+                    for (final s in controller.stages) {
+                      if (s.name.toLowerCase().contains(k)) return s.id;
+                    }
+                    return null;
+                  }
+
+                  final newId = stageIdFor('new');
+                  final proposalId = stageIdFor('proposal');
+                  final wonId = stageIdFor('won');
+                  final selected = controller.selectedStageId.value;
+
+                  void setStage(int? id) {
+                    controller.selectedStageId.value = id;
+                    controller.selectedSourceId.value = null;
+                    controller.applyFilters();
+                  }
+
+                  return Wrap(
+                    spacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('All'),
+                        selected: selected == null,
+                        onSelected: (_) => setStage(null),
+                      ),
+                      ChoiceChip(
+                        label: const Text('New'),
+                        selected: selected != null && selected == newId,
+                        onSelected: (v) {
+                          if (v && newId != null) setStage(newId);
+                        },
+                      ),
+                      ChoiceChip(
+                        label: const Text('Proposal'),
+                        selected: selected != null && selected == proposalId,
+                        onSelected: (v) {
+                          if (v && proposalId != null) setStage(proposalId);
+                        },
+                      ),
+                      ChoiceChip(
+                        label: const Text('Won'),
+                        selected: selected != null && selected == wonId,
+                        onSelected: (v) {
+                          if (v && wonId != null) setStage(wonId);
+                        },
+                      ),
+                    ],
+                  );
+                }),
+              ],
             ),
           ),
           Padding(
@@ -96,20 +130,23 @@ class CrmView extends GetView<CrmController> {
               if (controller.leads.isEmpty) {
                 return const Center(child: Text('No leads found'));
               }
+
               return RefreshIndicator(
                 onRefresh: controller.applyFilters,
                 child: ListView.separated(
                   padding: const EdgeInsets.all(16),
-                  itemBuilder: (_, i) => _LeadCard(
-                    lead: controller.leads[i],
-                    onTap: () async {
-                      final id = controller.leads[i].id;
-                      await Get.to(() => CrmLeadDetailView(leadId: id));
-                      await controller.applyFilters();
-                    },
-                  ),
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
                   itemCount: controller.leads.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (_, i) {
+                    final lead = controller.leads[i];
+                    return _LeadCard(
+                      lead: lead,
+                      onTap: () async {
+                        await Get.to(() => CrmLeadDetailView(leadId: lead.id));
+                        await controller.applyFilters();
+                      },
+                    );
+                  },
                 ),
               );
             }),
@@ -119,69 +156,6 @@ class CrmView extends GetView<CrmController> {
     );
   }
 
-  Future<void> _openCreateLeadSheet(BuildContext context) async {
-    final nameCtrl = TextEditingController();
-    final emailCtrl = TextEditingController();
-    final phoneCtrl = TextEditingController();
-    final companyCtrl = TextEditingController();
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            top: 16,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('Create Lead', style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 12),
-              TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Name *')),
-              const SizedBox(height: 10),
-              TextField(controller: emailCtrl, decoration: const InputDecoration(labelText: 'Email')),
-              const SizedBox(height: 10),
-              TextField(controller: phoneCtrl, decoration: const InputDecoration(labelText: 'Phone')),
-              const SizedBox(height: 10),
-              TextField(controller: companyCtrl, decoration: const InputDecoration(labelText: 'Company')),
-              const SizedBox(height: 14),
-              Obx(
-                () => FilledButton(
-                  onPressed: controller.isSubmitting.value
-                      ? null
-                      : () async {
-                          if (nameCtrl.text.trim().isEmpty) {
-                            Get.snackbar('Missing data', 'Lead name is required');
-                            return;
-                          }
-                          await controller.createLead(
-                            name: nameCtrl.text.trim(),
-                            email: emailCtrl.text.trim(),
-                            phone: phoneCtrl.text.trim(),
-                            company: companyCtrl.text.trim(),
-                          );
-                          if (context.mounted) Navigator.of(context).pop();
-                        },
-                  child: controller.isSubmitting.value
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Save Lead'),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
 }
 
 class _LeadCard extends StatelessWidget {
@@ -194,7 +168,32 @@ class _LeadCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final stage = lead.stage;
     final source = lead.source;
-    final priority = lead.priority;
+    final value = (lead.leadScore * 1000).toInt();
+
+    Color pillBg;
+    Color pillFg;
+    final s = stage.toLowerCase();
+    if (s.contains('won')) {
+      pillBg = const Color(0xFFEAF3DE);
+      pillFg = const Color(0xFF27500A);
+    } else if (s.contains('qualified')) {
+      pillBg = const Color(0xFFFAEEDA);
+      pillFg = const Color(0xFF633806);
+    } else if (s.contains('proposal')) {
+      pillBg = const Color(0xFFEEEDFE);
+      pillFg = const Color(0xFF3C3489);
+    } else if (s.contains('lost')) {
+      pillBg = const Color(0xFFFCEBEB);
+      pillFg = const Color(0xFF791F1F);
+    } else {
+      pillBg = const Color(0xFFEEEDFE);
+      pillFg = const Color(0xFF3C3489);
+    }
+
+    final initialsSource = (lead.company.isNotEmpty ? lead.company : lead.name).trim();
+    final parts = initialsSource.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    final initials =
+        parts.isEmpty ? '?' : (parts.length == 1 ? parts.first.substring(0, parts.first.length.clamp(0, 2)) : (parts[0][0] + parts[1][0])).toUpperCase();
 
     return Card(
       child: InkWell(
@@ -202,30 +201,43 @@ class _LeadCard extends StatelessWidget {
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      lead.name,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  _PriorityChip(priority: priority),
-                ],
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: const Color(0xFFE6F1FB),
+                child: Text(
+                  initials,
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF0C447C)),
+                ),
               ),
-              const SizedBox(height: 6),
-              Text(lead.company),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  Chip(label: Text('Stage: $stage')),
-                  Chip(label: Text('Source: $source')),
-                ],
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      lead.company.isNotEmpty ? lead.company : lead.name,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '$source · ${formatCurrencyInr(value)}',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).hintColor),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: pillBg,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  stage,
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: pillFg),
+                ),
               ),
             ],
           ),
@@ -235,32 +247,4 @@ class _LeadCard extends StatelessWidget {
   }
 }
 
-class _PriorityChip extends StatelessWidget {
-  const _PriorityChip({required this.priority});
-
-  final String priority;
-
-  @override
-  Widget build(BuildContext context) {
-    Color bg;
-    Color fg;
-    switch (priority) {
-      case 'hot':
-        bg = const Color(0xFFFEE2E2);
-        fg = const Color(0xFFB91C1C);
-        break;
-      case 'cold':
-        bg = const Color(0xFFE0E7FF);
-        fg = const Color(0xFF3730A3);
-        break;
-      default:
-        bg = const Color(0xFFFFF7ED);
-        fg = const Color(0xFF9A3412);
-    }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
-      child: Text(priority.toUpperCase(), style: TextStyle(color: fg, fontWeight: FontWeight.w700, fontSize: 11)),
-    );
-  }
-}
+// (intentionally no priority chip: the showcase uses a stage pill instead)

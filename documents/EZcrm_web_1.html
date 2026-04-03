@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EzCRM Pro —  ERP + CRM</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F5F4EF;color:#1a1a18;min-height:100vh;overflow:hidden}
+:root{--p:#534AB7;--pl:#EEEDFE;--pm:#AFA9EC;--pd:#3C3489;--g1:#1D9E75;--g2:#EAF3DE;--a1:#BA7517;--a2:#FAEEDA;--r1:#E24B4A;--r2:#FCEBEB;--b1:#185FA5;--b2:#E6F1FB;--bg:#fff;--bg2:#F5F4EF;--bg3:#EEECEA;--border:#e8e6e0;--border2:#d4d2cc;--text:#1a1a18;--text2:#6b6a65;--text3:#9e9c97}
+#app{display:flex;height:100vh;overflow:hidden}
+#sidebar{width:220px;background:var(--bg);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto}
+.brand{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.brand-logo{width:28px;height:28px;border-radius:6px;background:var(--p);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:600}
+.brand-name{font-size:14px;font-weight:600;color:var(--text)}
+.brand-badge{font-size:10px;background:var(--pl);color:var(--pd);border-radius:4px;padding:1px 6px;margin-left:auto;font-weight:500}
+.nav-section{padding:8px 0}
+.nav-label{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;padding:6px 16px 2px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:7px 16px;cursor:pointer;font-size:13px;color:var(--text2);border-left:2px solid transparent;transition:all .12s}
+.nav-item:hover{background:var(--bg2);color:var(--text)}
+.nav-item.active{color:var(--p);background:var(--pl);border-left-color:var(--p);font-weight:500}
+.nav-icon{width:15px;height:15px;flex-shrink:0;opacity:.65}
+.nav-item.active .nav-icon{opacity:1}
+#main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+#topbar{height:52px;background:var(--bg);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:12px;flex-shrink:0}
+.page-title{font-size:15px;font-weight:600;color:var(--text)}
+.breadcrumb{font-size:11px;color:var(--text3)}
+.spacer{flex:1}
+.top-btn{font-size:12px;padding:6px 12px;border:1px solid var(--border2);border-radius:8px;background:transparent;color:var(--text2);cursor:pointer;transition:background .12s}
+.top-btn:hover{background:var(--bg2)}
+.top-btn.primary{background:var(--p);color:#fff;border-color:var(--p)}
+.top-btn.primary:hover{background:var(--pd)}
+.avatar{width:30px;height:30px;border-radius:50%;background:var(--pl);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--pd);cursor:pointer;flex-shrink:0}
+#content{flex:1;overflow-y:auto;padding:20px}
+.page{display:none}
+.page.active{display:block;animation:fi .18s ease}
+@keyframes fi{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+.card{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:16px}
+.card0{background:var(--bg);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.mc{background:var(--bg2);border-radius:8px;padding:14px}
+.mc-label{font-size:11px;color:var(--text2);margin-bottom:4px}
+.mc-val{font-size:22px;font-weight:600;color:var(--text)}
+.mc-sub{font-size:10px;color:var(--text3);margin-top:2px}
+.sec{font-size:12px;font-weight:600;color:var(--text);margin-bottom:10px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{padding:8px 10px;font-size:10px;font-weight:600;color:var(--text2);border-bottom:1px solid var(--border);text-align:left;white-space:nowrap}
+td{padding:8px 10px;color:var(--text);border-bottom:1px solid var(--border)}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--bg2)}
+.tag{display:inline-flex;align-items:center;font-size:10px;padding:2px 7px;border-radius:10px;font-weight:600;white-space:nowrap}
+.tg{background:#EAF3DE;color:#27500A}.ta{background:#FAEEDA;color:#633806}.tr{background:#FCEBEB;color:#791F1F}.tb{background:#E6F1FB;color:#0C447C}.tp{background:#EEEDFE;color:#3C3489}.tgr{background:#F1EFE8;color:#444441}
+.btn{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:5px 10px;border:1px solid var(--border2);border-radius:7px;background:transparent;color:var(--text2);cursor:pointer;transition:background .12s}
+.btn:hover{background:var(--bg2)}
+.btn-p{background:var(--p);color:#fff;border:1px solid var(--p);font-size:11px;padding:5px 10px;border-radius:7px;cursor:pointer;transition:background .12s}
+.btn-p:hover{background:var(--pd)}
+.btn-d{background:#FCEBEB;color:#791F1F;border:1px solid #F09595;font-size:11px;padding:5px 10px;border-radius:7px;cursor:pointer}
+.bar-row{display:flex;align-items:center;gap:8px;margin-bottom:7px;font-size:11px}
+.bar-lbl{width:80px;color:var(--text2);flex-shrink:0}
+.bar-track{flex:1;height:5px;background:var(--bg3);border-radius:3px;overflow:hidden}
+.bar-fill{height:100%;border-radius:3px}
+.bar-val{width:40px;text-align:right;color:var(--text);font-weight:600}
+.avatar-sm{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;flex-shrink:0}
+.chip{display:inline-flex;align-items:center;font-size:11px;padding:3px 9px;border-radius:10px;background:var(--bg2);color:var(--text2);border:1px solid var(--border)}
+.progress{height:5px;border-radius:3px;background:var(--bg3);overflow:hidden}
+.pb{height:100%;border-radius:3px;background:var(--p)}
+.kanban{display:flex;gap:10px;overflow-x:auto;padding-bottom:4px}
+.kcol{min-width:165px;flex-shrink:0}
+.kcol-head{font-size:10px;font-weight:600;color:var(--text2);margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.kcard{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px;cursor:pointer;font-size:11px}
+.kcard:hover{border-color:var(--pm)}
+.form-row{margin-bottom:10px}
+.form-row label{display:block;font-size:11px;color:var(--text2);margin-bottom:3px;font-weight:500}
+.form-row input,.form-row select,.form-row textarea{width:100%;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:7px;background:var(--bg);color:var(--text);outline:none}
+.form-row input:focus,.form-row select:focus{border-color:var(--p)}
+.perm{width:18px;height:18px;border-radius:4px;border:1px solid var(--border2);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:9px;font-weight:600;background:var(--bg2);color:var(--text2);transition:all .12s}
+.perm.on{background:var(--p);border-color:var(--p);color:#fff}
+.tl-item{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)}
+.tl-dot{width:8px;height:8px;border-radius:50%;background:var(--p);flex-shrink:0;margin-top:4px}
+.chat-in{background:var(--pl);border-radius:10px 10px 10px 0;padding:7px 10px;max-width:80%;font-size:11px;margin-bottom:6px}
+.chat-out{background:var(--bg2);border-radius:10px 10px 0 10px;padding:7px 10px;max-width:80%;font-size:11px;margin-bottom:6px;align-self:flex-end}
+.sh{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
+.sh-title{font-size:16px;font-weight:600;color:var(--text)}
+.sh-sub{font-size:11px;color:var(--text3);margin-top:2px}
+.sh-actions{display:flex;gap:8px;align-items:center}
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:100;align-items:center;justify-content:center}
+.modal-bg.open{display:flex}
+.modal{background:var(--bg);border-radius:14px;border:1px solid var(--border);padding:20px;width:420px;max-width:92vw;max-height:80vh;overflow-y:auto}
+.modal-title{font-size:14px;font-weight:600;margin-bottom:16px}
+.modal-footer{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;padding-top:12px;border-top:1px solid var(--border)}
+#toast{display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--text);color:#fff;border-radius:8px;padding:9px 18px;font-size:12px;z-index:999;font-weight:500}
+</style>
+</head>
+<body>
+<div id="app">
+<div id="sidebar">
+  <div class="brand">
+    <div class="brand-logo">EZ</div>
+    <div class="brand-name">EzCRM Pro</div>
+    <span class="brand-badge">ERP + CRM</span>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">Overview</div>
+    <div class="nav-item active" onclick="nav('dashboard',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Dashboard
+    </div>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">CRM</div>
+    <div class="nav-item" onclick="nav('leads',this)"><svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6"/></svg>Leads</div>
+    <div class="nav-item" onclick="nav('contacts',this)"><svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 12c0-2.2-1.8-4-4-4S4 9.8 4 12"/><circle cx="8" cy="5" r="2.5"/><path d="M14 12c0-2-1.4-3.7-3.3-4.2"/><circle cx="13" cy="4.5" r="2"/></svg>Contacts</div>
+    <div class="nav-item" onclick="nav('pipeline',this)"><svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 4h14M1 4l3 8h8l3-8"/><path d="M6 4V2h4v2"/></svg>Pipeline</div>
+    <div class="nav-item" onclick="nav('followups',this)"><svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="11" rx="1.5"/><path d="M5 1v4M11 1v4M2 8h12"/></svg>Follow-ups</div>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">Sales</div>
+    <div class="nav-item" onclick="nav('quotations',this)"><svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 2h8l2 3v9a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z"/><path d="M9 2v3h5M5 9h6M5 12h4"/></svg>Quotations</div>
+    <div class="nav-item" onclick="nav('invoices',this)"><svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 2h8l2 3v9a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z"/><path d="M5 9h6M5 12h6M9 2v3h5"/></svg>Invoices</div>
+    <div class="nav-item" onclick="nav('payments',this)"><svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="4" width="14" height="9" rx="1.5"/><path d="M1 7h14"/><circle cx="4.5" cy="10.5" r="1"/></svg>Payments</div>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">Inventory</div>
+    <div class="nav-item" onclick="nav('products',this)"><svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1L15 5v6L8 15 1 11V5z"/><path d="M8 1v14M1 5l7 4 7-4"/></svg>Products</div>
+    <div class="nav-item" onclick="nav('inventory',this)"><svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/><rect x="5" y="2" width="6" height="6" rx="1"/></svg>Inventory</div>
+    <div class="nav-item" onclick="nav('purchases',this)"><svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 2h2l2.4 7.4a1 1 0 001 .6H12a1 1 0 001-.8l1-5.2H5"/><circle cx="7" cy="14" r="1"/><circle cx="12" cy="14" r="1"/></svg>Purchases</div>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">Operations</div>
+    <div class="nav-item" onclick="nav('production',this)"><svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="10" rx="1"/><path d="M5 7h6M5 10h4"/><circle cx="5" cy="5" r="1"/><circle cx="11" cy="5" r="1"/></svg>Production</div>
+    <div class="nav-item" onclick="nav('hr',this)"><svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6" cy="5" r="2"/><path d="M1 14c0-2.5 2-4 5-4s5 1.5 5 4"/><circle cx="12" cy="4.5" r="1.5"/><path d="M14 14c0-1.8-1.2-3.2-2.8-3.7"/></svg>HR</div>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">Finance</div>
+    <div class="nav-item" onclick="nav('gst',this)"><svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3h10v3H3zM3 9h10v4H3z"/><path d="M6 6v3M10 6v3"/></svg>GST / Tax</div>
+    <div class="nav-item" onclick="nav('reports',this)"><svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 14V8l3-3 3 2 3-4 3 2"/></svg>Reports</div>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">Communication</div>
+    <div class="nav-item" onclick="nav('whatsapp',this)"><svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2a6 6 0 014.9 9.5L14 14l-2.5-1.1A6 6 0 118 2z"/><path d="M6 7.5s.5 1.5 2 2"/></svg>WhatsApp</div>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">Admin</div>
+    <div class="nav-item" onclick="nav('notifications',this)"><svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2a3 3 0 013 3v2.5l1 2H4l1-2.5V5a3 3 0 013-3z"/><path d="M6 12a2 2 0 004 0"/></svg>Notifications</div>
+    <div class="nav-item" onclick="nav('users',this)"><svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6"/></svg>Users & Roles</div>
+    <div class="nav-item" onclick="nav('rbac',this)"><svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Permissions</div>
+    <div class="nav-item" onclick="nav('settings',this)"><svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.2 3.2l1.4 1.4M11.4 11.4l1.4 1.4M3.2 12.8l1.4-1.4M11.4 4.6l1.4-1.4"/></svg>Settings</div>
+    <div class="nav-item" onclick="nav('billing',this)"><svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="4" width="14" height="9" rx="1.5"/><path d="M1 7h14"/></svg>Billing</div>
+    <div class="nav-item" onclick="nav('superadmin',this)"><svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z"/></svg>Super Admin</div>
+  </div>
+</div>
+
+<div id="main">
+<div id="topbar">
+  <div>
+    <div class="page-title" id="pg-title">Dashboard</div>
+    <div class="breadcrumb" id="pg-crumb">Home / Dashboard</div>
+  </div>
+  <div class="spacer"></div>
+  <button class="top-btn" onclick="openM('m-notif')">&#128276; Notifications</button>
+  <button class="top-btn" onclick="nav('whatsapp',null)">&#128172; WhatsApp</button>
+  <button class="top-btn primary" id="cta-btn" onclick="handleCTA()">+ New Lead</button>
+  <div class="avatar" onclick="nav('settings',null)">SA</div>
+</div>
+
+<div id="content">
+
+<!-- DASHBOARD -->
+<div class="page active" id="page-dashboard">
+  <div class="g4">
+    <div class="mc"><div class="mc-label">Total Leads</div><div class="mc-val">1,284</div><div class="mc-sub" style="color:#1D9E75">&#8593; 12% this month</div></div>
+    <div class="mc"><div class="mc-label">Revenue (MTD)</div><div class="mc-val">&#8377;48.6L</div><div class="mc-sub" style="color:#1D9E75">&#8593; 8% vs last month</div></div>
+    <div class="mc"><div class="mc-label">Net Profit</div><div class="mc-val">&#8377;12.3L</div><div class="mc-sub">Margin 25.3%</div></div>
+    <div class="mc"><div class="mc-label">Pending Payments</div><div class="mc-val" style="color:#E24B4A">&#8377;6.8L</div><div class="mc-sub">23 overdue invoices</div></div>
+  </div>
+  <div class="g2">
+    <div class="card">
+      <div class="sec">Lead sources</div>
+      <div class="bar-row"><div class="bar-lbl">Meta Ads</div><div class="bar-track"><div class="bar-fill" style="width:72%;background:#534AB7"></div></div><div class="bar-val">72%</div></div>
+      <div class="bar-row"><div class="bar-lbl">Google Ads</div><div class="bar-track"><div class="bar-fill" style="width:48%;background:#1D9E75"></div></div><div class="bar-val">48%</div></div>
+      <div class="bar-row"><div class="bar-lbl">Website</div><div class="bar-track"><div class="bar-fill" style="width:35%;background:#BA7517"></div></div><div class="bar-val">35%</div></div>
+      <div class="bar-row"><div class="bar-lbl">G-Sheet</div><div class="bar-track"><div class="bar-fill" style="width:18%;background:#E24B4A"></div></div><div class="bar-val">18%</div></div>
+      <div style="margin-top:10px;display:flex;gap:6px">
+        <button class="btn" onclick="nav('leads',null)">All Leads &#8594;</button>
+        <button class="btn" onclick="nav('reports',null)">Analytics &#8594;</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="sec">Today's tasks</div>
+      <div style="font-size:11px">
+        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="nav('followups',null)"><span>&#128222; Call — Ravi Kumar 10:00 AM</span><span class="tag ta">Due</span></div>
+        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="nav('followups',null)"><span>&#128231; Email — Priya Sharma 11:30 AM</span><span class="tag tg">Done</span></div>
+        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="nav('followups',null)"><span>&#129309; Meeting — TechCorp 3:00 PM</span><span class="tag tb">Upcoming</span></div>
+        <div style="display:flex;justify-content:space-between;padding:6px 0;cursor:pointer" onclick="nav('quotations',null)"><span>&#128196; Send Quote — Anil Mehta</span><span class="tag ta">Pending</span></div>
+      </div>
+      <button class="btn" style="margin-top:10px;width:100%;justify-content:center" onclick="openM('m-task')">+ Add Task</button>
+    </div>
+  </div>
+  <div class="g3">
+    <div class="card">
+      <div class="sec">Executive performance</div>
+      <table><tr><th>Name</th><th>Leads</th><th>Conv.</th></tr>
+        <tr style="cursor:pointer" onclick="nav('reports',null)"><td>Arjun R.</td><td>48</td><td><span class="tag tg">62%</span></td></tr>
+        <tr style="cursor:pointer" onclick="nav('reports',null)"><td>Sneha P.</td><td>39</td><td><span class="tag tg">55%</span></td></tr>
+        <tr style="cursor:pointer" onclick="nav('reports',null)"><td>Karan M.</td><td>31</td><td><span class="tag ta">41%</span></td></tr>
+      </table>
+      <button class="btn" style="margin-top:8px" onclick="nav('reports',null)">Full Report &#8594;</button>
+    </div>
+    <div class="card">
+      <div class="sec">Inventory alerts</div>
+      <div style="font-size:11px">
+        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="nav('inventory',null)"><span>Widget Pro X (SKU-101)</span><span class="tag tr">3 left</span></div>
+        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="nav('inventory',null)"><span>Smart Sensor B (SKU-205)</span><span class="tag ta">8 left</span></div>
+        <div style="display:flex;justify-content:space-between;padding:6px 0;cursor:pointer" onclick="nav('inventory',null)"><span>Cable Pack Pro (SKU-310)</span><span class="tag tg">42 left</span></div>
+      </div>
+      <button class="btn" style="margin-top:8px" onclick="nav('inventory',null)">Manage Stock &#8594;</button>
+    </div>
+    <div class="card">
+      <div class="sec">Recent invoices</div>
+      <table><tr><th>Invoice</th><th>Amount</th><th>Status</th></tr>
+        <tr style="cursor:pointer" onclick="nav('invoices',null)"><td>INV-2024</td><td>&#8377;2,40,000</td><td><span class="tag tg">Paid</span></td></tr>
+        <tr style="cursor:pointer" onclick="nav('invoices',null)"><td>INV-2025</td><td>&#8377;85,500</td><td><span class="tag ta">Pending</span></td></tr>
+        <tr style="cursor:pointer" onclick="nav('invoices',null)"><td>INV-2026</td><td>&#8377;23,000</td><td><span class="tag tr">Overdue</span></td></tr>
+      </table>
+      <button class="btn" style="margin-top:8px" onclick="nav('invoices',null)">All Invoices &#8594;</button>
+    </div>
+  </div>
+</div>
+
+<!-- LEADS -->
+<div class="page" id="page-leads">
+  <div class="sh"><div><div class="sh-title">Lead management</div><div class="sh-sub">1,284 leads across all sources</div></div><div class="sh-actions"><span class="chip">New 312</span><span class="chip">Won 89</span><button class="btn-p" onclick="openM('m-lead')">+ New Lead</button></div></div>
+  <div class="card0">
+    <table>
+      <tr><th>Name</th><th>Source</th><th>Stage</th><th>Value</th><th>Assigned</th><th>Last Contact</th><th>Actions</th></tr>
+      <tr><td><strong>Ravi Kumar</strong><br><span style="font-size:10px;color:var(--text3)">ravi@mail.com</span></td><td><span class="tag tp">Meta Ads</span></td><td><span class="tag ta">Contacted</span></td><td>&#8377;45,000</td><td>Arjun R.</td><td>Today</td><td><div style="display:flex;gap:4px"><button class="btn" onclick="nav('pipeline',null)">Pipeline</button><button class="btn" onclick="nav('whatsapp',null)">Chat</button></div></td></tr>
+      <tr><td><strong>Priya Sharma</strong><br><span style="font-size:10px;color:var(--text3)">priya@co.in</span></td><td><span class="tag tb">Google Ads</span></td><td><span class="tag tg">Qualified</span></td><td>&#8377;78,000</td><td>Sneha P.</td><td>Yesterday</td><td><div style="display:flex;gap:4px"><button class="btn" onclick="nav('quotations',null)">Quote</button><button class="btn" onclick="nav('whatsapp',null)">Chat</button></div></td></tr>
+      <tr><td><strong>TechCorp Ltd</strong><br><span style="font-size:10px;color:var(--text3)">bd@techcorp.in</span></td><td><span class="tag tgr">Website</span></td><td><span class="tag tb">Proposal</span></td><td>&#8377;2,40,000</td><td>Karan M.</td><td>2 days ago</td><td><div style="display:flex;gap:4px"><button class="btn" onclick="nav('quotations',null)">Quote</button><button class="btn" onclick="nav('followups',null)">Follow-up</button></div></td></tr>
+      <tr><td><strong>Anil Mehta</strong><br><span style="font-size:10px;color:var(--text3)">anil@biz.com</span></td><td><span class="tag tg">G-Sheet</span></td><td><span class="tag tg">Won</span></td><td>&#8377;95,000</td><td>Arjun R.</td><td>3 days ago</td><td><div style="display:flex;gap:4px"><button class="btn" onclick="nav('invoices',null)">Invoice</button><button class="btn" onclick="nav('whatsapp',null)">Chat</button></div></td></tr>
+      <tr><td><strong>Sita Devi</strong><br><span style="font-size:10px;color:var(--text3)">sita@shop.com</span></td><td><span class="tag tp">Meta Ads</span></td><td><span class="tag tr">Lost</span></td><td>&#8377;30,000</td><td>Sneha P.</td><td>5 days ago</td><td><button class="btn" onclick="nav('reports',null)">Report</button></td></tr>
+    </table>
+  </div>
+  <div style="margin-top:12px" class="card">
+    <div class="sec">Activity timeline</div>
+    <div class="tl-item"><div class="tl-dot"></div><div><div style="font-size:12px;font-weight:600">Ravi Kumar added via Meta Ads webhook</div><div style="font-size:10px;color:var(--text3)">Today 9:12 AM — Auto-assigned to Arjun R.</div></div></div>
+    <div class="tl-item"><div class="tl-dot" style="background:#1D9E75"></div><div><div style="font-size:12px;font-weight:600">Priya Sharma moved to Qualified</div><div style="font-size:10px;color:var(--text3)">Yesterday 4:30 PM — Updated by Sneha P.</div></div></div>
+    <div class="tl-item" style="border:none"><div class="tl-dot" style="background:#BA7517"></div><div><div style="font-size:12px;font-weight:600">TechCorp — Proposal sent via WhatsApp</div><div style="font-size:10px;color:var(--text3)">2 days ago 11:00 AM</div></div></div>
+  </div>
+</div>
+
+<!-- CONTACTS -->
+<div class="page" id="page-contacts">
+  <div class="sh"><div><div class="sh-title">Contacts</div><div class="sh-sub">342 contacts</div></div><div class="sh-actions"><button class="btn-p" onclick="openM('m-contact')">+ Add Contact</button></div></div>
+  <div class="card0">
+    <table>
+      <tr><th>Contact</th><th>Company</th><th>Phone</th><th>Tags</th><th>Actions</th></tr>
+      <tr><td><div style="display:flex;align-items:center;gap:7px"><div class="avatar-sm" style="background:#CECBF6;color:#3C3489">RK</div><strong>Ravi Kumar</strong></div></td><td>Kumar Enterprises</td><td>+91 98000 11111</td><td><span class="tag tb">Hot Lead</span></td><td><div style="display:flex;gap:4px"><button class="btn" onclick="nav('whatsapp',null)">Chat</button><button class="btn" onclick="nav('followups',null)">Task</button></div></td></tr>
+      <tr><td><div style="display:flex;align-items:center;gap:7px"><div class="avatar-sm" style="background:#9FE1CB;color:#085041">PS</div><strong>Priya Sharma</strong></div></td><td>Sharma & Co.</td><td>+91 99000 22222</td><td><span class="tag tg">Customer</span></td><td><div style="display:flex;gap:4px"><button class="btn" onclick="nav('whatsapp',null)">Chat</button><button class="btn" onclick="nav('invoices',null)">Invoice</button></div></td></tr>
+      <tr><td><div style="display:flex;align-items:center;gap:7px"><div class="avatar-sm" style="background:#FAC775;color:#633806">TC</div><strong>TechCorp Ltd</strong></div></td><td>TechCorp Ltd</td><td>+91 97000 33333</td><td><span class="tag ta">Prospect</span></td><td><div style="display:flex;gap:4px"><button class="btn" onclick="nav('whatsapp',null)">Chat</button><button class="btn" onclick="nav('quotations',null)">Quote</button></div></td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- PIPELINE -->
+<div class="page" id="page-pipeline">
+  <div class="sh"><div><div class="sh-title">Sales pipeline</div><div class="sh-sub">Kanban view — drag to update stage</div></div><div class="sh-actions"><button class="btn-p" onclick="openM('m-lead')">+ New Lead</button></div></div>
+  <div class="kanban">
+    <div class="kcol"><div class="kcol-head">NEW <span class="tag tgr">12</span></div>
+      <div class="kcard" onclick="openM('m-lead')"><strong>Ravi Kumar</strong><br><span style="color:var(--text3)">Meta Ads · &#8377;45,000</span><div style="margin-top:4px"><span class="tag tb">Hot</span></div></div>
+      <div class="kcard"><strong>Amit Singh</strong><br><span style="color:var(--text3)">Website · &#8377;12,000</span></div>
+    </div>
+    <div class="kcol"><div class="kcol-head">CONTACTED <span class="tag ta">8</span></div>
+      <div class="kcard" onclick="nav('followups',null)"><strong>Priya Sharma</strong><br><span style="color:var(--text3)">Google Ads · &#8377;78,000</span><div style="margin-top:4px"><button class="btn" style="font-size:10px;padding:2px 6px">Follow-up</button></div></div>
+    </div>
+    <div class="kcol"><div class="kcol-head">QUALIFIED <span class="tag tg">5</span></div>
+      <div class="kcard" onclick="nav('quotations',null)"><strong>TechCorp Ltd</strong><br><span style="color:var(--text3)">Website · &#8377;2,40,000</span><div style="margin-top:4px"><button class="btn-p" style="font-size:10px;padding:2px 6px">Create Quote</button></div></div>
+    </div>
+    <div class="kcol"><div class="kcol-head">PROPOSAL <span class="tag tb">3</span></div>
+      <div class="kcard"><strong>Anil Mehta</strong><br><span style="color:var(--text3)">G-Sheet · &#8377;95,000</span><div style="margin-top:4px"><span class="tag tb">Sent</span></div></div>
+    </div>
+    <div class="kcol"><div class="kcol-head">WON <span class="tag tg">2</span></div>
+      <div class="kcard" onclick="nav('invoices',null)"><strong>Sita Enterprises</strong><br><span style="color:var(--text3)">&#8377;1,20,000</span><div style="margin-top:4px"><button class="btn-p" style="font-size:10px;padding:2px 6px">Invoice</button></div></div>
+    </div>
+    <div class="kcol"><div class="kcol-head">LOST <span class="tag tr">4</span></div>
+      <div class="kcard"><strong>Generic Co.</strong><br><span style="color:var(--text3)">&#8377;30,000</span><div style="margin-top:4px"><span class="tag tr">Lost</span></div></div>
+    </div>
+  </div>
+  <div class="g3" style="margin-top:14px">
+    <div class="mc"><div class="mc-label">Pipeline Value</div><div class="mc-val">&#8377;8.42L</div></div>
+    <div class="mc"><div class="mc-label">Avg Deal Size</div><div class="mc-val">&#8377;24,800</div></div>
+    <div class="mc"><div class="mc-label">Win Rate</div><div class="mc-val">38%</div><div class="mc-sub" style="color:#1D9E75">&#8593; 4% this month</div></div>
+  </div>
+</div>
+
+<!-- FOLLOW-UPS -->
+<div class="page" id="page-followups">
+  <div class="sh"><div><div class="sh-title">Follow-ups & Tasks</div><div class="sh-sub">Today's schedule</div></div><div class="sh-actions"><button class="btn-p" onclick="openM('m-task')">+ New Task</button></div></div>
+  <div class="g3" style="margin-bottom:16px">
+    <div class="mc"><div class="mc-label">Today</div><div class="mc-val">4</div><div class="mc-sub">2 pending</div></div>
+    <div class="mc"><div class="mc-label">Upcoming (7d)</div><div class="mc-val">12</div></div>
+    <div class="mc"><div class="mc-label">Overdue</div><div class="mc-val" style="color:#E24B4A">3</div><div class="mc-sub">Action needed</div></div>
+  </div>
+  <div class="card0">
+    <table>
+      <tr><th>Task</th><th>Lead</th><th>Assigned</th><th>Due</th><th>Type</th><th>Actions</th></tr>
+      <tr><td>Call back re: pricing</td><td>Ravi Kumar</td><td>Arjun R.</td><td style="color:#E24B4A;font-weight:600">10:00 AM</td><td><span class="tag tb">Call</span></td><td><div style="display:flex;gap:4px"><button class="btn" onclick="nav('whatsapp',null)">WhatsApp</button><button class="btn-p" onclick="markDone(this)">Done</button></div></td></tr>
+      <tr><td>Send updated proposal</td><td>TechCorp Ltd</td><td>Karan M.</td><td>12:00 PM</td><td><span class="tag tp">Email</span></td><td><div style="display:flex;gap:4px"><button class="btn" onclick="nav('quotations',null)">Quote</button><button class="btn-p" onclick="markDone(this)">Done</button></div></td></tr>
+      <tr><td>Product demo meeting</td><td>Priya Sharma</td><td>Sneha P.</td><td>3:00 PM</td><td><span class="tag tg">Meeting</span></td><td><div style="display:flex;gap:4px"><button class="btn" onclick="nav('whatsapp',null)">Remind</button><button class="btn-p" onclick="markDone(this)">Done</button></div></td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- QUOTATIONS -->
+<div class="page" id="page-quotations">
+  <div class="sh"><div><div class="sh-title">Quotations</div><div class="sh-sub">48 total · 12 pending approval</div></div><div class="sh-actions"><button class="btn-p" onclick="openM('m-quote')">+ New Quotation</button></div></div>
+  <div class="card0" style="margin-bottom:14px">
+    <table>
+      <tr><th>Quote #</th><th>Client</th><th>Taxable</th><th>GST 18%</th><th>Total</th><th>Status</th><th>Actions</th></tr>
+      <tr><td style="font-weight:600">QT-2024</td><td>TechCorp Ltd</td><td>&#8377;2,03,390</td><td>&#8377;36,610</td><td style="font-weight:600">&#8377;2,40,000</td><td><span class="tag ta">Pending</span></td><td><div style="display:flex;gap:4px"><button class="btn">Edit</button><button class="btn-p" onclick="nav('invoices',null)">Convert &#8594;</button></div></td></tr>
+      <tr><td style="font-weight:600">QT-2023</td><td>Anil Mehta</td><td>&#8377;80,508</td><td>&#8377;14,492</td><td style="font-weight:600">&#8377;95,000</td><td><span class="tag tg">Approved</span></td><td><div style="display:flex;gap:4px"><button class="btn" onclick="toast('Downloading PDF...')">PDF</button><button class="btn-p" onclick="nav('invoices',null)">Invoice &#8594;</button></div></td></tr>
+      <tr><td style="font-weight:600">QT-2022</td><td>Priya Sharma</td><td>&#8377;66,102</td><td>&#8377;11,898</td><td style="font-weight:600">&#8377;78,000</td><td><span class="tag tb">Sent</span></td><td><div style="display:flex;gap:4px"><button class="btn" onclick="toast('Downloading PDF...')">PDF</button><button class="btn" onclick="nav('whatsapp',null)">WhatsApp</button></div></td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- INVOICES -->
+<div class="page" id="page-invoices">
+  <div class="sh"><div><div class="sh-title">Invoices</div><div class="sh-sub">124 total · 23 unpaid · 8 overdue</div></div><div class="sh-actions"><button class="btn-p" onclick="openM('m-invoice')">+ New Invoice</button></div></div>
+  <div class="card0">
+    <table>
+      <tr><th>Invoice #</th><th>Client</th><th>GSTIN</th><th>Taxable</th><th>CGST 9%</th><th>SGST 9%</th><th>Total</th><th>Due Date</th><th>Status</th><th>Actions</th></tr>
+      <tr><td style="font-weight:600">INV-2024</td><td>TechCorp Ltd</td><td style="font-size:10px">29ABCDE1234F1Z5</td><td>&#8377;2,03,390</td><td>&#8377;18,305</td><td>&#8377;18,305</td><td style="font-weight:600">&#8377;2,40,000</td><td>15-Jan-25</td><td><span class="tag tg">Paid</span></td><td><div style="display:flex;gap:3px"><button class="btn" onclick="toast('PDF downloaded')">PDF</button><button class="btn" onclick="nav('whatsapp',null)">WA</button></div></td></tr>
+      <tr><td style="font-weight:600">INV-2025</td><td>Anil Mehta</td><td style="font-size:10px">27FGHIJ5678K2Z6</td><td>&#8377;72,458</td><td>&#8377;6,521</td><td>&#8377;6,521</td><td style="font-weight:600">&#8377;85,500</td><td>20-Jan-25</td><td><span class="tag ta">Pending</span></td><td><div style="display:flex;gap:3px"><button class="btn" onclick="toast('PDF downloaded')">PDF</button><button class="btn-p" onclick="nav('payments',null)">Pay</button></div></td></tr>
+      <tr><td style="font-weight:600">INV-2026</td><td>Sita Devi</td><td style="font-size:10px">33KLMNO9012L3Z7</td><td>&#8377;19,492</td><td>&#8377;1,754</td><td>&#8377;1,754</td><td style="font-weight:600">&#8377;23,000</td><td style="color:#E24B4A">10-Jan-25</td><td><span class="tag tr">Overdue</span></td><td><div style="display:flex;gap:3px"><button class="btn-d" onclick="nav('whatsapp',null)">Remind</button><button class="btn" onclick="toast('PDF downloaded')">PDF</button></div></td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- PAYMENTS -->
+<div class="page" id="page-payments">
+  <div class="sh"><div><div class="sh-title">Payments</div><div class="sh-sub">Collections and outstanding</div></div><div class="sh-actions"><button class="btn-p" onclick="openM('m-payment')">+ Record Payment</button></div></div>
+  <div class="g3" style="margin-bottom:16px">
+    <div class="mc"><div class="mc-label">Collected (MTD)</div><div class="mc-val">&#8377;42.1L</div><div class="mc-sub">89 transactions</div></div>
+    <div class="mc"><div class="mc-label">Outstanding</div><div class="mc-val" style="color:#BA7517">&#8377;6.8L</div><div class="mc-sub">23 invoices pending</div></div>
+    <div class="mc"><div class="mc-label">Overdue</div><div class="mc-val" style="color:#E24B4A">&#8377;1.9L</div><div class="mc-sub">8 invoices overdue</div></div>
+  </div>
+  <div class="card0">
+    <table>
+      <tr><th>Payment #</th><th>Invoice</th><th>Client</th><th>Amount</th><th>Mode</th><th>Date</th><th>Status</th></tr>
+      <tr><td>PAY-501</td><td>INV-2024</td><td>TechCorp Ltd</td><td style="font-weight:600">&#8377;2,40,000</td><td>NEFT</td><td>12-Jan-25</td><td><span class="tag tg">Cleared</span></td></tr>
+      <tr><td>PAY-502</td><td>INV-2023</td><td>Priya Sharma</td><td style="font-weight:600">&#8377;78,000</td><td>UPI</td><td>11-Jan-25</td><td><span class="tag tg">Cleared</span></td></tr>
+      <tr><td>PAY-503</td><td>INV-2025</td><td>Anil Mehta</td><td style="font-weight:600">&#8377;85,500</td><td>Cheque</td><td>—</td><td><span class="tag ta">Pending</span></td></tr>
+    </table>
+  </div>
+  <div style="margin-top:12px;display:flex;gap:8px">
+    <button class="btn" onclick="nav('gst',null)">GST Summary &#8594;</button>
+    <button class="btn" onclick="nav('reports',null)">Finance Report &#8594;</button>
+  </div>
+</div>
+
+<!-- PRODUCTS -->
+<div class="page" id="page-products">
+  <div class="sh"><div><div class="sh-title">Product catalog</div><div class="sh-sub">86 products · 12 categories</div></div><div class="sh-actions"><button class="btn-p" onclick="openM('m-product')">+ Add Product</button></div></div>
+  <div class="card0">
+    <table>
+      <tr><th>SKU</th><th>Name</th><th>Category</th><th>Buy Price</th><th>Sell Price</th><th>Margin</th><th>GST %</th><th>Rating</th><th>Stock</th><th>Actions</th></tr>
+      <tr><td style="font-size:10px;font-family:monospace">SKU-101</td><td><strong>Widget Pro X</strong></td><td>Electronics</td><td>&#8377;450</td><td>&#8377;799</td><td><span class="tag tg">43.5%</span></td><td>18%</td><td>4.5 &#9733;</td><td><span class="tag tr">3 left</span></td><td><div style="display:flex;gap:3px"><button class="btn">Edit</button><button class="btn" onclick="nav('inventory',null)">Stock</button></div></td></tr>
+      <tr><td style="font-size:10px;font-family:monospace">SKU-205</td><td><strong>Smart Sensor B</strong></td><td>Hardware</td><td>&#8377;1,200</td><td>&#8377;2,199</td><td><span class="tag tg">45.4%</span></td><td>12%</td><td>4.2 &#9733;</td><td><span class="tag ta">8 left</span></td><td><div style="display:flex;gap:3px"><button class="btn">Edit</button><button class="btn" onclick="nav('inventory',null)">Stock</button></div></td></tr>
+      <tr><td style="font-size:10px;font-family:monospace">SKU-310</td><td><strong>Cable Pack Pro</strong></td><td>Accessories</td><td>&#8377;80</td><td>&#8377;149</td><td><span class="tag tg">46.3%</span></td><td>18%</td><td>4.7 &#9733;</td><td><span class="tag tg">42 left</span></td><td><div style="display:flex;gap:3px"><button class="btn">Edit</button><button class="btn" onclick="nav('inventory',null)">Stock</button></div></td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- INVENTORY -->
+<div class="page" id="page-inventory">
+  <div class="sh"><div><div class="sh-title">Inventory management</div><div class="sh-sub">Multi-warehouse stock tracking</div></div><div class="sh-actions"><button class="btn" onclick="nav('purchases',null)">Create PO</button><button class="btn-p" onclick="openM('m-stockin')">+ Stock In</button></div></div>
+  <div class="g4" style="margin-bottom:16px">
+    <div class="mc"><div class="mc-label">Total SKUs</div><div class="mc-val">86</div></div>
+    <div class="mc"><div class="mc-label">Low Stock</div><div class="mc-val" style="color:#E24B4A">5</div></div>
+    <div class="mc"><div class="mc-label">Warehouses</div><div class="mc-val">3</div></div>
+    <div class="mc"><div class="mc-label">Stock Value</div><div class="mc-val">&#8377;18.4L</div></div>
+  </div>
+  <div class="card0">
+    <table>
+      <tr><th>SKU</th><th>Product</th><th>Warehouse</th><th>In Stock</th><th>Reserved</th><th>Available</th><th>Alert</th><th>Actions</th></tr>
+      <tr><td>SKU-101</td><td>Widget Pro X</td><td>WH-Mumbai</td><td>3</td><td>1</td><td style="font-weight:600;color:#E24B4A">2</td><td><span class="tag tr">Critical</span></td><td><button class="btn-p" onclick="openM('m-stockin')">Stock In</button></td></tr>
+      <tr><td>SKU-205</td><td>Smart Sensor B</td><td>WH-Delhi</td><td>8</td><td>2</td><td style="font-weight:600;color:#BA7517">6</td><td><span class="tag ta">Low</span></td><td><button class="btn-p" onclick="openM('m-stockin')">Stock In</button></td></tr>
+      <tr><td>SKU-310</td><td>Cable Pack Pro</td><td>WH-Mumbai</td><td>42</td><td>0</td><td style="font-weight:600;color:#1D9E75">42</td><td><span class="tag tg">OK</span></td><td><button class="btn" onclick="nav('purchases',null)">PO</button></td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- PURCHASES -->
+<div class="page" id="page-purchases">
+  <div class="sh"><div><div class="sh-title">Purchase management</div><div class="sh-sub">POs, suppliers, GRNs</div></div><div class="sh-actions"><button class="btn">+ Supplier</button><button class="btn-p" onclick="openM('m-po')">+ Purchase Order</button></div></div>
+  <div class="card0">
+    <table>
+      <tr><th>PO #</th><th>Supplier</th><th>Items</th><th>Total</th><th>Status</th><th>Expected</th><th>Actions</th></tr>
+      <tr><td style="font-weight:600">PO-1001</td><td>TechParts Co.</td><td>Widget Pro X &#215;100</td><td>&#8377;45,000</td><td><span class="tag tb">Ordered</span></td><td>20-Jan-25</td><td><div style="display:flex;gap:4px"><button class="btn" onclick="openM('m-grn')">GRN</button><button class="btn" onclick="toast('PDF downloaded')">PDF</button></div></td></tr>
+      <tr><td style="font-weight:600">PO-1002</td><td>SensorHub</td><td>Sensor B &#215;50</td><td>&#8377;60,000</td><td><span class="tag tg">Received</span></td><td>15-Jan-25</td><td><div style="display:flex;gap:4px"><button class="btn" onclick="nav('inventory',null)">Stock</button><button class="btn" onclick="toast('PDF downloaded')">PDF</button></div></td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- PRODUCTION -->
+<div class="page" id="page-production">
+  <div class="sh"><div><div class="sh-title">Production</div><div class="sh-sub">Job cards, BOM, work centres</div></div><div class="sh-actions"><button class="btn-p" onclick="toast('Job card — wireframe')">+ Job Card</button></div></div>
+  <div class="card0">
+    <table>
+      <tr><th>Job #</th><th>Product</th><th>Qty</th><th>Status</th><th>Due</th></tr>
+      <tr><td style="font-weight:600">JC-104</td><td>Widget Pro X</td><td>200</td><td><span class="tag ta">In progress</span></td><td>28-Jan-25</td></tr>
+      <tr><td style="font-weight:600">JC-103</td><td>Smart Sensor B</td><td>80</td><td><span class="tag tg">Completed</span></td><td>22-Jan-25</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- HR -->
+<div class="page" id="page-hr">
+  <div class="sh"><div><div class="sh-title">Human resources</div><div class="sh-sub">Employees, attendance, leave</div></div><div class="sh-actions"><button class="btn-p" onclick="toast('Employee — wireframe')">+ Employee</button></div></div>
+  <div class="card0">
+    <table>
+      <tr><th>Employee</th><th>Role</th><th>Department</th><th>Status</th></tr>
+      <tr><td><strong>Arjun R.</strong></td><td>Manager</td><td>Sales</td><td><span class="tag tg">Active</span></td></tr>
+      <tr><td><strong>Renu V.</strong></td><td>Executive</td><td>Accounts</td><td><span class="tag tg">Active</span></td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- GST -->
+<div class="page" id="page-gst">
+  <div class="sh"><div><div class="sh-title">GST & Tax</div><div class="sh-sub">GSTR-1 summary — January 2025</div></div><div class="sh-actions"><button class="btn-p" onclick="toast('GSTR-1 exported!')">Export GSTR-1</button></div></div>
+  <div class="g3" style="margin-bottom:16px">
+    <div class="mc"><div class="mc-label">Taxable Value</div><div class="mc-val">&#8377;35.6L</div></div>
+    <div class="mc"><div class="mc-label">CGST @ 9%</div><div class="mc-val">&#8377;3.2L</div></div>
+    <div class="mc"><div class="mc-label">SGST @ 9%</div><div class="mc-val">&#8377;3.2L</div></div>
+  </div>
+  <div class="card0">
+    <table>
+      <tr><th>Invoice #</th><th>Party</th><th>GSTIN</th><th>Taxable</th><th>CGST 9%</th><th>SGST 9%</th><th>Total</th><th>Filed</th></tr>
+      <tr><td>INV-2024</td><td>TechCorp Ltd</td><td style="font-size:10px">29ABCDE1234F1Z5</td><td>&#8377;2,03,390</td><td>&#8377;18,305</td><td>&#8377;18,305</td><td style="font-weight:600">&#8377;2,40,000</td><td><span class="tag tg">Yes</span></td></tr>
+      <tr><td>INV-2025</td><td>Anil Mehta</td><td style="font-size:10px">27FGHIJ5678K2Z6</td><td>&#8377;72,458</td><td>&#8377;6,521</td><td>&#8377;6,521</td><td style="font-weight:600">&#8377;85,500</td><td><span class="tag ta">Pending</span></td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- REPORTS -->
+<div class="page" id="page-reports">
+  <div class="sh"><div><div class="sh-title">Reports & Analytics</div><div class="sh-sub">January 2025 performance</div></div><div class="sh-actions"><button class="btn" onclick="toast('Excel exported!')">Export Excel</button><button class="btn-p" onclick="toast('PDF exported!')">Export PDF</button></div></div>
+  <div class="g4" style="margin-bottom:16px">
+    <div class="mc"><div class="mc-label">Revenue</div><div class="mc-val">&#8377;48.6L</div><div class="mc-sub" style="color:#1D9E75">&#8593; 8%</div></div>
+    <div class="mc"><div class="mc-label">Cost</div><div class="mc-val">&#8377;36.3L</div></div>
+    <div class="mc"><div class="mc-label">Profit</div><div class="mc-val">&#8377;12.3L</div><div class="mc-sub">25.3% margin</div></div>
+    <div class="mc"><div class="mc-label">Conversion</div><div class="mc-val">38%</div><div class="mc-sub">64 of 168 leads</div></div>
+  </div>
+  <div class="g2">
+    <div class="card">
+      <div class="sec">Revenue by client</div>
+      <div class="bar-row"><div class="bar-lbl">TechCorp Ltd</div><div class="bar-track"><div class="bar-fill" style="width:85%;background:#534AB7"></div></div><div class="bar-val">&#8377;12.4L</div></div>
+      <div class="bar-row"><div class="bar-lbl">Anil Mehta</div><div class="bar-track"><div class="bar-fill" style="width:60%;background:#1D9E75"></div></div><div class="bar-val">&#8377;8.7L</div></div>
+      <div class="bar-row"><div class="bar-lbl">Priya Sharma</div><div class="bar-track"><div class="bar-fill" style="width:42%;background:#BA7517"></div></div><div class="bar-val">&#8377;6.1L</div></div>
+    </div>
+    <div class="card">
+      <div class="sec">Executive performance</div>
+      <table><tr><th>Name</th><th>Leads</th><th>Conv.</th><th>Revenue</th></tr>
+        <tr><td>Arjun R.</td><td>48</td><td><span class="tag tg">62%</span></td><td>&#8377;18.4L</td></tr>
+        <tr><td>Sneha P.</td><td>39</td><td><span class="tag tg">55%</span></td><td>&#8377;13.2L</td></tr>
+        <tr><td>Karan M.</td><td>31</td><td><span class="tag ta">41%</span></td><td>&#8377;9.8L</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- WHATSAPP -->
+<div class="page" id="page-whatsapp">
+  <div class="sh"><div><div class="sh-title">WhatsApp Business</div><div class="sh-sub">CRM-integrated messaging via 360dialog</div></div><div class="sh-actions"><button class="btn-p" onclick="openM('m-watemplate')">+ Send Template</button></div></div>
+  <div class="g2">
+    <div class="card0" style="display:flex;flex-direction:column;height:400px">
+      <div style="padding:10px 12px;border-bottom:1px solid var(--border);font-size:12px;font-weight:600">Conversations</div>
+      <div style="overflow-y:auto;flex:1">
+        <div style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border);background:var(--pl)"><div style="display:flex;justify-content:space-between"><strong style="font-size:12px">Ravi Kumar</strong><span style="font-size:10px;color:var(--text3)">2m</span></div><div style="font-size:11px;color:var(--text2)">Interested in Widget Pro X…</div></div>
+        <div style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border)"><div style="display:flex;justify-content:space-between"><strong style="font-size:12px">Priya Sharma</strong><span style="font-size:10px;color:var(--text3)">1h</span></div><div style="font-size:11px;color:var(--text2)">Invoice received, thanks!</div></div>
+        <div style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border)"><div style="display:flex;justify-content:space-between"><strong style="font-size:12px">TechCorp Ltd</strong><span style="font-size:10px;color:var(--text3)">3h</span></div><div style="font-size:11px;color:var(--text2)">When can we schedule a demo?</div></div>
+        <div style="padding:9px 12px;cursor:pointer"><div style="display:flex;justify-content:space-between"><strong style="font-size:12px">Anil Mehta</strong><span style="font-size:10px;color:var(--text3)">1d</span></div><div style="font-size:11px;color:var(--text2)">Payment done, please confirm.</div></div>
+      </div>
+    </div>
+    <div class="card0" style="display:flex;flex-direction:column;height:400px">
+      <div style="padding:10px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
+        <div class="avatar-sm" style="background:#CECBF6;color:#3C3489;width:30px;height:30px;font-size:11px">RK</div>
+        <div><div style="font-size:12px;font-weight:600">Ravi Kumar</div><div style="font-size:10px;color:#1D9E75">Online</div></div>
+        <div style="margin-left:auto;display:flex;gap:5px"><button class="btn" onclick="nav('leads',null)">Lead</button><button class="btn" onclick="nav('quotations',null)">Quote</button></div>
+      </div>
+      <div id="wa-chat" style="flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:6px">
+        <div class="chat-in">Hi, I saw your Meta ad. Interested in Widget Pro X!</div>
+        <div class="chat-out">Hello Ravi! Widget Pro X is &#8377;799/unit with 18% GST. Shall I send a quotation?</div>
+        <div class="chat-in">Yes please, send the quote and delivery details.</div>
+        <div class="chat-out">Sending quotation QT-2024 now. Delivery: 5-7 business days. Confirm?</div>
+      </div>
+      <div style="padding:8px 10px;border-top:1px solid var(--border);display:flex;gap:6px">
+        <input id="wa-inp" style="flex:1;font-size:11px;padding:6px 9px;border:1px solid var(--border2);border-radius:7px" placeholder="Type a message…">
+        <button class="btn-p" onclick="sendWA()">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- NOTIFICATIONS -->
+<div class="page" id="page-notifications">
+  <div class="sh"><div><div class="sh-title">Notifications</div><div class="sh-sub">Alerts across CRM, sales and finance</div></div><div class="sh-actions"><button class="btn" onclick="toast('All marked read')">Mark all read</button></div></div>
+  <div class="card" style="padding:12px 16px">
+    <div style="font-size:12px">
+      <div style="display:flex;gap:8px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="nav('leads',null)"><div style="width:7px;height:7px;border-radius:50%;background:#534AB7;flex-shrink:0;margin-top:4px"></div><div><div style="font-weight:600">New Lead — Ravi Kumar</div><div style="font-size:10px;color:var(--text3)">Meta Ads · 2 mins ago</div></div></div>
+      <div style="display:flex;gap:8px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="nav('invoices',null)"><div style="width:7px;height:7px;border-radius:50%;background:#E24B4A;flex-shrink:0;margin-top:4px"></div><div><div style="font-weight:600">Invoice INV-2026 Overdue</div><div style="font-size:10px;color:var(--text3)">Sita Devi · 1 hour ago</div></div></div>
+      <div style="display:flex;gap:8px;padding:10px 0;cursor:pointer" onclick="nav('payments',null)"><div style="width:7px;height:7px;border-radius:50%;background:#1D9E75;flex-shrink:0;margin-top:4px"></div><div><div style="font-weight:600">Payment Received — &#8377;2,40,000</div><div style="font-size:10px;color:var(--text3)">TechCorp Ltd · 3 hours ago</div></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- USERS -->
+<div class="page" id="page-users">
+  <div class="sh"><div><div class="sh-title">Users & Roles</div><div class="sh-sub">8 team members</div></div><div class="sh-actions"><button class="btn" onclick="nav('rbac',null)">Permissions</button><button class="btn-p" onclick="openM('m-invite')">+ Invite User</button></div></div>
+  <div class="card0">
+    <table>
+      <tr><th>Member</th><th>Email</th><th>Role</th><th>Data Access</th><th>Status</th><th>Last Login</th><th>Actions</th></tr>
+      <tr><td><div style="display:flex;align-items:center;gap:7px"><div class="avatar-sm" style="background:#CECBF6;color:#3C3489;width:28px;height:28px">SA</div><strong>Super Admin</strong></div></td><td>admin@company.com</td><td><span class="tag tp">Super Admin</span></td><td>All</td><td><span class="tag tg">Active</span></td><td>Today</td><td><button class="btn" onclick="nav('rbac',null)">Permissions</button></td></tr>
+      <tr><td><div style="display:flex;align-items:center;gap:7px"><div class="avatar-sm" style="background:#9FE1CB;color:#085041;width:28px;height:28px">AR</div><strong>Arjun R.</strong></div></td><td>arjun@company.com</td><td><span class="tag tb">Sales Manager</span></td><td>Team</td><td><span class="tag tg">Active</span></td><td>Today</td><td><button class="btn" onclick="nav('rbac',null)">Permissions</button></td></tr>
+      <tr><td><div style="display:flex;align-items:center;gap:7px"><div class="avatar-sm" style="background:#FAC775;color:#633806;width:28px;height:28px">SP</div><strong>Sneha P.</strong></div></td><td>sneha@company.com</td><td><span class="tag ta">Sales Executive</span></td><td>Own</td><td><span class="tag tg">Active</span></td><td>Yesterday</td><td><button class="btn" onclick="nav('rbac',null)">Permissions</button></td></tr>
+      <tr><td><div style="display:flex;align-items:center;gap:7px"><div class="avatar-sm" style="background:#F4C0D1;color:#72243E;width:28px;height:28px">KM</div><strong>Karan M.</strong></div></td><td>karan@company.com</td><td><span class="tag ta">Sales Executive</span></td><td>Own</td><td><span class="tag ta">Invited</span></td><td>—</td><td><button class="btn">Resend</button></td></tr>
+      <tr><td><div style="display:flex;align-items:center;gap:7px"><div class="avatar-sm" style="background:#D3D1C7;color:#444441;width:28px;height:28px">RV</div><strong>Renu V.</strong></div></td><td>renu@company.com</td><td><span class="tag tgr">Accounts</span></td><td>Finance</td><td><span class="tag tg">Active</span></td><td>2 days ago</td><td><button class="btn" onclick="nav('rbac',null)">Permissions</button></td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- RBAC -->
+<div class="page" id="page-rbac">
+  <div class="sh"><div><div class="sh-title">Role-based permissions</div><div class="sh-sub">Click cells to toggle — V=View C=Create E=Edit D=Delete</div></div><div class="sh-actions"><button class="btn-p" onclick="toast('Permissions saved!')">Save Matrix</button></div></div>
+  <div class="card0" style="overflow-x:auto">
+    <table>
+      <tr><th>Module</th><th>Super Admin</th><th>Company Admin</th><th>Sales Manager</th><th>Sales Exec</th><th>Accounts</th></tr>
+      <tr><td style="font-weight:600;font-size:11px">Leads</td><td><span class="tag tg">Full Access</span></td><td><div style="display:flex;gap:3px"><span class="perm on" onclick="tp(this)">V</span><span class="perm on" onclick="tp(this)">C</span><span class="perm on" onclick="tp(this)">E</span><span class="perm on" onclick="tp(this)">D</span></div></td><td><div style="display:flex;gap:3px"><span class="perm on" onclick="tp(this)">V</span><span class="perm on" onclick="tp(this)">C</span><span class="perm on" onclick="tp(this)">E</span><span class="perm" onclick="tp(this)">D</span></div></td><td><div style="display:flex;gap:3px"><span class="perm on" onclick="tp(this)">V</span><span class="perm on" onclick="tp(this)">C</span><span class="perm" onclick="tp(this)">E</span><span class="perm" onclick="tp(this)">D</span></div></td><td><div style="display:flex;gap:3px"><span class="perm" onclick="tp(this)">V</span></div></td></tr>
+      <tr><td style="font-weight:600;font-size:11px">Invoices</td><td><span class="tag tg">Full Access</span></td><td><div style="display:flex;gap:3px"><span class="perm on" onclick="tp(this)">V</span><span class="perm on" onclick="tp(this)">C</span><span class="perm on" onclick="tp(this)">E</span></div></td><td><div style="display:flex;gap:3px"><span class="perm on" onclick="tp(this)">V</span><span class="perm on" onclick="tp(this)">C</span></div></td><td><div style="display:flex;gap:3px"><span class="perm on" onclick="tp(this)">V</span></div></td><td><div style="display:flex;gap:3px"><span class="perm on" onclick="tp(this)">V</span><span class="perm on" onclick="tp(this)">C</span><span class="perm on" onclick="tp(this)">E</span></div></td></tr>
+      <tr><td style="font-weight:600;font-size:11px">Reports</td><td><span class="tag tg">Full Access</span></td><td><div style="display:flex;gap:3px"><span class="perm on" onclick="tp(this)">V</span></div></td><td><div style="display:flex;gap:3px"><span class="perm on" onclick="tp(this)">V</span></div></td><td><div style="display:flex;gap:3px"><span class="perm" onclick="tp(this)">V</span></div></td><td><div style="display:flex;gap:3px"><span class="perm on" onclick="tp(this)">V</span></div></td></tr>
+      <tr><td style="font-weight:600;font-size:11px">Products</td><td><span class="tag tg">Full Access</span></td><td><div style="display:flex;gap:3px"><span class="perm on" onclick="tp(this)">V</span><span class="perm on" onclick="tp(this)">C</span><span class="perm on" onclick="tp(this)">E</span><span class="perm on" onclick="tp(this)">D</span></div></td><td><div style="display:flex;gap:3px"><span class="perm on" onclick="tp(this)">V</span><span class="perm" onclick="tp(this)">C</span></div></td><td><div style="display:flex;gap:3px"><span class="perm on" onclick="tp(this)">V</span></div></td><td><div style="display:flex;gap:3px"><span class="perm" onclick="tp(this)">V</span></div></td></tr>
+      <tr><td style="font-weight:600;font-size:11px">Settings</td><td><span class="tag tg">Full Access</span></td><td><div style="display:flex;gap:3px"><span class="perm on" onclick="tp(this)">V</span><span class="perm on" onclick="tp(this)">E</span></div></td><td><div style="display:flex;gap:3px"><span class="perm" onclick="tp(this)">V</span></div></td><td><div style="display:flex;gap:3px"><span class="perm" onclick="tp(this)">V</span></div></td><td><div style="display:flex;gap:3px"><span class="perm" onclick="tp(this)">V</span></div></td></tr>
+      <tr><td style="font-weight:600;font-size:11px">Payments</td><td><span class="tag tg">Full Access</span></td><td><div style="display:flex;gap:3px"><span class="perm on" onclick="tp(this)">V</span><span class="perm on" onclick="tp(this)">C</span></div></td><td><div style="display:flex;gap:3px"><span class="perm on" onclick="tp(this)">V</span></div></td><td><div style="display:flex;gap:3px"><span class="perm" onclick="tp(this)">V</span></div></td><td><div style="display:flex;gap:3px"><span class="perm on" onclick="tp(this)">V</span><span class="perm on" onclick="tp(this)">C</span><span class="perm on" onclick="tp(this)">E</span></div></td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- SETTINGS -->
+<div class="page" id="page-settings">
+  <div class="sh"><div><div class="sh-title">Company settings</div><div class="sh-sub">Tenant configuration</div></div><div class="sh-actions"><button class="btn-p" onclick="toast('All settings saved!')">Save All</button></div></div>
+  <div class="g2">
+    <div class="card">
+      <div class="sec">Company details</div>
+      <div class="form-row"><label>Company name</label><input value="Acme Tech Solutions Pvt. Ltd."></div>
+      <div class="form-row"><label>GSTIN</label><input value="29ABCDE1234F1Z5"></div>
+      <div class="form-row"><label>PAN</label><input value="ABCDE1234F"></div>
+      <div class="form-row"><label>Address</label><textarea rows="2" style="width:100%;padding:6px 8px;border:1px solid var(--border2);border-radius:7px;font-size:12px">123, Tech Park, Whitefield, Bengaluru - 560066</textarea></div>
+      <div class="sec" style="margin-top:12px">Financial settings</div>
+      <div class="g2" style="margin-bottom:0"><div class="form-row"><label>Currency</label><select><option>INR (&#8377;)</option><option>USD ($)</option></select></div><div class="form-row"><label>Default GST %</label><select><option>18%</option><option>12%</option><option>5%</option></select></div></div>
+      <div class="g2" style="margin-bottom:0"><div class="form-row"><label>Invoice prefix</label><input value="INV-"></div><div class="form-row"><label>Quote prefix</label><input value="QT-"></div></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="card">
+        <div class="sec">Bank account</div>
+        <div class="form-row"><label>Bank name</label><input value="HDFC Bank"></div>
+        <div class="form-row"><label>Account number</label><input value="123456789012"></div>
+        <div class="form-row"><label>IFSC</label><input value="HDFC0001234"></div>
+        <div class="form-row"><label>UPI ID</label><input value="acme@hdfcbank"></div>
+      </div>
+      <div class="card">
+        <div class="sec">Integrations</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px;border:1px solid var(--border);border-radius:8px"><span style="font-size:12px;font-weight:600">Meta Ads</span><span class="tag tg">Connected</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px;border:1px solid var(--border);border-radius:8px"><span style="font-size:12px;font-weight:600">Google Ads</span><span class="tag tg">Connected</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px;border:1px solid var(--border);border-radius:8px"><span style="font-size:12px;font-weight:600">WhatsApp API (360dialog)</span><span class="tag tg">Connected</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px;border:1px solid var(--border);border-radius:8px"><span style="font-size:12px;font-weight:600">Razorpay</span><button class="btn-p" style="font-size:10px;padding:3px 8px" onclick="toast('Razorpay connected!')">Connect</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- BILLING -->
+<div class="page" id="page-billing">
+  <div class="sh"><div><div class="sh-title">Billing & Subscriptions</div><div class="sh-sub">Powered by Razorpay</div></div><div class="sh-actions"><button class="btn-p" onclick="openM('m-upgrade')">Upgrade Plan</button></div></div>
+  <div class="g3" style="margin-bottom:16px">
+    <div class="card" style="border:2px solid #AFA9EC">
+      <div style="font-size:10px;color:#534AB7;font-weight:600;margin-bottom:6px">CURRENT PLAN</div>
+      <div style="font-size:18px;font-weight:600">Premium</div>
+      <div style="font-size:13px;color:var(--text2);margin:4px 0">&#8377;4,999 / month</div>
+      <div style="font-size:11px;margin-bottom:10px">50 users · 10,000 leads · 100GB storage</div>
+      <span class="tag tg">Active</span> <span style="font-size:10px;color:var(--text3);margin-left:6px">Renews 15-Feb-2026</span>
+    </div>
+    <div class="card">
+      <div class="sec">Usage this month</div>
+      <div style="font-size:11px;margin-bottom:4px;display:flex;justify-content:space-between"><span>Users</span><span>8 / 50</span></div><div class="progress" style="margin-bottom:10px"><div class="pb" style="width:16%"></div></div>
+      <div style="font-size:11px;margin-bottom:4px;display:flex;justify-content:space-between"><span>Leads</span><span>1,284 / 10,000</span></div><div class="progress" style="margin-bottom:10px"><div class="pb" style="width:13%;background:#1D9E75"></div></div>
+      <div style="font-size:11px;margin-bottom:4px;display:flex;justify-content:space-between"><span>Storage</span><span>12GB / 100GB</span></div><div class="progress"><div class="pb" style="width:12%;background:#BA7517"></div></div>
+    </div>
+    <div class="card">
+      <div class="sec">Plans</div>
+      <div style="font-size:11px">
+        <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)"><span>Free</span><span>&#8377;0 / 1 user</span></div>
+        <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)"><span>Basic</span><span>&#8377;999 / 5 users</span></div>
+        <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-weight:600;color:#534AB7"><span>Premium &#9733;</span><span>&#8377;4,999 / 50 users</span></div>
+        <div style="display:flex;justify-content:space-between;padding:5px 0"><span>Enterprise</span><span>Custom</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="card0">
+    <table>
+      <tr><th>Invoice</th><th>Plan</th><th>Amount</th><th>Date</th><th>Status</th><th>Action</th></tr>
+      <tr><td>BIL-001</td><td>Premium</td><td>&#8377;4,999</td><td>15-Jan-2026</td><td><span class="tag tg">Paid</span></td><td><button class="btn" onclick="toast('PDF downloaded')">Download PDF</button></td></tr>
+      <tr><td>BIL-002</td><td>Premium</td><td>&#8377;4,999</td><td>15-Dec-2025</td><td><span class="tag tg">Paid</span></td><td><button class="btn" onclick="toast('PDF downloaded')">Download PDF</button></td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- SUPER ADMIN -->
+<div class="page" id="page-superadmin">
+  <div class="sh"><div><div class="sh-title">Super Admin Panel</div><div class="sh-sub">All tenants and SaaS metrics</div></div><div class="sh-actions"><button class="btn-p">+ Add Tenant</button></div></div>
+  <div class="g4" style="margin-bottom:16px">
+    <div class="mc"><div class="mc-label">Active Tenants</div><div class="mc-val">142</div><div class="mc-sub" style="color:#1D9E75">&#8593; 8 this month</div></div>
+    <div class="mc"><div class="mc-label">MRR</div><div class="mc-val">&#8377;4.2L</div><div class="mc-sub" style="color:#1D9E75">&#8593; 12% MoM</div></div>
+    <div class="mc"><div class="mc-label">Churn Rate</div><div class="mc-val">2.1%</div><div class="mc-sub" style="color:#1D9E75">&#8595; 0.3%</div></div>
+    <div class="mc"><div class="mc-label">Trial Tenants</div><div class="mc-val">23</div><div class="mc-sub" style="color:#BA7517">5 expiring soon</div></div>
+  </div>
+  <div class="g2">
+    <div class="card0">
+      <table>
+        <tr><th>Company</th><th>Plan</th><th>Users</th><th>Leads</th><th>Status</th><th>Actions</th></tr>
+        <tr><td><strong>Acme Tech Solutions</strong></td><td><span class="tag tp">Premium</span></td><td>8</td><td>1,284</td><td><span class="tag tg">Active</span></td><td><div style="display:flex;gap:4px"><button class="btn" onclick="nav('settings',null)">Settings</button><button class="btn" onclick="nav('billing',null)">Billing</button></div></td></tr>
+        <tr><td><strong>StartupXYZ</strong></td><td><span class="tag tb">Basic</span></td><td>3</td><td>210</td><td><span class="tag tg">Active</span></td><td><div style="display:flex;gap:4px"><button class="btn">Settings</button><button class="btn">Billing</button></div></td></tr>
+        <tr><td><strong>RetailCo India</strong></td><td><span class="tag tgr">Free</span></td><td>1</td><td>45</td><td><span class="tag ta">Trial</span></td><td><div style="display:flex;gap:4px"><button class="btn">Settings</button><button class="btn-p" onclick="toast('Upgrade email sent!')">Upgrade</button></div></td></tr>
+        <tr><td><strong>MegaSales Pvt.</strong></td><td><span class="tag tgr">Enterprise</span></td><td>48</td><td>9,800</td><td><span class="tag tg">Active</span></td><td><div style="display:flex;gap:4px"><button class="btn">Settings</button><button class="btn">Billing</button></div></td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <div class="sec">Plan distribution</div>
+      <div class="bar-row"><div class="bar-lbl">Premium</div><div class="bar-track"><div class="bar-fill" style="width:42%;background:#534AB7"></div></div><div class="bar-val">60</div></div>
+      <div class="bar-row"><div class="bar-lbl">Basic</div><div class="bar-track"><div class="bar-fill" style="width:35%;background:#185FA5"></div></div><div class="bar-val">50</div></div>
+      <div class="bar-row"><div class="bar-lbl">Free / Trial</div><div class="bar-track"><div class="bar-fill" style="width:23%;background:#BA7517"></div></div><div class="bar-val">32</div></div>
+      <div style="margin-top:14px"><div class="sec">Webhook events (last 24h)</div>
+        <div style="font-size:11px">
+          <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)"><span>subscription.activated</span><span class="tag tg">24</span></div>
+          <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)"><span>invoice.paid</span><span class="tag tg">18</span></div>
+          <div style="display:flex;justify-content:space-between;padding:4px 0"><span>subscription.cancelled</span><span class="tag tr">3</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /content -->
+</div><!-- /main -->
+</div><!-- /app -->
+
+<!-- MODALS -->
+<div class="modal-bg" id="m-lead"><div class="modal"><div class="modal-title">New Lead</div><div class="form-row"><label>Full name</label><input placeholder="Ravi Kumar"></div><div class="form-row"><label>Email</label><input type="email" placeholder="ravi@example.com"></div><div class="form-row"><label>Phone</label><input placeholder="+91 98000 00000"></div><div class="form-row"><label>Source</label><select><option>Meta Ads</option><option>Google Ads</option><option>Website</option><option>Google Sheet</option></select></div><div class="form-row"><label>Assign To</label><select><option>Arjun R.</option><option>Sneha P.</option><option>Karan M.</option></select></div><div class="modal-footer"><button class="btn" onclick="closeM('m-lead')">Cancel</button><button class="btn-p" onclick="closeM('m-lead');toast('Lead created!')">Create Lead</button></div></div></div>
+<div class="modal-bg" id="m-task"><div class="modal"><div class="modal-title">New Task</div><div class="form-row"><label>Type</label><select><option>Call</option><option>Email</option><option>Meeting</option><option>WhatsApp</option></select></div><div class="form-row"><label>Lead</label><input placeholder="Search lead…"></div><div class="form-row"><label>Due date & time</label><input type="datetime-local"></div><div class="form-row"><label>Notes</label><textarea rows="2" placeholder="Notes…" style="width:100%;padding:6px 8px;border:1px solid var(--border2);border-radius:7px;font-size:12px"></textarea></div><div class="modal-footer"><button class="btn" onclick="closeM('m-task')">Cancel</button><button class="btn-p" onclick="closeM('m-task');toast('Task scheduled!')">Schedule</button></div></div></div>
+<div class="modal-bg" id="m-quote"><div class="modal"><div class="modal-title">Create Quotation</div><div class="form-row"><label>Client</label><select><option>TechCorp Ltd</option><option>Ravi Kumar</option></select></div><div class="form-row"><label>Product</label><select><option>Widget Pro X — &#8377;799</option><option>Smart Sensor B — &#8377;2,199</option></select></div><div class="g2" style="margin-bottom:0"><div class="form-row"><label>Qty</label><input type="number" value="10"></div><div class="form-row"><label>Discount %</label><input type="number" value="5"></div></div><div class="modal-footer"><button class="btn" onclick="closeM('m-quote')">Cancel</button><button class="btn-p" onclick="closeM('m-quote');toast('Quotation created!')">Generate & Send</button></div></div></div>
+<div class="modal-bg" id="m-invoice"><div class="modal"><div class="modal-title">New Invoice</div><div class="form-row"><label>Client</label><input placeholder="Select client…"></div><div class="form-row"><label>GSTIN (Client)</label><input placeholder="29ABCDE…"></div><div class="form-row"><label>Products</label><select><option>Widget Pro X &#215;10</option><option>Sensor B &#215;5</option></select></div><div class="form-row"><label>Due date</label><input type="date"></div><div class="modal-footer"><button class="btn" onclick="closeM('m-invoice')">Cancel</button><button class="btn-p" onclick="closeM('m-invoice');toast('GST Invoice generated!')">Generate Invoice</button></div></div></div>
+<div class="modal-bg" id="m-payment"><div class="modal"><div class="modal-title">Record Payment</div><div class="form-row"><label>Invoice</label><select><option>INV-2025 — &#8377;85,500</option><option>INV-2026 — &#8377;23,000</option></select></div><div class="form-row"><label>Amount (&#8377;)</label><input type="number" value="85500"></div><div class="form-row"><label>Mode</label><select><option>NEFT</option><option>UPI</option><option>Cheque</option><option>Cash</option></select></div><div class="form-row"><label>Date</label><input type="date"></div><div class="modal-footer"><button class="btn" onclick="closeM('m-payment')">Cancel</button><button class="btn-p" onclick="closeM('m-payment');toast('Payment recorded!')">Record</button></div></div></div>
+<div class="modal-bg" id="m-product"><div class="modal"><div class="modal-title">Add Product</div><div class="form-row"><label>Name</label><input placeholder="Widget Pro X"></div><div class="form-row"><label>SKU</label><input placeholder="SKU-101"></div><div class="g2" style="margin-bottom:0"><div class="form-row"><label>Buy Price (&#8377;)</label><input type="number" value="450"></div><div class="form-row"><label>Sell Price (&#8377;)</label><input type="number" value="799"></div></div><div class="form-row"><label>GST %</label><select><option>18%</option><option>12%</option><option>5%</option></select></div><div class="modal-footer"><button class="btn" onclick="closeM('m-product')">Cancel</button><button class="btn-p" onclick="closeM('m-product');toast('Product saved!')">Save</button></div></div></div>
+<div class="modal-bg" id="m-stockin"><div class="modal"><div class="modal-title">Stock In / Out</div><div class="form-row"><label>Product</label><select><option>Widget Pro X (SKU-101)</option><option>Smart Sensor B (SKU-205)</option></select></div><div class="form-row"><label>Warehouse</label><select><option>WH-Mumbai</option><option>WH-Delhi</option><option>WH-Chennai</option></select></div><div class="form-row"><label>Type</label><select><option>Stock In</option><option>Stock Out</option></select></div><div class="form-row"><label>Qty</label><input type="number" value="100"></div><div class="modal-footer"><button class="btn" onclick="closeM('m-stockin')">Cancel</button><button class="btn-p" onclick="closeM('m-stockin');toast('Stock updated!')">Update</button></div></div></div>
+<div class="modal-bg" id="m-po"><div class="modal"><div class="modal-title">New Purchase Order</div><div class="form-row"><label>Supplier</label><select><option>TechParts Co.</option><option>SensorHub</option></select></div><div class="form-row"><label>Product</label><select><option>Widget Pro X</option><option>Smart Sensor B</option></select></div><div class="form-row"><label>Qty</label><input type="number" value="100"></div><div class="form-row"><label>Expected delivery</label><input type="date"></div><div class="modal-footer"><button class="btn" onclick="closeM('m-po')">Cancel</button><button class="btn-p" onclick="closeM('m-po');toast('PO created!')">Create PO</button></div></div></div>
+<div class="modal-bg" id="m-grn"><div class="modal"><div class="modal-title">Goods Received Note</div><div class="form-row"><label>PO Reference</label><input value="PO-1001"></div><div class="form-row"><label>Qty received</label><input type="number" value="100"></div><div class="form-row"><label>Condition</label><select><option>Good</option><option>Damaged</option></select></div><div class="modal-footer"><button class="btn" onclick="closeM('m-grn')">Cancel</button><button class="btn-p" onclick="closeM('m-grn');nav('inventory',null);toast('GRN saved & stock updated!')">Confirm GRN</button></div></div></div>
+<div class="modal-bg" id="m-invite"><div class="modal"><div class="modal-title">Invite User</div><div class="form-row"><label>Email</label><input type="email" placeholder="colleague@company.com"></div><div class="form-row"><label>Role</label><select><option>Sales Executive</option><option>Sales Manager</option><option>Accounts</option><option>Company Admin</option></select></div><div class="modal-footer"><button class="btn" onclick="closeM('m-invite')">Cancel</button><button class="btn-p" onclick="closeM('m-invite');toast('Invitation sent!')">Send Invite</button></div></div></div>
+<div class="modal-bg" id="m-contact"><div class="modal"><div class="modal-title">Add Contact</div><div class="form-row"><label>Name</label><input placeholder="Full name"></div><div class="form-row"><label>Company</label><input placeholder="Company name"></div><div class="form-row"><label>Phone</label><input placeholder="+91 …"></div><div class="form-row"><label>Email</label><input type="email"></div><div class="modal-footer"><button class="btn" onclick="closeM('m-contact')">Cancel</button><button class="btn-p" onclick="closeM('m-contact');toast('Contact added!')">Add</button></div></div></div>
+<div class="modal-bg" id="m-watemplate"><div class="modal"><div class="modal-title">Send WhatsApp Template</div><div class="form-row"><label>Template</label><select><option>Invoice Sent</option><option>Payment Reminder</option><option>Lead Follow-up</option><option>Quotation</option></select></div><div class="form-row"><label>Recipient</label><input value="Ravi Kumar (+91 98000 11111)"></div><div class="modal-footer"><button class="btn" onclick="closeM('m-watemplate')">Cancel</button><button class="btn-p" onclick="closeM('m-watemplate');toast('WhatsApp message sent!')">Send</button></div></div></div>
+<div class="modal-bg" id="m-upgrade"><div class="modal"><div class="modal-title">Upgrade Plan</div><div style="display:flex;gap:10px;margin-bottom:16px"><div style="flex:1;border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12px"><div style="font-weight:600;margin-bottom:4px">Basic</div><div style="color:#534AB7;font-size:14px;font-weight:600">&#8377;999/mo</div><div style="color:var(--text2);margin-top:6px;font-size:11px">5 users · 2,000 leads</div></div><div style="flex:1;border:2px solid #534AB7;border-radius:8px;padding:12px;font-size:12px"><div style="font-weight:600;margin-bottom:4px">Premium &#9733;</div><div style="color:#534AB7;font-size:14px;font-weight:600">&#8377;4,999/mo</div><div style="color:var(--text2);margin-top:6px;font-size:11px">50 users · 10,000 leads</div></div><div style="flex:1;border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12px"><div style="font-weight:600;margin-bottom:4px">Enterprise</div><div style="color:#534AB7;font-size:14px;font-weight:600">Custom</div><div style="color:var(--text2);margin-top:6px;font-size:11px">Unlimited everything</div></div></div><div class="modal-footer"><button class="btn" onclick="closeM('m-upgrade')">Cancel</button><button class="btn-p" onclick="closeM('m-upgrade');toast('Redirecting to Razorpay…')">Upgrade via Razorpay</button></div></div></div>
+<div class="modal-bg" id="m-notif"><div class="modal"><div class="modal-title">Notifications</div><div style="font-size:12px"><div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)"><div style="width:7px;height:7px;border-radius:50%;background:#534AB7;flex-shrink:0;margin-top:4px"></div><div><div style="font-weight:600">New Lead — Ravi Kumar</div><div style="font-size:10px;color:var(--text3)">Meta Ads · 2 mins ago</div></div></div><div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)"><div style="width:7px;height:7px;border-radius:50%;background:#E24B4A;flex-shrink:0;margin-top:4px"></div><div><div style="font-weight:600">Invoice INV-2026 Overdue</div><div style="font-size:10px;color:var(--text3)">Sita Devi · 1 hour ago</div></div></div><div style="display:flex;gap:8px;padding:8px 0"><div style="width:7px;height:7px;border-radius:50%;background:#1D9E75;flex-shrink:0;margin-top:4px"></div><div><div style="font-weight:600">Payment Received — &#8377;2,40,000</div><div style="font-size:10px;color:var(--text3)">TechCorp Ltd · 3 hours ago</div></div></div></div><div class="modal-footer"><button class="btn" onclick="closeM('m-notif')">Close</button><button class="btn" onclick="closeM('m-notif');nav('followups',null)">View Tasks</button></div></div></div>
+
+<div id="toast"></div>
+
+<script>
+const pages={dashboard:'Dashboard',leads:'Leads',contacts:'Contacts',pipeline:'Sales Pipeline',followups:'Follow-ups & Tasks',quotations:'Quotations',invoices:'Invoices',payments:'Payments',products:'Products',inventory:'Inventory',purchases:'Purchases',production:'Production',hr:'Human resources',gst:'GST & Tax',reports:'Reports & Analytics',whatsapp:'WhatsApp Chat',notifications:'Notifications',users:'Users & Roles',rbac:'Role Permissions',settings:'Company Settings',billing:'Billing & Subscriptions',superadmin:'Super Admin'};
+const ctaMap={leads:'m-lead',contacts:'m-contact',followups:'m-task',quotations:'m-quote',invoices:'m-invoice',payments:'m-payment',products:'m-product',inventory:'m-stockin',purchases:'m-po',production:null,hr:null,gst:null,reports:null,whatsapp:'m-watemplate',notifications:null,users:'m-invite',rbac:null,settings:null,billing:'m-upgrade',superadmin:null};
+const ctaLabel={dashboard:'+ New Lead',leads:'+ New Lead',contacts:'+ Contact',pipeline:'+ Lead',followups:'+ Task',quotations:'+ Quotation',invoices:'+ Invoice',payments:'+ Record',products:'+ Product',inventory:'+ Stock In',purchases:'+ Purchase Order',production:'+ Job Card',hr:'+ Employee',gst:'Export GSTR-1',reports:'Export',whatsapp:'+ Template',notifications:'View All',users:'+ Invite',rbac:'Save Perms',settings:'Save All',billing:'Upgrade Plan',superadmin:'+ Tenant'};
+let curPage='dashboard';
+function nav(page,el){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-'+page).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  if(el)el.classList.add('active');
+  else{document.querySelectorAll('.nav-item').forEach(n=>{if(n.getAttribute('onclick')&&n.getAttribute('onclick').includes("'"+page+"'"))n.classList.add('active')})}
+  document.getElementById('pg-title').textContent=pages[page]||page;
+  document.getElementById('pg-crumb').textContent='Home / '+(pages[page]||page);
+  document.getElementById('cta-btn').textContent=ctaLabel[page]||'+ New';
+  curPage=page;
+  document.getElementById('content').scrollTop=0;
+}
+function handleCTA(){const m=ctaMap[curPage];if(m)openM(m);else if(curPage==='dashboard')openM('m-lead');else if(curPage==='gst')toast('GSTR-1 exported!');else if(curPage==='reports')toast('Report exported!');else if(curPage==='rbac')toast('Permissions saved!');else if(curPage==='whatsapp')openM('m-watemplate');else if(curPage==='settings')toast('All settings saved!');else if(curPage==='production')toast('Job card — wireframe');else if(curPage==='hr')toast('Add employee — wireframe');else if(curPage==='notifications')openM('m-notif');else if(curPage==='superadmin')toast('Tenant creation coming soon!');}
+function openM(id){document.getElementById(id).classList.add('open')}
+function closeM(id){document.getElementById(id).classList.remove('open')}
+document.querySelectorAll('.modal-bg').forEach(o=>o.addEventListener('click',function(e){if(e.target===this)this.classList.remove('open')}));
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.style.display='block';clearTimeout(t._t);t._t=setTimeout(()=>t.style.display='none',2400)}
+function markDone(btn){const r=btn.closest('tr');if(r)r.style.opacity='.45';btn.textContent='Done ✓';btn.disabled=true;toast('Task marked complete!')}
+function tp(el){el.classList.toggle('on');toast('Permission updated')}
+function sendWA(){const inp=document.getElementById('wa-inp');const msg=inp.value.trim();if(!msg)return;const chat=document.getElementById('wa-chat');const d=document.createElement('div');d.className='chat-out';d.textContent=msg;chat.appendChild(d);chat.scrollTop=chat.scrollHeight;inp.value='';toast('Message sent!')}
+</script>
+</body>
+</html>

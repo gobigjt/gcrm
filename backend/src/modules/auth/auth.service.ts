@@ -7,8 +7,22 @@ import { AuditService }   from '../audit/audit.service';
 import { LoginDto }    from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 
-const ACCESS_EXPIRES  = process.env.JWT_EXPIRES_IN  || '1d';
-const REFRESH_DAYS    = Number(process.env.REFRESH_TOKEN_DAYS || 7);
+const REFRESH_DAYS = Number(process.env.REFRESH_TOKEN_DAYS || 7);
+
+/**
+ * jsonwebtoken: `expiresIn` as a **number** = seconds.
+ * As a **string**, values are passed to `ms()` — a digit-only string like "86400" is treated as
+ * **86400 milliseconds** (~86s), not 24 hours. Env vars are always strings, so plain numeric
+ * values must be parsed to number (seconds) here.
+ */
+function parseJwtExpiresIn(raw: string | undefined): string | number {
+  if (raw == null || raw === '') return '1d';
+  const t = String(raw).trim();
+  if (/^\d+$/.test(t)) return parseInt(t, 10);
+  return t;
+}
+
+const ACCESS_EXPIRES = parseJwtExpiresIn(process.env.JWT_EXPIRES_IN);
 
 @Injectable()
 export class AuthService {

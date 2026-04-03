@@ -407,7 +407,7 @@ export default function Purchase() {
           <p className="text-slate-500 dark:text-slate-400 text-sm mt-0.5">Vendors · Purchase Orders · Goods Receipt</p>
         </div>
         <button onClick={() => setModal(tab === 'Vendors' ? 'vendor' : tab === 'Purchase Orders' ? 'po' : 'grn')}
-          className="bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white text-sm font-semibold px-4 py-2 rounded-xl shadow-sm transition-all active:scale-[0.98]">
+          className="btn-wf-primary text-sm px-4 py-2 rounded-xl shadow-sm transition-all active:scale-[0.98]">
           + {tab === 'Vendors' ? 'Vendor' : tab === 'Purchase Orders' ? 'Purchase Order' : 'Receive Goods'}
         </button>
       </div>

@@ -4,7 +4,7 @@
 
 @layer base {
   body {
-    @apply bg-[#f5f6fa] text-slate-800 antialiased transition-colors duration-200;
+    @apply bg-[#f5f4ef] text-slate-800 antialiased transition-colors duration-200;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
   .dark body {
@@ -24,5 +24,23 @@
   }
   .dark .glass {
     background-color: rgba(17, 20, 35, 0.85);
+  }
+}
+
+@layer components {
+  .btn-wf {
+    @apply inline-flex items-center justify-center rounded-lg text-xs font-semibold px-3 py-1.5 transition-colors disabled:opacity-60;
+  }
+
+  .btn-wf-primary {
+    @apply btn-wf bg-[#534ab7] text-white hover:bg-[#3c3489];
+  }
+
+  .btn-wf-secondary {
+    @apply btn-wf border border-slate-300 text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800;
+  }
+
+  .btn-wf-danger {
+    @apply btn-wf border border-red-200 text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20;
   }
 }

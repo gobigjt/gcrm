@@ -163,9 +163,16 @@ export class LeadsService {
     let i = 1;
     if (filters.assigned_to) { conds.push(`f.assigned_to=$${i++}`); vals.push(filters.assigned_to); }
     const res = await this.db.query(
-      `SELECT f.*, l.name AS lead_name, l.company AS lead_company, u.name AS assigned_name
+      `SELECT
+          f.*,
+          l.name AS lead_name,
+          l.company AS lead_company,
+          l.lead_score AS lead_score,
+          ls.name AS lead_stage,
+          u.name AS assigned_name
          FROM lead_followups f
          JOIN leads l ON l.id = f.lead_id
+         LEFT JOIN lead_stages ls ON ls.id = l.stage_id
          LEFT JOIN users u ON u.id = f.assigned_to
         WHERE ${conds.join(' AND ')}
         ORDER BY f.due_date ASC

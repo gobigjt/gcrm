@@ -10,11 +10,14 @@ class CommunicationController extends GetxController {
   final errorMessage = ''.obs;
   final isLoading = false.obs;
   final isSubmitting = false.obs;
-  final selectedTab = 0.obs;
+  // In the showcase, the "Chat" experience is driven by message logs.
+  // Default to the Logs tab so the chat bubbles show immediately.
+  final selectedTab = 1.obs;
   final channelFilter = ''.obs;
 
   final templates = <CommTemplateRow>[].obs;
   final logs = <CommLogRow>[].obs;
+  final whatsappInbox = <CommWhatsAppInboxRow>[].obs;
 
   @override
   void onInit() {
@@ -26,7 +29,7 @@ class CommunicationController extends GetxController {
     isLoading.value = true;
     errorMessage.value = '';
     try {
-      await Future.wait([loadTemplates(), loadLogs()]);
+      await Future.wait([loadTemplates(), loadLogs(), loadWhatsAppInbox()]);
     } finally {
       isLoading.value = false;
     }
@@ -52,6 +55,18 @@ class CommunicationController extends GetxController {
       final res = await _auth.authorizedRequest(method: 'GET', path: path);
       logs.assignAll(
         (res as List).map((e) => CommLogRow.fromJson(Map<String, dynamic>.from(e as Map))),
+      );
+    } catch (e) {
+      errorMessage.value = userFriendlyError(e);
+    }
+  }
+
+  Future<void> loadWhatsAppInbox() async {
+    errorMessage.value = '';
+    try {
+      final res = await _auth.authorizedRequest(method: 'GET', path: '/communication/whatsapp/inbox');
+      whatsappInbox.assignAll(
+        (res as List).map((e) => CommWhatsAppInboxRow.fromJson(Map<String, dynamic>.from(e as Map))),
       );
     } catch (e) {
       errorMessage.value = userFriendlyError(e);

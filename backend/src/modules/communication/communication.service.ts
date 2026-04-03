@@ -29,6 +29,30 @@ export class CommunicationService {
       `SELECT cl.*,u.name AS sent_by_name FROM comm_logs cl LEFT JOIN users u ON u.id=cl.sent_by ${where} ORDER BY cl.sent_at DESC`, vals
     )).rows;
   }
+
+  async listWhatsAppInbox() {
+    // Latest WhatsApp message per lead (inbox view).
+    // DISTINCT ON is a Postgres feature; order ensures the latest per lead_id is returned.
+    return (await this.db.query(
+      `SELECT DISTINCT ON (cl.lead_id)
+          cl.lead_id,
+          cl.body        AS last_body,
+          cl.sent_at     AS last_sent_at,
+          u.name         AS last_sent_by_name,
+          l.name         AS lead_name,
+          l.company      AS lead_company,
+          l.phone        AS lead_phone,
+          ls.name        AS lead_stage,
+          l.lead_score   AS lead_score
+        FROM comm_logs cl
+        JOIN leads l ON l.id = cl.lead_id
+        LEFT JOIN lead_stages ls ON ls.id = l.stage_id
+        LEFT JOIN users u ON u.id = cl.sent_by
+       WHERE cl.channel = 'whatsapp' AND cl.lead_id IS NOT NULL
+       ORDER BY cl.lead_id, cl.sent_at DESC
+       LIMIT 200`,
+    )).rows;
+  }
   async createLog(d: any) {
     return (await this.db.query(
       'INSERT INTO comm_logs (lead_id,channel,recipient,subject,body,status,sent_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',

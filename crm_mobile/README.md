@@ -1,4 +1,4 @@
-# CRM Mobile (Flutter)
+# EzCRM (Flutter)
 
 GetX-based client for the NestJS API. All REST paths are relative to a single base URL that **must end with `/api`** (same global prefix as the backend).
 
@@ -33,7 +33,7 @@ Backend port defaults to **4000** (`PORT` in backend `.env`, see `backend/src/ma
 ## Run / test
 
 ```bash
-cd crm_mobile
+cd ezcrm
 flutter pub get
 flutter analyze
 flutter test

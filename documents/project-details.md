@@ -99,7 +99,7 @@
 -   Cache: **Redis 7** (ioredis, optional — graceful fallback if unavailable)
 -   Storage: S3 (planned — logo_url currently stored as URL string)
 -   Frontend: **React 18** + Vite + Tailwind CSS v3
--   Mobile: **Flutter** (`crm_mobile/`) — GetX, JWT + refresh, RBAC-aware routing; API base URL via `--dart-define=API_BASE_URL=` (default Android emulator: `http://10.0.2.2:4000/api`). See `crm_mobile/README.md`.
+-   Mobile: **Flutter** (`ezcrm/`) — GetX, JWT + refresh, RBAC-aware routing; API base URL via `--dart-define=API_BASE_URL=` (default Android emulator: `http://10.0.2.2:4000/api`). See `ezcrm/README.md`.
 
 ## 16. API DESIGN
 
@@ -133,5 +133,5 @@
 -   Schema + migrations (PostgreSQL)
 -   REST API (NestJS, 13 modules, ~130 endpoints)
 -   React frontend (Vite + Tailwind, full dark mode)
--   Flutter mobile app (`crm_mobile/`, module screens + typed models)
+-   Flutter mobile app (`ezcrm/`, module screens + typed models)
 -   Docker Compose for one-command local/production deployment

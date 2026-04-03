@@ -78,8 +78,7 @@ export default function Login() {
                 className={fieldCls} />
             </div>
             <button type="submit" disabled={loading}
-              className="w-full py-3 rounded-xl text-sm font-semibold text-white mt-2
-                         bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700
+              className="w-full btn-wf-primary py-3 text-sm rounded-xl mt-2
                          disabled:opacity-60 shadow-sm transition-all duration-150 active:scale-[0.98]">
               {loading ? 'Signing in…' : 'Sign In'}
             </button>

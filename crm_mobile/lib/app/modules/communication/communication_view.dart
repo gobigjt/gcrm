@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 
 import '../../core/utils/ui_format.dart';
 import '../../shared/widgets/app_error_banner.dart';
+import '../../shared/widgets/app_bottom_nav.dart';
 import 'communication_controller.dart';
 
 class CommunicationView extends GetView<CommunicationController> {
@@ -12,6 +13,7 @@ class CommunicationView extends GetView<CommunicationController> {
   Widget build(BuildContext context) {
     return DefaultTabController(
       length: 2,
+      initialIndex: controller.selectedTab.value,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Communication'),
@@ -20,7 +22,7 @@ class CommunicationView extends GetView<CommunicationController> {
           ],
           bottom: TabBar(
             onTap: (i) => controller.selectedTab.value = i,
-            tabs: const [Tab(text: 'Templates'), Tab(text: 'Logs')],
+            tabs: const [Tab(text: 'Templates'), Tab(text: 'Chat')],
           ),
         ),
         floatingActionButton: Obx(() {
@@ -56,13 +58,14 @@ class CommunicationView extends GetView<CommunicationController> {
                 return TabBarView(
                   children: [
                     _TemplatesTab(controller: controller),
-                    _LogsTab(controller: controller),
+                    _WhatsAppInboxTab(controller: controller),
                   ],
                 );
               }),
             ),
           ],
         ),
+        bottomNavigationBar: const AppBottomNav(currentIndex: 3),
       ),
     );
   }
@@ -250,7 +253,7 @@ class _TemplatesTab extends StatelessWidget {
             return Card(
               child: ListTile(
                 title: Text(t.name),
-                subtitle: Text('${t.channel} • ${t.subjectDisplay}'),
+                subtitle: Text('${t.channel} • ${t.bodyPreview}', maxLines: 2, overflow: TextOverflow.ellipsis),
               ),
             );
           },
@@ -260,63 +263,105 @@ class _TemplatesTab extends StatelessWidget {
   }
 }
 
-class _LogsTab extends StatelessWidget {
-  const _LogsTab({required this.controller});
+class _WhatsAppInboxTab extends StatelessWidget {
+  const _WhatsAppInboxTab({required this.controller});
   final CommunicationController controller;
+  static final RxString _query = ''.obs;
+
+  String _initials(String name) {
+    final parts = name.trim().split(RegExp(r'\\s+')).where((p) => p.isNotEmpty).toList();
+    if (parts.isEmpty) return '?';
+    if (parts.length == 1) {
+      final t = parts.first;
+      return t.length >= 2 ? t.substring(0, 2).toUpperCase() : t.substring(0, 1).toUpperCase();
+    }
+    return (parts[0].substring(0, 1) + parts[1].substring(0, 1)).toUpperCase();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  value: controller.channelFilter.value.isEmpty ? null : controller.channelFilter.value,
-                  items: const [
-                    DropdownMenuItem(value: 'email', child: Text('Email')),
-                    DropdownMenuItem(value: 'whatsapp', child: Text('WhatsApp')),
-                    DropdownMenuItem(value: 'sms', child: Text('SMS')),
-                  ],
-                  onChanged: (v) => controller.channelFilter.value = v ?? '',
-                  decoration: const InputDecoration(labelText: 'Channel filter'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              IconButton(
-                onPressed: controller.loadLogs,
-                icon: const Icon(Icons.filter_alt_rounded),
-                tooltip: 'Apply filter',
-              ),
+    return Obx(() {
+      final q = _query.value.trim().toLowerCase();
+      final data = q.isEmpty
+          ? controller.whatsappInbox
+          : controller.whatsappInbox.where((row) {
+              final title = row.leadCompany.trim().isEmpty ? row.leadName : row.leadCompany;
+              final hay = '${title.toLowerCase()} ${row.leadPhone.toLowerCase()} ${row.lastBody.toLowerCase()}';
+              return hay.contains(q);
+            }).toList();
+
+      if (controller.whatsappInbox.isEmpty) {
+        return RefreshIndicator(
+          onRefresh: controller.loadWhatsAppInbox,
+          child: ListView(
+            children: const [
+              SizedBox(height: 120),
+              Center(child: Text('No WhatsApp chats yet')),
             ],
           ),
-        ),
-        Expanded(
-          child: Obx(() {
-            if (controller.logs.isEmpty) return const Center(child: Text('No logs found'));
-            return RefreshIndicator(
-              onRefresh: controller.loadLogs,
-              child: ListView.separated(
-                padding: const EdgeInsets.all(16),
-                itemCount: controller.logs.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
-                itemBuilder: (_, i) {
-                  final l = controller.logs[i];
-                  return Card(
-                    child: ListTile(
-                      title: Text('${l.channel} • ${l.recipient}'),
-                      subtitle: Text('${l.status} • ${formatIsoDate(l.sentAt)}'),
-                      trailing: Text(l.sentByName),
-                    ),
-                  );
-                },
+        );
+      }
+
+      return RefreshIndicator(
+        onRefresh: controller.loadWhatsAppInbox,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Text(
+              'INBOX',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).hintColor,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.35,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.search_rounded),
+                labelText: 'Search chats…',
               ),
-            );
-          }),
+              onChanged: (v) => _query.value = v,
+            ),
+            const SizedBox(height: 12),
+            if (data.isEmpty)
+              const Padding(
+                padding: EdgeInsets.only(top: 40),
+                child: Center(child: Text('No chats match your search')),
+              )
+            else
+              ...List.generate(data.length, (i) {
+                final row = data[i];
+                final title = row.leadCompany.trim().isEmpty ? row.leadName : row.leadCompany;
+                final subtitle = row.lastBody.trim().isEmpty ? '—' : row.lastBody.trim();
+
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Card(
+                    child: ListTile(
+                      onTap: () => Get.toNamed('/whatsapp/${row.leadId}'),
+                      leading: CircleAvatar(
+                        radius: 18,
+                        backgroundColor: const Color(0xFFEEEDFE),
+                        child: Text(
+                          _initials(title),
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF3C3489)),
+                        ),
+                      ),
+                      title: Text(title, style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+                      subtitle: Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: Text(formatIsoDate(row.lastSentAt), style: Theme.of(context).textTheme.bodySmall),
+                    ),
+                  ),
+                );
+              }),
+          ],
         ),
-      ],
-    );
+      );
+    });
   }
 }

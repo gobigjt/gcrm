@@ -2,6 +2,8 @@ abstract class AppRoutes {
   static const login = '/login';
   static const dashboard = '/dashboard';
   static const crm = '/crm';
+  static const tasks = '/tasks';
+  static const whatsappChat = '/whatsapp/:id';
   static const sales = '/sales';
   static const purchase = '/purchase';
   static const inventory = '/inventory';
