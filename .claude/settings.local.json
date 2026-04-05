@@ -5,7 +5,10 @@
       "Bash(npm install:*)",
       "Bash(npm run:*)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:4000/api/docs)",
-      "WebFetch(domain:www.helloleads.io)"
+      "WebFetch(domain:www.helloleads.io)",
+      "Bash(find /c/dev/herd-projects/crm/backend/src -name \"*.ts\" -type f -exec grep -l \"webhook\\\\|Webhook\" {} \\\\;)",
+      "Bash(git log:*)",
+      "Bash(grep -E \"\\\\.sql$\")"
     ]
   }
 }

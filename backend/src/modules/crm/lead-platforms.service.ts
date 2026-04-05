@@ -200,13 +200,102 @@ export class LeadPlatformsService {
     const res = await fetch(url, { method: 'GET' });
     const txt = await res.text();
     if (!res.ok) {
-      throw new BadRequestException(`Facebook Graph API error (${res.status}): ${txt}`);
+      throw new BadRequestException(this.formatFacebookGraphError(res.status, txt));
     }
     try {
       return JSON.parse(txt);
     } catch (_) {
       throw new BadRequestException('Facebook Graph API returned invalid JSON');
     }
+  }
+
+  /** Map common Graph OAuth errors to actionable CRM messages. */
+  private formatFacebookGraphError(status: number, body: string): string {
+    try {
+      const j = JSON.parse(body);
+      const msg = j?.error?.message || '';
+      const code = j?.error?.code;
+      if (
+        code === 100 &&
+        typeof msg === 'string' &&
+        (msg.includes('pages_read_engagement') ||
+          msg.includes('Page Public Content Access') ||
+          msg.includes('Page Public Metadata Access'))
+      ) {
+        return (
+          `Facebook Graph API error (${status}): Lead sync needs a Page access token that includes ` +
+          `pages_read_engagement and leads_retrieval. Disconnect this page in Settings, then use ` +
+          `"Continue with Facebook" again. In the Meta permission dialog, click "Edit settings" and enable ` +
+          `every permission for your Page. In developers.facebook.com → your app → Facebook Login → Settings, ` +
+          `ensure pages_show_list, pages_read_engagement, and leads_retrieval are allowed. ` +
+          `If the app is Live, these permissions may require App Review. Raw: ${body}`
+        );
+      }
+    } catch (_) {
+      /* fall through */
+    }
+    return `Facebook Graph API error (${status}): ${body}`;
+  }
+
+  /** Scopes granted to a user or page access token (debug_token). */
+  private parseDebugTokenScopes(data: any): string[] {
+    const set = new Set<string>();
+    if (Array.isArray(data?.scopes)) {
+      for (const s of data.scopes) {
+        if (s) set.add(String(s).toLowerCase());
+      }
+    }
+    if (Array.isArray(data?.granular_scopes)) {
+      for (const g of data.granular_scopes) {
+        if (g?.scope) set.add(String(g.scope).toLowerCase());
+      }
+    }
+    return [...set];
+  }
+
+  /**
+   * Inspect token with app access_token (App ID | App Secret). Returns null if debug fails.
+   */
+  private async debugFacebookAccessToken(inputToken: string): Promise<{
+    isValid: boolean;
+    scopes: string[];
+    type?: string;
+  } | null> {
+    const { appId } = this.normalizeFacebookAppId();
+    const secret = this.normalizeFacebookSecret();
+    if (!appId || !secret || !inputToken?.trim()) return null;
+    const appAccessToken = `${appId}|${secret}`;
+    const url = new URL(`${this.GRAPH_BASE}/debug_token`);
+    url.searchParams.set('input_token', inputToken.trim());
+    url.searchParams.set('access_token', appAccessToken);
+    try {
+      const data = await this.fbFetchJson(url.toString());
+      const d = data?.data;
+      if (!d) return null;
+      return {
+        isValid: Boolean(d.is_valid),
+        scopes: this.parseDebugTokenScopes(d),
+        type: d.type != null ? String(d.type) : undefined,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Leadgen forms/leads require these on the Page access token (see Graph error #100 otherwise).
+   */
+  private assertPageTokenScopesForLeadSync(debug: { isValid: boolean; scopes: string[] } | null) {
+    if (!debug?.isValid || !debug.scopes.length) return;
+    const required = ['pages_read_engagement', 'leads_retrieval'];
+    const missing = required.filter((s) => !debug.scopes.includes(s.toLowerCase()));
+    if (!missing.length) return;
+    throw new BadRequestException(
+      `This Facebook Page token is missing: ${missing.join(', ')}. ` +
+        `Disconnect the page, open "Continue with Facebook", and in Meta's dialog use "Edit settings" to grant all permissions for the Page. ` +
+        `In Meta App Dashboard → Facebook Login → Settings, allow pages_show_list, pages_read_engagement, and leads_retrieval. ` +
+        `Standard access works for app admins/developers/testers; Live apps may need App Review for these permissions.`,
+    );
   }
 
   facebookOAuthConfig() {
@@ -320,6 +409,9 @@ export class LeadPlatformsService {
 
     if (!pageId) throw new BadRequestException('Facebook page_id is missing');
 
+    const tokenDebug = await this.debugFacebookAccessToken(accessToken);
+    this.assertPageTokenScopesForLeadSync(tokenDebug);
+
     const stageId = await this.leadStageIdOrDefault();
     const srcId = leadSourceId ?? (await this.defaultLeadSourceId());
 
@@ -422,6 +514,54 @@ export class LeadPlatformsService {
    * This intentionally does not call the Graph API, so it does not require
    * `page_access_token`.
    */
+  /**
+   * Verifies a Facebook webhook subscription challenge.
+   * Meta sends GET with hub.mode=subscribe, hub.verify_token, hub.challenge.
+   * Returns the challenge string if valid, null otherwise.
+   */
+  verifyFacebookWebhookChallenge(mode: string, token: string, challenge: string): string | null {
+    const webhookToken = this.readFacebookEnv('FACEBOOK_WEBHOOK_TOKEN');
+    if (!webhookToken) return null;
+    if (mode !== 'subscribe' || token !== webhookToken) return null;
+    return challenge ?? null;
+  }
+
+  /**
+   * Processes a real-time Facebook leadgen webhook event.
+   * Payload format: { object: 'page', entry: [{ id, changes: [{ field: 'leadgen', value: { leadgen_id, page_id, form_id } }] }] }
+   * Fetches the lead detail from Graph API and imports into CRM.
+   */
+  async handleFacebookWebhookEvent(body: any): Promise<void> {
+    if (body?.object !== 'page') return;
+    for (const entry of body?.entry ?? []) {
+      const pageId = String(entry?.id ?? '');
+      for (const change of entry?.changes ?? []) {
+        if (change?.field !== 'leadgen') continue;
+        const value = change?.value;
+        const facebookLeadId = String(value?.leadgen_id ?? '');
+        const formId = String(value?.form_id ?? '');
+        if (!facebookLeadId || !pageId) continue;
+
+        const pageRes = await this.db.query(
+          `SELECT * FROM lead_platform_facebook_pages WHERE page_id=$1`,
+          [pageId],
+        );
+        const platform = pageRes.rows[0];
+        if (!platform?.page_access_token) continue;
+
+        try {
+          const leadUrl = new URL(`${this.GRAPH_BASE}/${facebookLeadId}`);
+          leadUrl.searchParams.set('access_token', platform.page_access_token.trim());
+          leadUrl.searchParams.set('fields', 'id,created_time,field_data');
+          const fbLead = await this.fbFetchJson(leadUrl.toString());
+          await this.importFacebookPageLeads(platform.id, { form_id: formId, leads: [fbLead] });
+        } catch (e: any) {
+          console.error(`[Facebook Webhook] Failed to import lead ${facebookLeadId}:`, e?.message);
+        }
+      }
+    }
+  }
+
   async importFacebookPageLeads(
     platformRecordId: number,
     dto: { form_id?: string | null; leads: any[] },
