@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Headers, HttpCode, Post, Query, Res } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Headers, HttpCode, Post, Query, RawBody, Res } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { Response } from 'express';
 import { LeadPlatformsService } from './lead-platforms.service';
 
@@ -11,8 +12,8 @@ import { LeadPlatformsService } from './lead-platforms.service';
  *   Verify Token : value of FACEBOOK_WEBHOOK_TOKEN in backend .env
  *   Subscriptions: leadgen
  *
- * Then for each connected Page:
- *   Graph API Explorer → POST /<page_id>/subscribed_apps
+ * Then for each connected Page subscribe once via Graph API Explorer:
+ *   POST /<page_id>/subscribed_apps
  *     ?subscribed_fields=leadgen&access_token=<page_access_token>
  */
 @ApiTags('Lead Platforms')
@@ -41,13 +42,32 @@ export class LeadPlatformsWebhookController {
 
   /**
    * Meta webhook event delivery: POST with leadgen change payload.
-   * Must respond 200 quickly; lead import runs async.
+   * Verifies the x-hub-signature-256 header using FACEBOOK_APP_SECRET.
+   * Responds 200 immediately; lead import runs async.
    */
   @Post()
   @HttpCode(200)
   @ApiOperation({ summary: 'Facebook webhook event receiver (real-time lead delivery)' })
-  async receiveWebhook(@Body() body: any, @Headers('x-hub-signature-256') _sig: string) {
-    // Run import without awaiting so we respond to Meta within their 20 s timeout.
+  async receiveWebhook(
+    @RawBody() rawBody: Buffer,
+    @Body() body: any,
+    @Headers('x-hub-signature-256') signature: string,
+  ) {
+    // Verify HMAC-SHA256 signature from Meta using App Secret.
+    // Only skipped if App Secret is not configured (dev environments).
+    const secret = process.env.FACEBOOK_APP_SECRET?.trim();
+    if (secret && rawBody) {
+      const expected = `sha256=${createHmac('sha256', secret).update(rawBody).digest('hex')}`;
+      const sigBuf = Buffer.from(signature ?? '', 'utf8');
+      const expBuf = Buffer.from(expected, 'utf8');
+      const valid =
+        sigBuf.length === expBuf.length && timingSafeEqual(sigBuf, expBuf);
+      if (!valid) {
+        throw new ForbiddenException('Invalid webhook signature');
+      }
+    }
+
+    // Run import without awaiting — Meta expects a 200 within ~20 s.
     this.svc.handleFacebookWebhookEvent(body).catch((e) =>
       console.error('[Facebook Webhook] Unhandled error:', e?.message),
     );

@@ -563,8 +563,11 @@ function LeadPlatformsTab() {
                 type="password"
                 value={form.page_access_token}
                 onChange={set('page_access_token')}
-                placeholder="From Graph API Explorer"
+                placeholder="Page token only (not User token)"
               />
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                Must be a <strong>Page</strong> access token for this Page. Graph API Explorer often shows a <strong>User</strong> token by default—that will fail sync with error #190. Prefer &quot;Continue with Facebook&quot; above.
+              </p>
             </Field>
             <button
               type="submit"
