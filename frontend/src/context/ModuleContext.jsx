@@ -11,7 +11,7 @@ export function ModuleProvider({ children }) {
   const prevUserIdRef = useRef(null);
 
   // Only call /settings/modules when there is a real session (user + access token).
-  // Avoids proxy/API traffic on login/register and before tokens are written after login.
+  // Avoids proxy/API traffic on login and before tokens are written after login.
   useEffect(() => {
     if (!user) {
       setModules([]);

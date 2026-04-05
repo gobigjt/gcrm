@@ -21,6 +21,8 @@ import '../modules/tasks/tasks_controller.dart';
 import '../modules/tasks/tasks_view.dart';
 import '../modules/inventory/inventory_controller.dart';
 import '../modules/inventory/inventory_view.dart';
+import '../modules/sales/invoice_form_view.dart';
+import '../modules/sales/order_form_view.dart';
 import '../modules/sales/quotation_form_view.dart';
 import '../modules/sales/sales_controller.dart';
 import '../modules/sales/sales_view.dart';
@@ -96,13 +98,46 @@ abstract class AppPages {
         final args = Get.arguments;
         int? quotationId;
         int? copyFromId;
+        int? initialCustomerId;
         if (args is Map) {
           final q = args['quotationId'];
           final c = args['copyFromId'];
+          final ic = args['initialCustomerId'];
           if (q is num) quotationId = q.toInt();
           if (c is num) copyFromId = c.toInt();
+          if (ic is num) initialCustomerId = ic.toInt();
         }
-        return QuotationFormView(quotationId: quotationId, copyFromId: copyFromId);
+        return QuotationFormView(
+          quotationId: quotationId,
+          copyFromId: copyFromId,
+          initialCustomerId: initialCustomerId,
+        );
+      },
+      middlewares: [PermissionMiddleware(permission: AppPermissions.sales)],
+    ),
+    GetPage(
+      name: AppRoutes.orderForm,
+      page: () {
+        int? initialCustomerId;
+        final args = Get.arguments;
+        if (args is Map) {
+          final ic = args['initialCustomerId'];
+          if (ic is num) initialCustomerId = ic.toInt();
+        }
+        return OrderFormView(initialCustomerId: initialCustomerId);
+      },
+      middlewares: [PermissionMiddleware(permission: AppPermissions.sales)],
+    ),
+    GetPage(
+      name: AppRoutes.invoiceForm,
+      page: () {
+        int? initialCustomerId;
+        final args = Get.arguments;
+        if (args is Map) {
+          final ic = args['initialCustomerId'];
+          if (ic is num) initialCustomerId = ic.toInt();
+        }
+        return InvoiceFormView(initialCustomerId: initialCustomerId);
       },
       middlewares: [PermissionMiddleware(permission: AppPermissions.sales)],
     ),

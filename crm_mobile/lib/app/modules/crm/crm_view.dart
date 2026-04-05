@@ -11,7 +11,7 @@ import 'crm_add_lead_view.dart';
 import 'crm_controller.dart';
 import 'crm_edit_lead_view.dart';
 import 'crm_lead_detail_view.dart';
-import 'crm_sales_launch.dart';
+import 'crm_quote_nav.dart';
 
 class CrmView extends GetView<CrmController> {
   const CrmView({super.key});
@@ -332,7 +332,7 @@ class _LeadCard extends StatelessWidget {
                                 await Get.to(() => CrmEditLeadView(leadId: lead.id));
                                 onAfterEdit();
                               } else if (v == 'sales') {
-                                await openCrmSalesOptions(context, lead.id);
+                                await navigateSalesFlowForLead(context, lead);
                               }
                             },
                             itemBuilder: (ctx) => [

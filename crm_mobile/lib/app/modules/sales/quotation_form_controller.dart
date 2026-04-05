@@ -4,69 +4,19 @@ import 'package:get/get.dart';
 import '../../core/network/error_utils.dart';
 import '../../core/utils/ui_format.dart';
 import '../auth/auth_controller.dart';
-
-/// One editable line; totals computed on save from controller text fields.
-class QuotationLineDraft {
-  QuotationLineDraft() {
-    descCtrl = TextEditingController();
-    qtyCtrl = TextEditingController(text: '1');
-    unitCtrl = TextEditingController(text: '0');
-    gstCtrl = TextEditingController(text: '0');
-  }
-
-  late final TextEditingController descCtrl;
-  late final TextEditingController qtyCtrl;
-  late final TextEditingController unitCtrl;
-  late final TextEditingController gstCtrl;
-  int? productId;
-
-  void dispose() {
-    descCtrl.dispose();
-    qtyCtrl.dispose();
-    unitCtrl.dispose();
-    gstCtrl.dispose();
-  }
-
-  double quantity() => double.tryParse(qtyCtrl.text.trim()) ?? 0;
-  double unitPrice() => double.tryParse(unitCtrl.text.trim()) ?? 0;
-  double gstRate() => double.tryParse(gstCtrl.text.trim()) ?? 0;
-
-  double computedTotal() {
-    final base = quantity() * unitPrice();
-    return double.parse((base * (1 + gstRate() / 100)).toStringAsFixed(2));
-  }
-
-  Map<String, dynamic> toPayload() {
-    final desc = descCtrl.text.trim();
-    return {
-      'product_id': productId,
-      'description': desc.isEmpty ? 'Item' : desc,
-      'quantity': quantity(),
-      'unit_price': unitPrice(),
-      'gst_rate': gstRate(),
-      'total': computedTotal(),
-    };
-  }
-
-  static QuotationLineDraft fromApiRow(Map<String, dynamic> row) {
-    final d = QuotationLineDraft();
-    d.descCtrl.text = (row['description'] ?? '').toString();
-    d.qtyCtrl.text = parseDynamicNum(row['quantity']).toString();
-    d.unitCtrl.text = parseDynamicNum(row['unit_price']).toString();
-    d.gstCtrl.text = parseDynamicNum(row['gst_rate']).toString();
-    d.productId = (row['product_id'] as num?)?.toInt();
-    return d;
-  }
-}
+import 'sales_line_draft.dart';
 
 class QuotationFormController extends GetxController {
-  QuotationFormController({this.quotationId, this.copyFromId});
+  QuotationFormController({this.quotationId, this.copyFromId, this.initialCustomerId});
 
   /// Edit existing quotation.
   final int? quotationId;
 
   /// Pre-fill from this id then create new (POST).
   final int? copyFromId;
+
+  /// New quotation: pre-select customer (e.g. CRM lead handoff).
+  final int? initialCustomerId;
 
   final AuthController _auth = Get.find<AuthController>();
 
@@ -80,7 +30,7 @@ class QuotationFormController extends GetxController {
   final selectedCustomerId = Rxn<int>();
   final validUntilCtrl = TextEditingController();
   final notesCtrl = TextEditingController();
-  final lines = <QuotationLineDraft>[].obs;
+  final lines = <SalesLineDraft>[].obs;
 
   /// Preserved when editing (PATCH); new quotations stay `draft`.
   final statusValue = 'draft'.obs;
@@ -138,6 +88,11 @@ class QuotationFormController extends GetxController {
     final res = await _auth.authorizedRequest(method: 'GET', path: '/sales/customers');
     final list = _asList(res);
     customers.assignAll(list);
+    final init = initialCustomerId;
+    if (init != null && list.any((c) => (c['id'] as num?)?.toInt() == init)) {
+      selectedCustomerId.value = init;
+      return;
+    }
     final skipDefaultCustomer = quotationId != null || copyFromId != null;
     if (!skipDefaultCustomer && selectedCustomerId.value == null && list.isNotEmpty) {
       final id = list.first['id'];
@@ -167,7 +122,7 @@ class QuotationFormController extends GetxController {
     _disposeAllLines();
     if (rawItems is List && rawItems.isNotEmpty) {
       for (final e in rawItems) {
-        lines.add(QuotationLineDraft.fromApiRow(Map<String, dynamic>.from(e as Map)));
+        lines.add(SalesLineDraft.fromApiRow(Map<String, dynamic>.from(e as Map)));
       }
     } else {
       addLine();
@@ -192,7 +147,7 @@ class QuotationFormController extends GetxController {
   }
 
   void addLine() {
-    lines.add(QuotationLineDraft());
+    lines.add(SalesLineDraft());
     lines.refresh();
   }
 

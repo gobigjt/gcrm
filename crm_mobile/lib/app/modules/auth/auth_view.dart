@@ -134,13 +134,25 @@ class AuthView extends GetView<AuthController> {
                 ),
                 const SizedBox(height: 14),
                 TextField(
-                  obscureText: true,
+                  obscureText: controller.passwordObscured.value,
                   onChanged: (v) => controller.password.value = v,
                   style: TextStyle(
                     fontSize: 12,
                     color: isDark ? const Color(0xFFE5E4DF) : const Color(0xFF1E1E1C),
                   ),
-                  decoration: fieldDeco('Password', hint: '••••••••'),
+                  decoration: fieldDeco('Password', hint: '••••••••').copyWith(
+                    suffixIcon: IconButton(
+                      tooltip: controller.passwordObscured.value ? 'Show password' : 'Hide password',
+                      onPressed: () => controller.passwordObscured.toggle(),
+                      icon: Icon(
+                        controller.passwordObscured.value
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                        size: 20,
+                        color: subtitle,
+                      ),
+                    ),
+                  ),
                 ),
                 Align(
                   alignment: Alignment.centerRight,

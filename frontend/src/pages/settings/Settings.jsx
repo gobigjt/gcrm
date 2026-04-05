@@ -266,11 +266,18 @@ function LeadPlatformsTab() {
     lead_source_id: '',
   });
 
+  const [fbConfig, setFbConfig] = useState(null);
+  const [fbPagesPick, setFbPagesPick] = useState([]);
+  const [selectedPageId, setSelectedPageId] = useState('');
+  const [fbBusy, setFbBusy] = useState(false);
+  const [fbErr, setFbErr] = useState('');
+
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(() => {
     api.get('/crm/lead-platforms/facebook/pages').then(r => setPages(r.data || [])).catch(() => {});
     api.get('/crm/leads/sources').then(r => setSources(r.data || [])).catch(() => {});
+    api.get('/crm/lead-platforms/facebook/oauth/config').then(r => setFbConfig(r.data || {})).catch(() => setFbConfig({}));
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -284,6 +291,118 @@ function LeadPlatformsTab() {
     return `${s.slice(0, 6)}…${s.slice(-4)}`;
   };
 
+  const ensureFbReady = useCallback(async () => {
+    // FB.init requires a string App ID; JSON numbers or whitespace break the SDK ("Invalid app ID").
+    const raw = fbConfig?.appId;
+    const appId = raw == null || raw === '' ? '' : String(raw).replace(/\s/g, '');
+    const gv = fbConfig?.graphVersion || 'v20.0';
+    const version = String(gv).startsWith('v') ? gv : `v${gv}`;
+    if (!appId || !/^\d{8,20}$/.test(appId)) {
+      throw new Error(
+        fbConfig?.setupHint ||
+          'Facebook App ID from the server is missing or invalid. Use the numeric App ID from Meta → App settings → Basic.',
+      );
+    }
+
+    await new Promise((resolve, reject) => {
+      if (typeof window === 'undefined') {
+        reject(new Error('Facebook Login requires a browser.'));
+        return;
+      }
+      if (window.FB) {
+        try {
+          window.FB.init({ appId, cookie: true, xfbml: false, version });
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+        return;
+      }
+      window.fbAsyncInit = () => {
+        try {
+          window.FB.init({ appId, cookie: true, xfbml: false, version });
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      };
+      if (!document.getElementById('facebook-jssdk')) {
+        const s = document.createElement('script');
+        s.id = 'facebook-jssdk';
+        s.async = true;
+        s.crossOrigin = 'anonymous';
+        s.src = 'https://connect.facebook.net/en_US/sdk.js';
+        s.onerror = () => reject(new Error('Could not load Facebook SDK'));
+        document.body.appendChild(s);
+      }
+    });
+  }, [fbConfig]);
+
+  const errText = (e) => {
+    const m = e?.response?.data?.message;
+    if (Array.isArray(m)) return m.join('. ');
+    if (typeof m === 'string') return m;
+    return e?.message || 'Request failed';
+  };
+
+  const handleFacebookLogin = async () => {
+    setFbErr('');
+    if (!fbConfig?.configured) {
+      setFbErr('Server needs FACEBOOK_APP_ID and FACEBOOK_APP_SECRET. Add them to backend .env and restart.');
+      return;
+    }
+    setFbBusy(true);
+    try {
+      await ensureFbReady();
+      const userToken = await new Promise((resolve, reject) => {
+        window.FB.login(
+          (res) => {
+            if (res.authResponse?.accessToken) resolve(res.authResponse.accessToken);
+            else reject(new Error('Facebook login was cancelled or no access was granted.'));
+          },
+          {
+            scope: 'pages_show_list,pages_read_engagement,pages_manage_ads',
+            auth_type: 'rerequest',
+          },
+        );
+      });
+      const { data } = await api.post('/crm/lead-platforms/facebook/oauth/list-pages', {
+        user_access_token: userToken,
+      });
+      const list = data?.pages || [];
+      setFbPagesPick(list);
+      setSelectedPageId(list[0]?.id || '');
+    } catch (e) {
+      setFbErr(errText(e));
+    } finally {
+      setFbBusy(false);
+    }
+  };
+
+  const connectSelectedPage = async (e) => {
+    e.preventDefault();
+    const p = fbPagesPick.find((x) => String(x.id) === String(selectedPageId));
+    if (!p) return;
+    setSaving(true);
+    setFbErr('');
+    try {
+      await api.post('/crm/lead-platforms/facebook/pages', {
+        page_id: p.id,
+        page_name: p.name || null,
+        page_url: `https://www.facebook.com/${p.id}`,
+        page_access_token: p.access_token,
+        lead_source_id: form.lead_source_id ? Number(form.lead_source_id) : null,
+      });
+      setFbPagesPick([]);
+      setSelectedPageId('');
+      load();
+    } catch (e) {
+      setFbErr(errText(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleConnect = async (e) => {
     e.preventDefault();
     if (!form.page_url.trim()) return;
@@ -295,7 +414,7 @@ function LeadPlatformsTab() {
         page_access_token: form.page_access_token.trim() || null,
         lead_source_id: form.lead_source_id ? Number(form.lead_source_id) : null,
       });
-      setForm({ page_url: '', page_name: '', page_access_token: '', lead_source_id: '' });
+      setForm({ page_url: '', page_name: '', page_access_token: '', lead_source_id: form.lead_source_id });
       load();
     } finally {
       setSaving(false);
@@ -329,49 +448,104 @@ function LeadPlatformsTab() {
       <div className="bg-white dark:bg-[#1a1d2e] rounded-2xl shadow-card border border-slate-200/80 dark:border-slate-700/50 p-6 max-w-xl">
         <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100 mb-2">Facebook Pages</h3>
         <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-          Connect a Facebook Page so we can later sync Lead Ads / Lead Forms into your CRM.
-          For now, we store the page config and map it to a Lead Source.
+          Use <strong>Facebook Login</strong> to grant access to Pages you manage. We exchange your session for Page tokens
+          on the server and store them for Lead Ads / Lead Form sync. In the Meta app, enable <em>Facebook Login</em> and
+          add this site URL under <em>Valid OAuth Redirect URIs</em> (e.g. <code className="text-[11px]">http://localhost:5173</code>).
         </p>
 
-        <form onSubmit={handleConnect} className="space-y-3">
-          <Field label="Page URL *">
-            <input
-              className={inputCls}
-              value={form.page_url}
-              onChange={set('page_url')}
-              placeholder="https://www.facebook.com/<page>"
-              required
-            />
-          </Field>
-          <Field label="Page Name (optional)">
-            <input className={inputCls} value={form.page_name} onChange={set('page_name')} placeholder="My Facebook Page" />
-          </Field>
-          <Field label="Page Access Token">
-            <input
-              className={inputCls}
-              type="password"
-              value={form.page_access_token}
-              onChange={set('page_access_token')}
-              placeholder="(stored on backend)"
-            />
-          </Field>
-          <Field label="Lead Source">
-            <select className={selectCls} value={form.lead_source_id} onChange={set('lead_source_id')}>
-              <option value="">Default (Facebook Ads)</option>
-              {sources.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-          </Field>
+        {fbConfig?.setupHint && (
+          <div className="mb-4 px-3 py-2 rounded-xl text-xs bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200">
+            {fbConfig.setupHint}
+          </div>
+        )}
+        {fbErr && (
+          <div className="mb-4 px-3 py-2 rounded-xl text-xs bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300">
+            {fbErr}
+          </div>
+        )}
+        {fbConfig?.configured && fbConfig?.appId && (
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-3">
+            Using Meta App ID ending in <span className="font-mono">{String(fbConfig.appId).replace(/\s/g, '').slice(-4)}</span>
+            {' · '}If Facebook still says invalid App ID, confirm this matches App settings → Basic and restart the API after changing <code className="text-[10px]">.env</code>.
+          </p>
+        )}
 
-          <div className="pt-2">
+        <Field label="Lead Source (for new connections)">
+          <select className={selectCls} value={form.lead_source_id} onChange={set('lead_source_id')}>
+            <option value="">Default (Facebook Ads)</option>
+            {sources.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </Field>
+
+        <div className="mt-4 space-y-3">
+          <button
+            type="button"
+            disabled={fbBusy || saving || !fbConfig?.configured}
+            onClick={handleFacebookLogin}
+            className="w-full py-2.5 rounded-xl text-sm font-semibold text-white bg-[#1877F2] hover:bg-[#166FE5] disabled:opacity-50 transition-colors"
+          >
+            {fbBusy ? 'Connecting to Facebook…' : 'Continue with Facebook'}
+          </button>
+
+          {fbPagesPick.length > 0 && (
+            <form onSubmit={connectSelectedPage} className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-600">
+              <Field label="Page to connect">
+                <select
+                  className={selectCls}
+                  value={selectedPageId}
+                  onChange={(e) => setSelectedPageId(e.target.value)}
+                  required
+                >
+                  {fbPagesPick.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name} ({p.id})</option>
+                  ))}
+                </select>
+              </Field>
+              <button
+                type="submit"
+                disabled={saving || !selectedPageId}
+                className="w-full btn-wf-primary py-2 disabled:opacity-60"
+              >
+                {saving ? 'Saving…' : 'Connect selected Page'}
+              </button>
+            </form>
+          )}
+        </div>
+
+        <details className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-600">
+          <summary className="text-xs font-semibold text-slate-600 dark:text-slate-400 cursor-pointer">
+            Advanced: connect with Page URL &amp; token manually
+          </summary>
+          <form onSubmit={handleConnect} className="space-y-3 mt-3">
+            <Field label="Page URL *">
+              <input
+                className={inputCls}
+                value={form.page_url}
+                onChange={set('page_url')}
+                placeholder="https://www.facebook.com/<page>"
+              />
+            </Field>
+            <Field label="Page Name (optional)">
+              <input className={inputCls} value={form.page_name} onChange={set('page_name')} placeholder="My Facebook Page" />
+            </Field>
+            <Field label="Page Access Token">
+              <input
+                className={inputCls}
+                type="password"
+                value={form.page_access_token}
+                onChange={set('page_access_token')}
+                placeholder="From Graph API Explorer"
+              />
+            </Field>
             <button
               type="submit"
-              disabled={saving}
-              className="w-full btn-wf-primary py-2 disabled:opacity-60"
+              disabled={saving || !form.page_url.trim()}
+              className="w-full py-2 text-sm rounded-xl border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 disabled:opacity-60"
             >
-              {saving ? 'Saving…' : 'Connect Facebook Page'}
+              {saving ? 'Saving…' : 'Save manual connection'}
             </button>
-          </div>
-        </form>
+          </form>
+        </details>
       </div>
 
       <Table

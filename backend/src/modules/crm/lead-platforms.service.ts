@@ -8,6 +8,33 @@ export class LeadPlatformsService {
   private GRAPH_VERSION = process.env.FACEBOOK_GRAPH_API_VERSION || 'v20.0';
   private GRAPH_BASE = `https://graph.facebook.com/${this.GRAPH_VERSION}`;
 
+  /** Trim .env values; strip BOM/quotes that break Facebook Login / Graph. */
+  private readFacebookEnv(key: string): string | null {
+    const raw = process.env[key];
+    if (raw == null) return null;
+    let s = String(raw).replace(/^\uFEFF/, '').trim();
+    if (
+      (s.startsWith('"') && s.endsWith('"')) ||
+      (s.startsWith("'") && s.endsWith("'"))
+    ) {
+      s = s.slice(1, -1).trim();
+    }
+    return s.length ? s : null;
+  }
+
+  /** Meta App IDs are numeric strings (no spaces). */
+  private normalizeFacebookAppId(): { appId: string | null; rawPresent: boolean } {
+    const raw = this.readFacebookEnv('FACEBOOK_APP_ID');
+    if (!raw) return { appId: null, rawPresent: false };
+    const digits = raw.replace(/\s/g, '');
+    if (!/^\d{8,20}$/.test(digits)) return { appId: null, rawPresent: true };
+    return { appId: digits, rawPresent: true };
+  }
+
+  private normalizeFacebookSecret(): string | null {
+    return this.readFacebookEnv('FACEBOOK_APP_SECRET');
+  }
+
   /**
    * Best-effort page identifier extraction from a Facebook Page URL.
    * - If URL contains numeric id somewhere → return that number.
@@ -180,6 +207,81 @@ export class LeadPlatformsService {
     } catch (_) {
       throw new BadRequestException('Facebook Graph API returned invalid JSON');
     }
+  }
+
+  facebookOAuthConfig() {
+    const { appId, rawPresent } = this.normalizeFacebookAppId();
+    const secret = this.normalizeFacebookSecret();
+    let setupHint: string | null = null;
+    if (rawPresent && !appId) {
+      setupHint =
+        'FACEBOOK_APP_ID must be 8–20 digits only (no letters, spaces, or quotes). Copy the App ID from developers.facebook.com → Your app → App settings → Basic.';
+    } else if (!appId && !secret) {
+      setupHint =
+        'Set FACEBOOK_APP_ID and FACEBOOK_APP_SECRET in backend .env, then restart the API.';
+    } else if (!appId) {
+      setupHint = 'FACEBOOK_APP_ID is missing in backend .env.';
+    } else if (!secret) {
+      setupHint = 'FACEBOOK_APP_SECRET is missing in backend .env.';
+    }
+    return {
+      appId,
+      graphVersion: this.GRAPH_VERSION,
+      configured: Boolean(appId && secret),
+      setupHint: appId && secret ? null : setupHint,
+    };
+  }
+
+  /**
+   * Turn a short-lived User token from Facebook Login into a long-lived User token, then list
+   * Pages the user manages with their Page access tokens (for Lead Ads sync).
+   */
+  async listFacebookPagesForUserAccessToken(userAccessToken: string) {
+    const token = userAccessToken?.trim();
+    if (!token) throw new BadRequestException('user_access_token is required');
+
+    const { appId } = this.normalizeFacebookAppId();
+    const secret = this.normalizeFacebookSecret();
+    if (!appId || !secret) {
+      throw new BadRequestException(
+        'Facebook Login is not configured. Set FACEBOOK_APP_ID (numeric) and FACEBOOK_APP_SECRET on the server.',
+      );
+    }
+
+    let userToken = token;
+    const exUrl = new URL(`${this.GRAPH_BASE}/oauth/access_token`);
+    exUrl.searchParams.set('grant_type', 'fb_exchange_token');
+    exUrl.searchParams.set('client_id', appId);
+    exUrl.searchParams.set('client_secret', secret);
+    exUrl.searchParams.set('fb_exchange_token', token);
+    try {
+      const ex = await this.fbFetchJson(exUrl.toString());
+      if (ex?.access_token) userToken = String(ex.access_token);
+    } catch {
+      // Short-lived token may still work for me/accounts briefly; continue.
+    }
+
+    const accUrl = new URL(`${this.GRAPH_BASE}/me/accounts`);
+    accUrl.searchParams.set('fields', 'id,name,access_token');
+    accUrl.searchParams.set('limit', '100');
+    accUrl.searchParams.set('access_token', userToken);
+
+    const raw = await this.fbGetAllPages(accUrl.toString());
+    const pages = raw
+      .map((p: any) => ({
+        id: String(p?.id ?? ''),
+        name: (p?.name ?? p?.id ?? '').toString(),
+        access_token: (p?.access_token ?? '').toString().trim(),
+      }))
+      .filter((p) => p.id && p.access_token);
+
+    if (!pages.length) {
+      throw new BadRequestException(
+        'No Facebook Pages with tokens returned. Grant Page permissions in the login dialog (pages_show_list, pages_read_engagement) and ensure you manage at least one Page.',
+      );
+    }
+
+    return { pages };
   }
 
   private async fbGetAllPages(endpointUrl: string, { limitPerPage = 100 } = {}) {

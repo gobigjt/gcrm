@@ -5,7 +5,6 @@ import { ModuleProvider } from './context/ModuleContext';
 import PrivateRoute from './components/PrivateRoute';
 
 import Login    from './pages/auth/Login';
-import Register from './pages/auth/Register';
 import Dashboard from './pages/Dashboard';
 import CRM       from './pages/crm/CRM';
 import Sales     from './pages/sales/Sales';
@@ -22,7 +21,6 @@ export default function App() {
           <ModuleProvider>
             <Routes>
               <Route path="/login"    element={<Login />} />
-              <Route path="/register" element={<Register />} />
               <Route path="/"              element={<PrivateRoute><Dashboard /></PrivateRoute>} />
               <Route path="/crm"           element={<PrivateRoute module="crm"><CRM /></PrivateRoute>} />
               <Route path="/sales"         element={<PrivateRoute module="sales"><Sales /></PrivateRoute>} />

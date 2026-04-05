@@ -7,7 +7,7 @@ import '../../shared/widgets/app_error_banner.dart';
 import '../../showcase/showcase_widgets.dart';
 import 'crm_edit_lead_view.dart';
 import 'crm_lead_detail_controller.dart';
-import 'crm_sales_launch.dart';
+import 'crm_quote_nav.dart';
 
 String _priorityShort(String p) {
   switch (p) {
@@ -294,7 +294,7 @@ class CrmLeadDetailView extends StatelessWidget {
                         outline: true,
                         label: 'Sales',
                         icon: Icons.receipt_long_outlined,
-                        onTap: () => openCrmSalesOptions(context, leadId),
+                        onTap: () => navigateSalesFlowForLead(context, lead),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -305,7 +305,7 @@ class CrmLeadDetailView extends StatelessWidget {
                         outline: true,
                         label: 'Quote',
                         icon: Icons.receipt_long_rounded,
-                        onTap: () => _quickActivity(context, controller, 'quote'),
+                        onTap: () => navigateQuoteFlowForLead(context, lead),
                       ),
                     ),
                   ],
