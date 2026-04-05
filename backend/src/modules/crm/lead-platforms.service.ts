@@ -412,7 +412,10 @@ export class LeadPlatformsService {
 
     if (!pages.length) {
       throw new BadRequestException(
-        'No Facebook Pages with tokens returned. Grant Page permissions in the login dialog (pages_show_list, pages_read_engagement) and ensure you manage at least one Page.',
+        'No Facebook Pages returned. Possible causes: ' +
+        '(1) In Meta App Dashboard → Facebook Login → Settings, add optional permissions: pages_show_list, pages_read_engagement, leads_retrieval. ' +
+        '(2) In the login dialog, click "Edit settings" and enable all permissions for your Page. ' +
+        '(3) Ensure your Facebook account manages at least one Page (not just a personal profile).',
       );
     }
 
