@@ -273,6 +273,7 @@ function LeadPlatformsTab() {
   const [fbErr, setFbErr] = useState('');
 
   const [saving, setSaving] = useState(false);
+  const [syncResult, setSyncResult] = useState({ id: null, msg: '', isError: false });
 
   const load = useCallback(() => {
     api.get('/crm/lead-platforms/facebook/pages').then(r => setPages(r.data || [])).catch(() => {});
@@ -357,12 +358,30 @@ function LeadPlatformsTab() {
       const userToken = await new Promise((resolve, reject) => {
         window.FB.login(
           (res) => {
-            if (res.authResponse?.accessToken) resolve(res.authResponse.accessToken);
-            else reject(new Error('Facebook login was cancelled or no access was granted.'));
+            if (!res.authResponse?.accessToken) {
+              reject(new Error('Facebook login was cancelled or no access was granted.'));
+              return;
+            }
+            const gs = res.authResponse.grantedScopes;
+            if (typeof gs === 'string' && gs.trim()) {
+              const granted = gs.split(',').map((s) => s.trim()).filter(Boolean);
+              const need = ['pages_show_list', 'pages_read_engagement', 'leads_retrieval'];
+              const missing = need.filter((s) => !granted.includes(s));
+              if (missing.length) {
+                reject(
+                  new Error(
+                    `Facebook did not grant: ${missing.join(', ')}. Open the dialog again, click "Edit settings", and turn on all listed permissions for your Page.`,
+                  ),
+                );
+                return;
+              }
+            }
+            resolve(res.authResponse.accessToken);
           },
           {
-            scope: 'pages_show_list,pages_read_engagement,pages_manage_ads',
+            scope: 'pages_show_list,pages_read_engagement,leads_retrieval',
             auth_type: 'rerequest',
+            return_scopes: true,
           },
         );
       });
@@ -427,6 +446,8 @@ function LeadPlatformsTab() {
     try {
       await api.delete(`/crm/lead-platforms/facebook/pages/${id}`);
       load();
+    } catch (e) {
+      setFbErr(errText(e));
     } finally {
       setSaving(false);
     }
@@ -435,9 +456,13 @@ function LeadPlatformsTab() {
   const syncLeads = async (id) => {
     if (!confirm('Sync leads from this Facebook Page now?')) return;
     setSaving(true);
+    setSyncResult({ id: null, msg: '', isError: false });
     try {
-      await api.post(`/crm/lead-platforms/facebook/pages/${id}/sync-leads`);
+      const { data } = await api.post(`/crm/lead-platforms/facebook/pages/${id}/sync-leads`);
+      setSyncResult({ id, msg: `${data.importedCount} new lead(s) imported`, isError: false });
       load();
+    } catch (e) {
+      setSyncResult({ id, msg: errText(e), isError: true });
     } finally {
       setSaving(false);
     }
@@ -451,6 +476,10 @@ function LeadPlatformsTab() {
           Use <strong>Facebook Login</strong> to grant access to Pages you manage. We exchange your session for Page tokens
           on the server and store them for Lead Ads / Lead Form sync. In the Meta app, enable <em>Facebook Login</em> and
           add this site URL under <em>Valid OAuth Redirect URIs</em> (e.g. <code className="text-[11px]">http://localhost:5173</code>).
+          Under <em>Facebook Login → Settings</em>, add permissions <code className="text-[10px]">pages_show_list</code>,{' '}
+          <code className="text-[10px]">pages_read_engagement</code>, and <code className="text-[10px]">leads_retrieval</code>
+          (Live mode may require App Review). If sync fails with “pages_read_engagement”, disconnect the Page and connect again using{' '}
+          <em>Edit settings</em> in Meta&apos;s dialog so all three are granted.
         </p>
 
         {fbConfig?.setupHint && (
@@ -557,23 +586,32 @@ function LeadPlatformsTab() {
           p.page_name || '—',
           p.lead_source_name || 'Default',
           masked(p.page_access_token),
-          <div className="flex items-center gap-2">
-            <button
-              key={`s-${p.id}`}
-              onClick={() => syncLeads(p.id)}
-              className="px-2.5 py-1 text-xs font-medium rounded-lg transition-all
-                         bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 hover:bg-brand-100"
-            >
-              Sync Leads
-            </button>
-            <button
-              key={`d-${p.id}`}
-              onClick={() => disconnect(p.id)}
-              className="px-2.5 py-1 text-xs font-medium rounded-lg transition-all
-                         bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100"
-            >
-              Disconnect
-            </button>
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <button
+                key={`s-${p.id}`}
+                onClick={() => syncLeads(p.id)}
+                disabled={saving}
+                className="px-2.5 py-1 text-xs font-medium rounded-lg transition-all disabled:opacity-50
+                           bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 hover:bg-brand-100"
+              >
+                Sync Leads
+              </button>
+              <button
+                key={`d-${p.id}`}
+                onClick={() => disconnect(p.id)}
+                disabled={saving}
+                className="px-2.5 py-1 text-xs font-medium rounded-lg transition-all disabled:opacity-50
+                           bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100"
+              >
+                Disconnect
+              </button>
+            </div>
+            {syncResult.id === p.id && syncResult.msg && (
+              <span className={`text-[10px] ${syncResult.isError ? 'text-red-500' : 'text-green-600 dark:text-green-400'}`}>
+                {syncResult.msg}
+              </span>
+            )}
           </div>,
         ]))}
       />
