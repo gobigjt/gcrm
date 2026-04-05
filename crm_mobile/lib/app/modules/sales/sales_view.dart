@@ -22,8 +22,15 @@ class SalesView extends GetView<SalesController> {
   const SalesView({super.key});
 
   String _emptyLabel() {
-    if (controller.isQuotationsTab) return 'No quotations yet';
-    if (controller.isInvoicesTab) return 'No invoices yet';
+    if (controller.isQuotationsTab) {
+      if (controller.filterCustomerId.value != null) return 'No quotations for this customer yet';
+      return 'No quotations yet';
+    }
+    if (controller.isInvoicesTab) {
+      if (controller.filterCustomerId.value != null) return 'No invoices for this customer yet';
+      return 'No invoices yet';
+    }
+    if (controller.filterCustomerId.value != null) return 'No orders for this customer yet';
     return 'No orders yet';
   }
 
@@ -102,15 +109,29 @@ class SalesView extends GetView<SalesController> {
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
           if (controller.isQuotationsTab) {
-            final r = await Get.toNamed(AppRoutes.quotationForm);
+            final cid = controller.filterCustomerId.value;
+            final r = await Get.toNamed(
+              AppRoutes.quotationForm,
+              arguments: cid != null ? {'initialCustomerId': cid} : null,
+            );
             if (r == true) await controller.load();
             return;
           }
           if (controller.isInvoicesTab) {
-            Get.snackbar('Create', 'Invoice creation is not available in the app yet.');
+            final cid = controller.filterCustomerId.value;
+            final r = await Get.toNamed(
+              AppRoutes.invoiceForm,
+              arguments: cid != null ? {'initialCustomerId': cid} : null,
+            );
+            if (r == true) await controller.load();
             return;
           }
-          Get.snackbar('Create', 'Order creation is not available in the app yet.');
+          final cid = controller.filterCustomerId.value;
+          final r = await Get.toNamed(
+            AppRoutes.orderForm,
+            arguments: cid != null ? {'initialCustomerId': cid} : null,
+          );
+          if (r == true) await controller.load();
         },
         backgroundColor: _SalesChrome.teal,
         child: const Icon(Icons.add, color: Colors.white),
@@ -125,6 +146,37 @@ class SalesView extends GetView<SalesController> {
               onRetry: controller.load,
             ),
           ),
+          Obx(() {
+            final id = controller.filterCustomerId.value;
+            if (id == null) return const SizedBox.shrink();
+            final name = controller.filterCustomerName.value ?? 'Customer #$id';
+            return Material(
+              color: const Color(0xFFE8F5E9),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  children: [
+                    const Icon(Icons.filter_alt_outlined, size: 18, color: Color(0xFF2E7D32)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Sales for $name',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                          color: Color(0xFF1B5E20),
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: controller.clearCustomerFilter,
+                      child: const Text('Show all'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
           Obx(() => controller.loading.value ? const LinearProgressIndicator(minHeight: 2) : const SizedBox.shrink()),
           Expanded(
             child: Obx(() {

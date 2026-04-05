@@ -7,6 +7,8 @@ abstract class AppRoutes {
   static const sales = '/sales';
   /// Full-screen quotation create/edit (named route avoids web Navigator/GlobalKey issues with `Get.to(() => …)`).
   static const quotationForm = '/quotation/form';
+  static const orderForm = '/sales/order/form';
+  static const invoiceForm = '/sales/invoice/form';
   static const inventory = '/inventory';
   /// Deep link / notification target: `/lead/123`
   static const leadDetail = '/lead/:id';

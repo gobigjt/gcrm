@@ -4,148 +4,14 @@ import 'package:get/get.dart';
 import '../../core/utils/ui_format.dart' show pickDateIntoController;
 import '../../shared/widgets/app_error_banner.dart';
 import 'quotation_form_controller.dart';
-
-const Color _accent = Color(0xFF26A69A);
-/// Light-mode app bar only (matches Sales); dark uses [ColorScheme.surfaceContainerHigh].
-const Color _lightAppBarBg = Color(0xFF263238);
-
-Color _quotationAppBarBg(BuildContext context) {
-  final cs = Theme.of(context).colorScheme;
-  return Theme.of(context).brightness == Brightness.dark ? cs.surfaceContainerHigh : _lightAppBarBg;
-}
-
-TextStyle _fieldSectionLabel(BuildContext context) {
-  final cs = Theme.of(context).colorScheme;
-  return TextStyle(
-    fontSize: 13,
-    fontWeight: FontWeight.w700,
-    color: Theme.of(context).brightness == Brightness.dark ? cs.onSurface : const Color(0xFF0F172A),
-  );
-}
-
-TextStyle _lineItemCaption(BuildContext context) {
-  final cs = Theme.of(context).colorScheme;
-  return TextStyle(
-    fontSize: 11,
-    fontWeight: FontWeight.w700,
-    letterSpacing: 0.4,
-    color: Theme.of(context).brightness == Brightness.dark ? cs.onSurfaceVariant : const Color(0xFF334155),
-  );
-}
-
-OutlineInputBorder _quotationFieldBorder(BuildContext context, {bool focused = false}) {
-  final cs = Theme.of(context).colorScheme;
-  final dark = Theme.of(context).brightness == Brightness.dark;
-  final normal = dark ? cs.outlineVariant : const Color(0xFF94A3B8);
-  return OutlineInputBorder(
-    borderRadius: BorderRadius.circular(12),
-    borderSide: BorderSide(color: focused ? _accent : normal, width: focused ? 1.6 : 1),
-  );
-}
-
-/// Outlined field **without** `labelText` — floating labels often disappear on web after theme merge.
-InputDecoration _outlineField(
-  BuildContext context, {
-  String? hintText,
-  Widget? suffixIcon,
-}) {
-  final cs = Theme.of(context).colorScheme;
-  final dark = Theme.of(context).brightness == Brightness.dark;
-  final fill = dark ? cs.surfaceContainer : Colors.white;
-  final hintFg = dark ? cs.onSurfaceVariant.withValues(alpha: 0.92) : const Color(0xFF64748B);
-  return InputDecoration(
-    hintText: hintText,
-    hintStyle: TextStyle(color: hintFg, fontWeight: FontWeight.w500, fontSize: 14),
-    filled: true,
-    fillColor: fill,
-    isDense: true,
-    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-    suffixIcon: suffixIcon,
-    border: _quotationFieldBorder(context),
-    enabledBorder: _quotationFieldBorder(context),
-    focusedBorder: _quotationFieldBorder(context, focused: true),
-  );
-}
-
-InputDecoration _customerDropdownDecoration(BuildContext context, {required Widget hint}) {
-  final cs = Theme.of(context).colorScheme;
-  final dark = Theme.of(context).brightness == Brightness.dark;
-  return InputDecoration(
-    hint: hint,
-    filled: true,
-    fillColor: dark ? cs.surfaceContainer : Colors.white,
-    isDense: true,
-    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-    border: _quotationFieldBorder(context),
-    enabledBorder: _quotationFieldBorder(context),
-    focusedBorder: _quotationFieldBorder(context, focused: true),
-  );
-}
-
-PreferredSizeWidget _quotationAppBar(
-  BuildContext context, {
-  required String title,
-  required bool showSave,
-  required bool isSaving,
-  VoidCallback? onSave,
-}) {
-  final dark = Theme.of(context).brightness == Brightness.dark;
-  final cs = Theme.of(context).colorScheme;
-  final barInk = dark ? cs.onSurface : Colors.white;
-  return AppBar(
-    backgroundColor: _quotationAppBarBg(context),
-    foregroundColor: barInk,
-    surfaceTintColor: Colors.transparent,
-    elevation: 0,
-    scrolledUnderElevation: 0,
-    iconTheme: IconThemeData(color: barInk),
-    actionsIconTheme: IconThemeData(color: barInk),
-    titleTextStyle: TextStyle(color: barInk, fontSize: 18, fontWeight: FontWeight.w600),
-    leading: IconButton(
-      onPressed: () => Get.back(),
-      icon: const Icon(Icons.arrow_back_rounded),
-      color: barInk,
-    ),
-    title: Text(title),
-    actions: [
-      if (showSave)
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-          child: FilledButton(
-            onPressed: isSaving ? null : onSave,
-            style: FilledButton.styleFrom(
-              backgroundColor: dark ? _accent : Colors.white,
-              foregroundColor: dark ? Colors.white : _lightAppBarBg,
-              disabledBackgroundColor: dark ? _accent.withValues(alpha: 0.35) : Colors.white54,
-              disabledForegroundColor: dark ? Colors.white54 : _lightAppBarBg.withValues(alpha: 0.5),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              visualDensity: VisualDensity.compact,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              elevation: 0,
-            ),
-            child: isSaving
-                ? SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      color: dark ? Colors.white : _lightAppBarBg,
-                    ),
-                  )
-                : const Text('Save', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-          ),
-        ),
-    ],
-  );
-}
+import 'sales_document_form_ui.dart';
 
 class QuotationFormView extends StatefulWidget {
-  const QuotationFormView({super.key, this.quotationId, this.copyFromId});
+  const QuotationFormView({super.key, this.quotationId, this.copyFromId, this.initialCustomerId});
 
   final int? quotationId;
   final int? copyFromId;
+  final int? initialCustomerId;
 
   @override
   State<QuotationFormView> createState() => _QuotationFormViewState();
@@ -160,7 +26,11 @@ class _QuotationFormViewState extends State<QuotationFormView> {
     super.initState();
     _tag = 'qf_${identityHashCode(this)}';
     c = Get.put(
-      QuotationFormController(quotationId: widget.quotationId, copyFromId: widget.copyFromId),
+      QuotationFormController(
+        quotationId: widget.quotationId,
+        copyFromId: widget.copyFromId,
+        initialCustomerId: widget.initialCustomerId,
+      ),
       tag: _tag,
     );
   }
@@ -182,7 +52,7 @@ class _QuotationFormViewState extends State<QuotationFormView> {
       if (c.isLoading.value) {
         return Scaffold(
           backgroundColor: pageBg,
-          appBar: _quotationAppBar(context, title: title, showSave: false, isSaving: false, onSave: null),
+          appBar: salesDocAppBar(context, title: title, showSave: false, isSaving: false, onSave: null),
           body: Center(
             child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
           ),
@@ -191,7 +61,7 @@ class _QuotationFormViewState extends State<QuotationFormView> {
 
       return Scaffold(
         backgroundColor: pageBg,
-        appBar: _quotationAppBar(
+        appBar: salesDocAppBar(
           context,
           title: title,
           showSave: true,
@@ -235,7 +105,7 @@ class _QuotationFormViewState extends State<QuotationFormView> {
               );
             }),
             const SizedBox(height: 12),
-            Text('Customer', style: _fieldSectionLabel(context)),
+            Text('Customer', style: salesFieldSectionLabel(context)),
             const SizedBox(height: 6),
             Obx(() {
               final cur = c.selectedCustomerId.value;
@@ -243,7 +113,7 @@ class _QuotationFormViewState extends State<QuotationFormView> {
               final safeVal = cur != null && ids.contains(cur) ? cur : null;
               return DropdownButtonFormField<int>(
                 value: safeVal,
-                decoration: _customerDropdownDecoration(
+                decoration: salesCustomerDropdownDecoration(
                   context,
                   hint: Text(
                     'Choose customer',
@@ -276,13 +146,13 @@ class _QuotationFormViewState extends State<QuotationFormView> {
               );
             }),
             const SizedBox(height: 12),
-            Text('Valid until', style: _fieldSectionLabel(context)),
+            Text('Valid until', style: salesFieldSectionLabel(context)),
             const SizedBox(height: 6),
             TextField(
               controller: c.validUntilCtrl,
               readOnly: true,
               style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15),
-              decoration: _outlineField(
+              decoration: salesOutlineField(
                 context,
                 hintText: 'Tap calendar to pick a date',
                 suffixIcon: IconButton(
@@ -297,18 +167,18 @@ class _QuotationFormViewState extends State<QuotationFormView> {
               ),
             ),
             const SizedBox(height: 12),
-            Text('Notes', style: _fieldSectionLabel(context)),
+            Text('Notes', style: salesFieldSectionLabel(context)),
             const SizedBox(height: 6),
             TextField(
               controller: c.notesCtrl,
               maxLines: 3,
               style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15),
-              decoration: _outlineField(context, hintText: 'Optional notes for this quotation'),
+              decoration: salesOutlineField(context, hintText: 'Optional notes for this quotation'),
             ),
             const SizedBox(height: 20),
             Row(
               children: [
-                Text('Products', style: _fieldSectionLabel(context)),
+                Text('Products', style: salesFieldSectionLabel(context)),
                 const Spacer(),
                 Text(
                   'Unit Price × Qty · Amount (INR)',
@@ -350,12 +220,12 @@ class _QuotationFormViewState extends State<QuotationFormView> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.stretch,
                                   children: [
-                                    Text('Description', style: _lineItemCaption(context)),
+                                    Text('Description', style: salesLineItemCaption(context)),
                                     const SizedBox(height: 4),
                                     TextField(
                                       controller: line.descCtrl,
                                       style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15),
-                                      decoration: _outlineField(context, hintText: 'Product or description'),
+                                      decoration: salesOutlineField(context, hintText: 'Product or description'),
                                       onChanged: (_) => c.lines.refresh(),
                                     ),
                                   ],
@@ -384,13 +254,13 @@ class _QuotationFormViewState extends State<QuotationFormView> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.stretch,
                                   children: [
-                                    Text('Qty', style: _lineItemCaption(context)),
+                                    Text('Qty', style: salesLineItemCaption(context)),
                                     const SizedBox(height: 4),
                                     TextField(
                                       controller: line.qtyCtrl,
                                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                       style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15),
-                                      decoration: _outlineField(context, hintText: '1'),
+                                      decoration: salesOutlineField(context, hintText: '1'),
                                       onChanged: (_) => c.lines.refresh(),
                                     ),
                                   ],
@@ -401,13 +271,13 @@ class _QuotationFormViewState extends State<QuotationFormView> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.stretch,
                                   children: [
-                                    Text('Unit price', style: _lineItemCaption(context)),
+                                    Text('Unit price', style: salesLineItemCaption(context)),
                                     const SizedBox(height: 4),
                                     TextField(
                                       controller: line.unitCtrl,
                                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                       style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15),
-                                      decoration: _outlineField(context, hintText: '0.00'),
+                                      decoration: salesOutlineField(context, hintText: '0.00'),
                                       onChanged: (_) => c.lines.refresh(),
                                     ),
                                   ],
@@ -418,13 +288,13 @@ class _QuotationFormViewState extends State<QuotationFormView> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.stretch,
                                   children: [
-                                    Text('GST %', style: _lineItemCaption(context)),
+                                    Text('GST %', style: salesLineItemCaption(context)),
                                     const SizedBox(height: 4),
                                     TextField(
                                       controller: line.gstCtrl,
                                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                       style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15),
-                                      decoration: _outlineField(context, hintText: '0'),
+                                      decoration: salesOutlineField(context, hintText: '0'),
                                       onChanged: (_) => c.lines.refresh(),
                                     ),
                                   ],
@@ -447,7 +317,7 @@ class _QuotationFormViewState extends State<QuotationFormView> {
             }),
             Center(
               child: Material(
-                color: _accent,
+                color: kSalesAccent,
                 shape: const CircleBorder(),
                 elevation: 2,
                 shadowColor: Colors.black38,
@@ -470,7 +340,7 @@ class _QuotationFormViewState extends State<QuotationFormView> {
               final cs = Theme.of(context).colorScheme;
               final isDark = Theme.of(context).brightness == Brightness.dark;
               return Card(
-                color: isDark ? cs.surfaceContainerHigh : _lightAppBarBg,
+                color: isDark ? cs.surfaceContainerHigh : kSalesLightAppBarBg,
                 elevation: isDark ? 0 : 2,
                 shadowColor: isDark ? Colors.transparent : Colors.black26,
                 shape: RoundedRectangleBorder(
@@ -508,7 +378,7 @@ class _QuotationFormViewState extends State<QuotationFormView> {
                     child: FilledButton(
                       onPressed: c.isSaving.value ? null : c.submit,
                       style: FilledButton.styleFrom(
-                        backgroundColor: _accent,
+                        backgroundColor: kSalesAccent,
                         foregroundColor: Colors.white,
                         disabledBackgroundColor: Theme.of(context).brightness == Brightness.dark
                             ? Colors.grey.shade800
@@ -560,7 +430,7 @@ class _QuotationFormViewState extends State<QuotationFormView> {
               style: TextStyle(
                 fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
                 fontSize: bold ? 16 : 14,
-                color: bold ? _accent : Colors.white.withValues(alpha: 0.95),
+                color: bold ? kSalesAccent : Colors.white.withValues(alpha: 0.95),
               ),
             ),
           ],
@@ -568,7 +438,7 @@ class _QuotationFormViewState extends State<QuotationFormView> {
       );
     }
     final labelColor = bold ? cs.onSurface : cs.onSurfaceVariant;
-    final valueColor = bold ? _accent : cs.onSurface;
+    final valueColor = bold ? kSalesAccent : cs.onSurface;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(

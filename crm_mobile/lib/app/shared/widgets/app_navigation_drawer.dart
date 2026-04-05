@@ -289,6 +289,19 @@ class _DrawerHeader extends StatelessWidget {
                         ],
                       ),
                     ),
+                    IconButton(
+                      onPressed: () {
+                        Get.back();
+                        auth.logout();
+                      },
+                      icon: const Icon(Icons.logout_rounded),
+                      tooltip: 'Sign out',
+                      style: IconButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.all(8),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 16),

@@ -17,6 +17,8 @@ class AuthController extends GetxController {
 
   final email = ''.obs;
   final password = ''.obs;
+  /// Login field: when true, password characters are hidden.
+  final passwordObscured = true.obs;
   final isLoading = false.obs;
   final isBootstrapping = true.obs;
   final isLoggedIn = false.obs;
@@ -54,7 +56,7 @@ class AuthController extends GetxController {
         resolveRoleHome(roleName: role.value, hasPermission: hasPermission),
       );
     } catch (e) {
-      Get.snackbar('Login failed', userFriendlyError(e));
+      Get.snackbar('Login failed', userFriendlyError(e, loginAttempt: true));
     } finally {
       isLoading.value = false;
     }

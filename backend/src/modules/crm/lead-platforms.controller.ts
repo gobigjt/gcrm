@@ -13,6 +13,20 @@ import { LeadPlatformsService } from './lead-platforms.service';
 export class LeadPlatformsController {
   constructor(private readonly svc: LeadPlatformsService) {}
 
+  @Get('facebook/oauth/config')
+  @ApiOperation({ summary: 'Facebook Login SDK config (app id, graph version)' })
+  facebookOauthConfig() {
+    return this.svc.facebookOAuthConfig();
+  }
+
+  @Post('facebook/oauth/list-pages')
+  @ApiOperation({
+    summary: 'List Facebook Pages for a User access token from Facebook Login (returns page access tokens)',
+  })
+  listFacebookPagesForOauth(@Body() body: { user_access_token?: string }) {
+    return this.svc.listFacebookPagesForUserAccessToken(body?.user_access_token ?? '');
+  }
+
   @Get('facebook/pages')
   @ApiOperation({ summary: 'List connected Facebook Pages' })
   listFacebookPages() {

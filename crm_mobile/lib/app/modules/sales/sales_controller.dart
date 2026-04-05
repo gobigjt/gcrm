@@ -15,6 +15,10 @@ class SalesController extends GetxController {
   /// Last known quotation list length (for tab badge when browsing other tabs).
   final quotationListCount = 0.obs;
 
+  /// CRM handoff: show only this customer's quotations (quotes tab).
+  final filterCustomerId = Rxn<int>();
+  final filterCustomerName = RxnString();
+
   bool get isQuotationsTab => tabIndex.value == 0;
   bool get isInvoicesTab => tabIndex.value == 1;
   bool get isOrdersTab => tabIndex.value == 2;
@@ -22,13 +26,30 @@ class SalesController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    _applyInitialTabFromArgs();
+    applyRouteArguments(Get.arguments);
     load();
   }
 
-  void _applyInitialTabFromArgs() {
-    final a = Get.arguments;
-    if (a is! Map) return;
+  /// Call when opening [SalesView] with `Get.arguments` (tab, optional customer filter).
+  void applyRouteArguments(dynamic a) {
+    if (a is! Map) {
+      filterCustomerId.value = null;
+      filterCustomerName.value = null;
+      return;
+    }
+    final cidRaw = a['filterCustomerId'] ?? a['customerId'];
+    if (cidRaw != null) {
+      final cid = cidRaw is num ? cidRaw.toInt() : int.tryParse(cidRaw.toString());
+      if (cid != null && cid > 0) {
+        filterCustomerId.value = cid;
+        final n = a['filterCustomerName']?.toString().trim();
+        filterCustomerName.value = (n != null && n.isNotEmpty) ? n : null;
+        tabIndex.value = 0;
+        return;
+      }
+    }
+    filterCustomerId.value = null;
+    filterCustomerName.value = null;
     final t = a['initialTab'];
     if (t == 2 || t == 'orders') {
       tabIndex.value = 2;
@@ -41,6 +62,12 @@ class SalesController extends GetxController {
     if (t == 0 || t == 'quotes' || t == 'quotations') {
       tabIndex.value = 0;
     }
+  }
+
+  void clearCustomerFilter() {
+    filterCustomerId.value = null;
+    filterCustomerName.value = null;
+    load();
   }
 
   void selectTab(int i) {
@@ -66,7 +93,11 @@ class SalesController extends GetxController {
     errorMessage.value = null;
     try {
       final res = await _auth.authorizedRequest(method: 'GET', path: _listPath);
-      final list = _asMapList(res);
+      var list = _asMapList(res);
+      final fc = filterCustomerId.value;
+      if (fc != null) {
+        list = list.where((r) => (r['customer_id'] as num?)?.toInt() == fc).toList();
+      }
       rows.assignAll(list);
       if (tabIndex.value == 0) {
         quotationListCount.value = list.length;

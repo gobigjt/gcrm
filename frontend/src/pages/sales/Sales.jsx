@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useLocation } from 'react-router-dom';
 import api from '../../api/client';
 import { SALES_FROM_LEAD_PARAM } from '../../utils/salesFromLeadUrl';
 import Modal from '../../components/Modal';
@@ -613,8 +613,8 @@ function leadBannerTitle(lead) {
 }
 
 export default function Sales() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
+  const location = useLocation();
+  const [, setSearchParams] = useSearchParams();
   const [tab,       setTab]       = useState('Quotes');
   const [data,      setData]      = useState([]);
   const [stats,     setStats]     = useState(null);
@@ -642,33 +642,43 @@ export default function Sales() {
     loadStats();
   }, []);
 
+  // Use `location.search` (string) in deps — `searchParams` from RR7 changes identity often and can cause
+  // infinite setSearchParams loops → blank page / "Maximum update depth exceeded".
   useEffect(() => {
-    if (searchParams.get('tab')) return;
-    const next = new URLSearchParams(searchParams);
-    next.set('tab', 'quotes');
-    setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams]);
+    const sp = new URLSearchParams(location.search);
+    const t = sp.get('tab');
+    if (t != null && t !== '') return;
+    sp.set('tab', 'quotes');
+    setSearchParams(sp, { replace: true });
+  }, [location.search, setSearchParams]);
 
   useEffect(() => {
-    const raw = (searchParams.get('tab') || '').toLowerCase().replace(/[\s_-]+/g, '');
+    const sp = new URLSearchParams(location.search);
+    const raw = (sp.get('tab') || '').toLowerCase().replace(/[\s_-]+/g, '');
     const mapped = SALES_TAB_BY_PARAM[raw];
     if (mapped) setTab(mapped);
-    else if (!searchParams.get('tab')) setTab('Quotes');
-  }, [searchParams]);
+    else if (!sp.get('tab') || sp.get('tab') === '') setTab('Quotes');
+  }, [location.search]);
 
   const syncTabToUrl = useCallback(
     (nextTab) => {
       const key = TAB_TO_QUERY[nextTab];
       if (!key) return;
-      const sp = new URLSearchParams(searchParams);
-      sp.set('tab', key);
-      setSearchParams(sp, { replace: true });
+      setSearchParams(
+        (prev) => {
+          const sp = new URLSearchParams(prev);
+          sp.set('tab', key);
+          return sp;
+        },
+        { replace: true },
+      );
     },
-    [searchParams, setSearchParams],
+    [setSearchParams],
   );
 
   useEffect(() => {
-    const id = searchParams.get(SALES_FROM_LEAD_PARAM);
+    const sp = new URLSearchParams(location.search);
+    const id = sp.get(SALES_FROM_LEAD_PARAM);
     if (!id || !/^\d+$/.test(id)) {
       setBannerLead(null);
       return;
@@ -680,17 +690,21 @@ export default function Sales() {
         setBannerLead(lead?.id ? lead : null);
       })
       .catch(() => setBannerLead(null));
-  }, [searchParams]);
+  }, [location.search]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
   const clearFromLead = useCallback(() => {
-    const sp = new URLSearchParams(searchParams);
-    sp.delete(SALES_FROM_LEAD_PARAM);
-    const q = sp.toString();
-    navigate({ pathname: '/sales', search: q ? `?${q}` : '' }, { replace: true });
+    setSearchParams(
+      (prev) => {
+        const sp = new URLSearchParams(prev);
+        sp.delete(SALES_FROM_LEAD_PARAM);
+        return sp;
+      },
+      { replace: true },
+    );
     setBannerLead(null);
-  }, [navigate, searchParams]);
+  }, [setSearchParams]);
 
   const customerLinkedToBanner = bannerLead
     ? customers.find((c) => String(c.lead_id) === String(bannerLead.id))
