@@ -107,6 +107,23 @@ export class LeadPlatformsService {
     const pageName = dto.page_name?.trim() || null;
     const accessToken = dto.page_access_token?.trim() || null;
 
+    if (accessToken) {
+      const dbg = await this.debugFacebookAccessToken(accessToken);
+      if (dbg && !dbg.isValid) {
+        throw new BadRequestException(
+          'Facebook reports this access token is invalid or expired. Use "Continue with Facebook" or create a new Page access token for this Page.',
+        );
+      }
+      if (dbg?.isValid) {
+        const ty = dbg.type?.toUpperCase();
+        if (ty && ty !== 'PAGE') {
+          throw new BadRequestException(
+            `The token is not a Page access token (Meta reports type: ${ty}). Use "Continue with Facebook" in Settings, or paste only a Page token for this Page—not a User token.`,
+          );
+        }
+      }
+    }
+
     let leadSourceId = dto.lead_source_id ?? null;
     if (leadSourceId == null) {
       leadSourceId = await this.defaultLeadSourceId();
@@ -231,6 +248,17 @@ export class LeadPlatformsService {
           `If the app is Live, these permissions may require App Review. Raw: ${body}`
         );
       }
+      if (
+        code === 190 &&
+        typeof msg === 'string' &&
+        msg.toLowerCase().includes('page access token')
+      ) {
+        return (
+          `Facebook Graph API error (${status}): This connection is not using a Page access token (often a User token ` +
+            `was saved by mistake). Disconnect this Page in Settings, then use "Continue with Facebook" and select the Page ` +
+            `so we store Meta's Page token. Do not paste a User access token from Graph API Explorer into the manual field. Raw: ${body}`
+        );
+      }
     } catch (_) {
       /* fall through */
     }
@@ -283,10 +311,28 @@ export class LeadPlatformsService {
   }
 
   /**
-   * Leadgen forms/leads require these on the Page access token (see Graph error #100 otherwise).
+   * Leadgen endpoints require a valid Page access token with lead scopes (errors #190 / #100 otherwise).
    */
-  private assertPageTokenScopesForLeadSync(debug: { isValid: boolean; scopes: string[] } | null) {
-    if (!debug?.isValid || !debug.scopes.length) return;
+  private assertFacebookTokenForLeadSync(
+    debug: { isValid: boolean; scopes: string[]; type?: string } | null,
+  ) {
+    if (!debug) return;
+
+    if (!debug.isValid) {
+      throw new BadRequestException(
+        'This Facebook connection token is expired or no longer valid. Disconnect the Page in Settings and use "Continue with Facebook" to reconnect.',
+      );
+    }
+
+    const ty = debug.type?.toUpperCase();
+    if (ty && ty !== 'PAGE') {
+      throw new BadRequestException(
+        `Lead sync requires a Page access token, but this connection has a ${ty} token (common if a User token was pasted manually). ` +
+          `Disconnect the Page, then use "Continue with Facebook" and choose your Page—do not use a User access token from Graph API Explorer.`,
+      );
+    }
+
+    if (!debug.scopes.length) return;
     const required = ['pages_read_engagement', 'leads_retrieval'];
     const missing = required.filter((s) => !debug.scopes.includes(s.toLowerCase()));
     if (!missing.length) return;
@@ -410,7 +456,7 @@ export class LeadPlatformsService {
     if (!pageId) throw new BadRequestException('Facebook page_id is missing');
 
     const tokenDebug = await this.debugFacebookAccessToken(accessToken);
-    this.assertPageTokenScopesForLeadSync(tokenDebug);
+    this.assertFacebookTokenForLeadSync(tokenDebug);
 
     const stageId = await this.leadStageIdOrDefault();
     const srcId = leadSourceId ?? (await this.defaultLeadSourceId());
