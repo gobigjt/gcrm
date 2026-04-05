@@ -3,7 +3,9 @@ import 'package:get/get.dart';
 
 import '../../core/models/notification_item.dart';
 import '../../core/navigation/notification_navigation.dart';
+import '../../routes/app_routes.dart';
 import '../../shared/widgets/app_error_banner.dart';
+import '../../shared/widgets/app_navigation_drawer.dart';
 import '../../showcase/showcase_widgets.dart';
 import 'notifications_controller.dart';
 
@@ -28,6 +30,7 @@ class NotificationsView extends GetView<NotificationsController> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: const AppNavigationDrawer(currentRoute: AppRoutes.notifications),
       appBar: AppBar(
         title: const Text('Notifications'),
         actions: [

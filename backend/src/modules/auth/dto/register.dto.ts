@@ -16,30 +16,10 @@ export class RegisterDto {
   password: string;
 
   @ApiPropertyOptional({
-    enum: [
-      'Super Admin',
-      'Admin',
-      'Manager',
-      'Sales Manager',
-      'Agent',
-      'Sales Executive',
-      'Accountant',
-      'Inventory',
-      'HR',
-    ],
-    default: 'Agent',
+    enum: ['Super Admin', 'Admin', 'Sales Executive', 'HR'],
+    default: 'Sales Executive',
   })
   @IsOptional()
-  @IsIn([
-    'Super Admin',
-    'Admin',
-    'Manager',
-    'Sales Manager',
-    'Agent',
-    'Sales Executive',
-    'Accountant',
-    'Inventory',
-    'HR',
-  ])
+  @IsIn(['Super Admin', 'Admin', 'Sales Executive', 'HR'])
   role?: string;
 }

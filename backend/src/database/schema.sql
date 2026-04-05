@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
   name       VARCHAR(150) NOT NULL,
   email      VARCHAR(255) UNIQUE NOT NULL,
   password   TEXT NOT NULL,
-  role       VARCHAR(50) NOT NULL DEFAULT 'Agent',
+  role       VARCHAR(50) NOT NULL DEFAULT 'Sales Executive',
   is_active  BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -58,15 +58,10 @@ DELETE FROM permissions;
 
 -- ── Seed: roles ─────────────────────────────────────────────
 INSERT INTO roles (name, description, is_system) VALUES
-  ('Admin',           'Full system access',                        TRUE),
-  ('Super Admin',     'Platform operator (multi-tenant SaaS)',     TRUE),
-  ('Manager',         'Manage teams and operations',               TRUE),
-  ('Sales Manager',   'Team pipeline & ops (same as Manager)',     TRUE),
-  ('Agent',           'Sales and CRM access',                        TRUE),
-  ('Sales Executive', 'Field sales & CRM (same as Agent)',         TRUE),
-  ('Accountant',      'Finance and billing access',                TRUE),
-  ('Inventory',       'Stock, warehouse & purchase ops',           TRUE),
-  ('HR',              'Human resources access',                      TRUE)
+  ('Super Admin',     'Platform operator (multi-tenant SaaS)', TRUE),
+  ('Admin',           'Company admin (CRM, HR, users, settings)', TRUE),
+  ('Sales Executive', 'Field sales & CRM', TRUE),
+  ('HR',              'Human resources access', TRUE)
 ON CONFLICT (name) DO NOTHING;
 
 -- ── Seed: permissions ───────────────────────────────────────
@@ -175,77 +170,50 @@ ON CONFLICT (module, action) DO NOTHING;
 
 -- ── Seed: role_permissions ──────────────────────────────────
 
--- Admin → all permissions
+-- Super Admin → all permissions
 INSERT INTO role_permissions (role_id, permission_id)
-  SELECT r.id, p.id FROM roles r, permissions p WHERE r.name = 'Admin'
+  SELECT r.id, p.id FROM roles r CROSS JOIN permissions p WHERE r.name = 'Super Admin'
 ON CONFLICT DO NOTHING;
 
--- Manager → all operational modules, all actions except delete_all
+-- Admin → CRM, sales, inventory, HR, settings, users
+INSERT INTO role_permissions (role_id, permission_id)
+  SELECT r.id, p.id FROM roles r
+  JOIN permissions p ON p.module IN ('crm','sales','inventory','hr','settings','users')
+  WHERE r.name = 'Admin'
+ON CONFLICT DO NOTHING;
+
+-- Sales Executive → CRM + sales + inventory (read-only)
 INSERT INTO role_permissions (role_id, permission_id)
   SELECT r.id, p.id FROM roles r
   JOIN permissions p
-    ON p.module IN ('crm','sales','purchase','inventory','production','hr','communication')
-   AND p.action IN ('view','view_all','create','create_all','edit','edit_all','delete')
-  WHERE r.name = 'Manager'
+    ON p.module = 'crm'
+   AND p.action IN ('view','view_all','create','edit','delete')
+  WHERE r.name = 'Sales Executive'
 ON CONFLICT DO NOTHING;
 
--- Sales Manager → same as Manager
-INSERT INTO role_permissions (role_id, permission_id)
-  SELECT r_new.id, rp.permission_id
-  FROM roles r_old
-  JOIN role_permissions rp ON rp.role_id = r_old.id
-  JOIN roles r_new ON r_new.name = 'Sales Manager'
-  WHERE r_old.name = 'Manager'
-ON CONFLICT DO NOTHING;
-
--- Agent → crm + sales: view own/all, create, edit own only
 INSERT INTO role_permissions (role_id, permission_id)
   SELECT r.id, p.id FROM roles r
   JOIN permissions p
-    ON p.module IN ('crm','sales')
-   AND p.action IN ('view','view_all','create','edit')
-  WHERE r.name = 'Agent'
+    ON p.module = 'sales'
+   AND p.action IN ('view','view_all','create','edit','delete')
+  WHERE r.name = 'Sales Executive'
 ON CONFLICT DO NOTHING;
 
--- Sales Executive → same as Agent
-INSERT INTO role_permissions (role_id, permission_id)
-  SELECT r_new.id, rp.permission_id
-  FROM roles r_old
-  JOIN role_permissions rp ON rp.role_id = r_old.id
-  JOIN roles r_new ON r_new.name = 'Sales Executive'
-  WHERE r_old.name = 'Agent'
-ON CONFLICT DO NOTHING;
-
--- Accountant → finance + sales + purchase: view all, create, edit own
 INSERT INTO role_permissions (role_id, permission_id)
   SELECT r.id, p.id FROM roles r
   JOIN permissions p
-    ON p.module IN ('finance','sales','purchase')
-   AND p.action IN ('view','view_all','create','edit')
-  WHERE r.name = 'Accountant'
+    ON p.module = 'inventory'
+   AND p.action IN ('view','view_all')
+  WHERE r.name = 'Sales Executive'
 ON CONFLICT DO NOTHING;
 
--- HR → hr + communication: view all, create, edit own/all
+-- HR → HR only
 INSERT INTO role_permissions (role_id, permission_id)
   SELECT r.id, p.id FROM roles r
   JOIN permissions p
-    ON p.module IN ('hr','communication')
+    ON p.module = 'hr'
    AND p.action IN ('view','view_all','create','edit','edit_all')
   WHERE r.name = 'HR'
-ON CONFLICT DO NOTHING;
-
--- Super Admin → same breadth as Admin (platform UI in mobile uses role name)
-INSERT INTO role_permissions (role_id, permission_id)
-  SELECT r.id, p.id FROM roles r, permissions p WHERE r.name = 'Super Admin'
-ON CONFLICT DO NOTHING;
-
--- Inventory → stock + purchasing operations
-INSERT INTO role_permissions (role_id, permission_id)
-  SELECT r.id, p.id FROM roles r
-  JOIN permissions p
-    ON p.module IN ('inventory','purchase')
-   AND p.action IN ('view','view_all','create','create_all','edit','edit_all','delete')
-  WHERE r.name = 'Inventory'
 ON CONFLICT DO NOTHING;
 
 -- ============================================================
@@ -289,6 +257,15 @@ CREATE TABLE IF NOT EXISTS leads (
   assigned_to     INTEGER REFERENCES users(id) ON DELETE SET NULL,
   custom_fields   JSONB,
   notes           TEXT,
+  priority        VARCHAR(10) NOT NULL DEFAULT 'warm'
+                    CHECK (priority IN ('hot','warm','cold')),
+  lead_score      NUMERIC(6,2) NOT NULL DEFAULT 0,
+  lead_segment    VARCHAR(10),
+  job_title       VARCHAR(150),
+  deal_size       NUMERIC(15,2),
+  website         VARCHAR(500),
+  address         TEXT,
+  tags            TEXT[] NOT NULL DEFAULT '{}',
   is_converted    BOOLEAN NOT NULL DEFAULT FALSE,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()

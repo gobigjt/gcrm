@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/models/dashboard_stats.dart';
@@ -7,6 +8,8 @@ import '../auth/auth_controller.dart';
 
 class DashboardController extends GetxController {
   final AuthController _auth = Get.find<AuthController>();
+
+  final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
 
   final isLoading = false.obs;
   final openLeads = 0.obs;

@@ -9,9 +9,20 @@ class CrmLead {
     required this.leadScore,
     required this.createdAt,
     required this.phone,
+    this.email = '',
+    this.assignedName = '',
+    this.leadSegment = '',
+    this.jobTitle = '',
+    this.dealSize,
+    this.website = '',
+    this.address = '',
+    this.tags = const [],
+    this.notes = '',
+    this.sourceId,
+    this.stageId,
+    this.assignedTo,
   });
 
-  /// Shown when detail has not loaded yet (same defaults as [fromJson]).
   static final CrmLead placeholder = CrmLead(
     id: 0,
     name: 'Lead',
@@ -22,6 +33,9 @@ class CrmLead {
     leadScore: 0,
     createdAt: DateTime(2000, 1, 1),
     phone: '',
+    sourceId: null,
+    stageId: null,
+    assignedTo: null,
   );
 
   final int id;
@@ -30,21 +44,79 @@ class CrmLead {
   final String stage;
   final String source;
   final String priority;
-  final int leadScore;
+  final double leadScore;
   final DateTime createdAt;
   final String phone;
+  final String email;
+  final String assignedName;
+  final String leadSegment;
+  final String jobTitle;
+  final double? dealSize;
+  final String website;
+  final String address;
+  final List<String> tags;
+  final String notes;
+  final int? sourceId;
+  final int? stageId;
+  final int? assignedTo;
+
+  /// Primary line for list cards (name, else phone).
+  String get displayTitle {
+    final n = name.trim();
+    if (n.isNotEmpty) return n;
+    final p = phone.trim();
+    if (p.isNotEmpty) return p;
+    return company.trim().isNotEmpty ? company.trim() : 'Lead #$id';
+  }
+
+  /// Secondary line (company or email).
+  String get displaySubtitle {
+    if (company.trim().isNotEmpty && name.trim().isNotEmpty) return company.trim();
+    if (email.trim().isNotEmpty) return email.trim();
+    return source;
+  }
+
+  static double _score(dynamic v) {
+    if (v == null) return 0;
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString()) ?? 0;
+  }
+
+  static List<String> _tags(dynamic v) {
+    if (v is List) return v.map((e) => e.toString()).where((s) => s.isNotEmpty).toList();
+    return [];
+  }
+
+  static int? _nullableId(dynamic v) {
+    if (v == null) return null;
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse(v.toString());
+  }
 
   factory CrmLead.fromJson(Map<String, dynamic> json) {
     return CrmLead(
       id: (json['id'] as num? ?? 0).toInt(),
       name: (json['name'] ?? 'Lead').toString(),
-      company: (json['company'] ?? 'No company').toString(),
+      company: (json['company'] ?? '').toString(),
       stage: (json['stage'] ?? 'Unassigned').toString(),
       source: (json['source'] ?? 'Unknown').toString(),
       priority: (json['priority'] ?? 'warm').toString(),
-      leadScore: (json['lead_score'] as num? ?? 0).toInt(),
+      leadScore: _score(json['lead_score']),
       createdAt: DateTime.tryParse((json['created_at'] ?? '').toString()) ?? DateTime(2000, 1, 1),
       phone: (json['phone'] ?? '').toString(),
+      email: (json['email'] ?? '').toString(),
+      assignedName: (json['assigned_name'] ?? '').toString(),
+      leadSegment: (json['lead_segment'] ?? '').toString(),
+      jobTitle: (json['job_title'] ?? '').toString(),
+      dealSize: json['deal_size'] != null ? _score(json['deal_size']) : null,
+      website: (json['website'] ?? '').toString(),
+      address: (json['address'] ?? '').toString(),
+      tags: _tags(json['tags']),
+      notes: (json['notes'] ?? '').toString(),
+      sourceId: _nullableId(json['source_id']),
+      stageId: _nullableId(json['stage_id']),
+      assignedTo: _nullableId(json['assigned_to']),
     );
   }
 }
@@ -119,7 +191,7 @@ class CrmLookupItem {
 
   factory CrmLookupItem.fromJson(Map<String, dynamic> json) {
     return CrmLookupItem(
-      id: (json['id'] as num? ?? 0).toInt(),
+      id: (json['id'] as num).toInt(),
       name: (json['name'] ?? '').toString(),
     );
   }

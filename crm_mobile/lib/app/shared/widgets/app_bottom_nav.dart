@@ -20,7 +20,7 @@ class AppBottomNav extends StatelessWidget {
         Get.offNamed(AppRoutes.tasks);
         break;
       case 3:
-        Get.offNamed(AppRoutes.communication);
+        Get.offNamed(AppRoutes.sales);
         break;
       case 4:
         Get.offNamed(AppRoutes.settings);
@@ -30,7 +30,7 @@ class AppBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final items = const ['Home', 'Leads', 'Tasks', 'Chat', 'Me'];
+    final items = const ['Home', 'Leads', 'Sales', 'Stock', 'Me'];
     return SafeArea(
       top: false,
       child: Container(

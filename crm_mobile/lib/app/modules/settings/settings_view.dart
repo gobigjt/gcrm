@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import '../../core/models/settings_models.dart';
 import '../../core/utils/ui_format.dart';
 import '../../shared/widgets/app_error_banner.dart';
+import '../../shared/widgets/app_navigation_drawer.dart';
 import '../../routes/app_routes.dart';
 import '../../shared/widgets/role_aware_bottom_nav.dart';
 import 'settings_controller.dart';
@@ -14,6 +15,7 @@ class SettingsView extends GetView<SettingsController> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: const AppNavigationDrawer(currentRoute: AppRoutes.settings),
       appBar: AppBar(
         title: const Text('Settings'),
         actions: [
@@ -71,16 +73,6 @@ class SettingsView extends GetView<SettingsController> {
                 subtitle: const Text('Account & preferences'),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => Get.toNamed(AppRoutes.profile),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.card_membership_rounded),
-                title: const Text('Subscription'),
-                subtitle: const Text('Plan & billing (showcase)'),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => Get.toNamed(AppRoutes.subscription),
               ),
             ),
             const SizedBox(height: 12),

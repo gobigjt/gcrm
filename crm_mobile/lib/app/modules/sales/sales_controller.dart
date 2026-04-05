@@ -1,99 +1,151 @@
 import 'package:get/get.dart';
 
-import '../../core/models/sales_models.dart';
-import '../../core/network/error_utils.dart';
+import '../../core/utils/ui_format.dart';
 import '../auth/auth_controller.dart';
 
 class SalesController extends GetxController {
   final AuthController _auth = Get.find<AuthController>();
 
-  final errorMessage = ''.obs;
-  final isLoading = false.obs;
-  final isSubmitting = false.obs;
-  final selectedTab = 0.obs;
-  final search = ''.obs;
+  /// 0 = quotations, 1 = invoices, 2 = orders
+  final tabIndex = 0.obs;
+  final rows = <Map<String, dynamic>>[].obs;
+  final loading = false.obs;
+  final errorMessage = RxnString();
 
-  final customers = <SalesCustomer>[].obs;
-  final quotations = <SalesQuotation>[].obs;
-  final orders = <SalesOrderRow>[].obs;
+  /// Last known quotation list length (for tab badge when browsing other tabs).
+  final quotationListCount = 0.obs;
+
+  bool get isQuotationsTab => tabIndex.value == 0;
+  bool get isInvoicesTab => tabIndex.value == 1;
+  bool get isOrdersTab => tabIndex.value == 2;
 
   @override
   void onInit() {
     super.onInit();
-    loadAll();
+    _applyInitialTabFromArgs();
+    load();
   }
 
-  Future<void> loadAll() async {
-    isLoading.value = true;
-    errorMessage.value = '';
+  void _applyInitialTabFromArgs() {
+    final a = Get.arguments;
+    if (a is! Map) return;
+    final t = a['initialTab'];
+    if (t == 2 || t == 'orders') {
+      tabIndex.value = 2;
+      return;
+    }
+    if (t == 1 || t == 'invoices') {
+      tabIndex.value = 1;
+      return;
+    }
+    if (t == 0 || t == 'quotes' || t == 'quotations') {
+      tabIndex.value = 0;
+    }
+  }
+
+  void selectTab(int i) {
+    if (i < 0 || i > 2) return;
+    tabIndex.value = i;
+    load();
+  }
+
+  String get _listPath {
+    switch (tabIndex.value) {
+      case 1:
+        return '/sales/invoices';
+      case 2:
+        return '/sales/orders';
+      case 0:
+      default:
+        return '/sales/quotations';
+    }
+  }
+
+  Future<void> load() async {
+    loading.value = true;
+    errorMessage.value = null;
     try {
-      await Future.wait([loadCustomers(), loadQuotations(), loadOrders()]);
+      final res = await _auth.authorizedRequest(method: 'GET', path: _listPath);
+      final list = _asMapList(res);
+      rows.assignAll(list);
+      if (tabIndex.value == 0) {
+        quotationListCount.value = list.length;
+      }
+    } catch (e) {
+      errorMessage.value = e.toString();
+      rows.clear();
     } finally {
-      isLoading.value = false;
+      loading.value = false;
     }
   }
 
-  Future<void> loadCustomers() async {
-    errorMessage.value = '';
-    try {
-      final q = search.value.trim();
-      final path = q.isEmpty ? '/sales/customers' : '/sales/customers?search=$q';
-      final res = await _auth.authorizedRequest(method: 'GET', path: path);
-      customers.assignAll(
-        (res as List).map((e) => SalesCustomer.fromJson(Map<String, dynamic>.from(e as Map))),
-      );
-    } catch (e) {
-      errorMessage.value = userFriendlyError(e);
+  static List<Map<String, dynamic>> _asMapList(dynamic res) {
+    if (res is List) {
+      return res.map((e) => Map<String, dynamic>.from(e as Map)).toList();
     }
+    if (res is Map) {
+      if (res['data'] is List) {
+        return (res['data'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      }
+      for (final key in ['quotations', 'invoices', 'orders']) {
+        if (res[key] is List) {
+          return (res[key] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        }
+      }
+    }
+    return [];
   }
 
-  Future<void> loadQuotations() async {
-    errorMessage.value = '';
-    try {
-      final res = await _auth.authorizedRequest(method: 'GET', path: '/sales/quotations');
-      quotations.assignAll(
-        (res as List).map((e) => SalesQuotation.fromJson(Map<String, dynamic>.from(e as Map))),
-      );
-    } catch (e) {
-      errorMessage.value = userFriendlyError(e);
+  String documentLabel(Map<String, dynamic> r) {
+    final customer = (r['customer_name'] ?? '—').toString();
+    if (r.containsKey('quotation_number')) {
+      final n = (r['quotation_number'] ?? r['id']).toString();
+      return 'Quotation #$n for M/s.$customer';
     }
+    if (r.containsKey('invoice_number')) {
+      final n = (r['invoice_number'] ?? r['id']).toString();
+      return 'Invoice #$n for M/s.$customer';
+    }
+    if (r.containsKey('order_number')) {
+      final n = (r['order_number'] ?? r['id']).toString();
+      return 'Order #$n for M/s.$customer';
+    }
+    final num = (r['id'] ?? '—').toString();
+    return 'Document #$num for M/s.$customer';
   }
 
-  Future<void> loadOrders() async {
-    errorMessage.value = '';
-    try {
-      final res = await _auth.authorizedRequest(method: 'GET', path: '/sales/orders');
-      orders.assignAll(
-        (res as List).map((e) => SalesOrderRow.fromJson(Map<String, dynamic>.from(e as Map))),
-      );
-    } catch (e) {
-      errorMessage.value = userFriendlyError(e);
+  String? _dateField(Map<String, dynamic> r) {
+    if (r.containsKey('quotation_number')) {
+      return (r['valid_until'] ?? r['created_at'])?.toString();
     }
+    if (r.containsKey('invoice_number')) {
+      return (r['invoice_date'] ?? r['created_at'])?.toString();
+    }
+    if (r.containsKey('order_number')) {
+      return (r['order_date'] ?? r['created_at'])?.toString();
+    }
+    return r['created_at']?.toString();
   }
 
-  Future<void> createCustomer({
-    required String name,
-    String? email,
-    String? phone,
-    String? gstin,
-    String? address,
-  }) async {
-    isSubmitting.value = true;
-    try {
-      await _auth.authorizedRequest(
-        method: 'POST',
-        path: '/sales/customers',
-        body: {
-          'name': name,
-          'email': (email ?? '').trim().isEmpty ? null : email!.trim(),
-          'phone': (phone ?? '').trim().isEmpty ? null : phone!.trim(),
-          'gstin': (gstin ?? '').trim().isEmpty ? null : gstin!.trim(),
-          'address': (address ?? '').trim().isEmpty ? null : address!.trim(),
-        },
-      );
-      await loadCustomers();
-    } finally {
-      isSubmitting.value = false;
-    }
+  String displayDate(Map<String, dynamic> r) {
+    final raw = _dateField(r);
+    if (raw == null || raw.isEmpty) return '—';
+    return formatSalesCardDate(raw);
+  }
+
+  Future<void> deleteRowAt(int index) async {
+    if (index < 0 || index >= rows.length) return;
+    final r = rows[index];
+    final id = r['id'];
+    if (id == null) return;
+    final path = switch (tabIndex.value) {
+      0 => '/sales/quotations/$id',
+      1 => '/sales/invoices/$id',
+      2 => '/sales/orders/$id',
+      _ => null,
+    };
+    if (path == null) return;
+    await _auth.authorizedRequest(method: 'DELETE', path: path);
+    await load();
   }
 }

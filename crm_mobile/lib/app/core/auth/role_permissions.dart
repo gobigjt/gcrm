@@ -1,13 +1,8 @@
-/// Backend `roles.name` values (see backend/src/database/schema.sql).
+/// Backend `roles.name` values (four roles only; see schema.sql / migration 020).
 class AppRoles {
   static const admin = 'Admin';
   static const superAdmin = 'Super Admin';
-  static const manager = 'Manager';
-  static const salesManager = 'Sales Manager';
-  static const agent = 'Agent';
   static const salesExecutive = 'Sales Executive';
-  static const accountant = 'Accountant';
-  static const inventory = 'Inventory';
   static const hr = 'HR';
 }
 
@@ -18,7 +13,6 @@ class AppPermissions {
   static const purchase = 'screen.purchase';
   static const inventory = 'screen.inventory';
   static const production = 'screen.production';
-  static const communication = 'screen.communication';
   static const finance = 'screen.finance';
   static const hr = 'screen.hr';
   static const settings = 'screen.settings';

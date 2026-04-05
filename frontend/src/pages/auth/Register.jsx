@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import api from '../../api/client';
 import { useTheme } from '../../context/ThemeContext';
 
-const ROLES = ['Super Admin','Admin','Manager','Agent','Accountant','HR'];
+const ROLES = ['Super Admin', 'Admin', 'Sales Executive', 'HR'];
 
 const fieldCls =
   'w-full px-4 py-3 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-xl ' +
@@ -14,7 +14,7 @@ const fieldCls =
 export default function Register() {
   const navigate = useNavigate();
   const { dark, toggle } = useTheme();
-  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'Agent' });
+  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'Sales Executive' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 

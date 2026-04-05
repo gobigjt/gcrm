@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import api from '../../api/client';
+import { SALES_FROM_LEAD_PARAM } from '../../utils/salesFromLeadUrl';
 import Modal from '../../components/Modal';
 import Tabs  from '../../components/Tabs';
 import { Field, inputCls, selectCls, FormActions } from '../../components/FormField';
@@ -162,22 +163,46 @@ function LineItems({ items, onChange, products, interstate = false }) {
 
 // ─── Customer Modal ───────────────────────────────────────────
 
-function CustomerModal({ customer, onClose, onSaved }) {
-  const [form, setForm] = useState(customer || { name:'', email:'', phone:'', gstin:'', address:'' });
+function customerFormFromLead(lead) {
+  const name = ((lead.company || lead.name || '') + '').trim() || 'Lead contact';
+  return {
+    name,
+    email: lead.email || '',
+    phone: lead.phone || '',
+    gstin: '',
+    address: (lead.address || '').trim(),
+  };
+}
+
+function CustomerModal({ customer, crmLeadPrefill, onClose, onSaved }) {
+  const [form, setForm] = useState(() => {
+    if (customer) {
+      return { name: customer.name, email: customer.email || '', phone: customer.phone || '', gstin: customer.gstin || '', address: customer.address || '' };
+    }
+    if (crmLeadPrefill) return customerFormFromLead(crmLeadPrefill);
+    return { name:'', email:'', phone:'', gstin:'', address:'' };
+  });
   const [loading, setLoading] = useState(false);
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
   const handleSubmit = async (e) => {
     e.preventDefault(); setLoading(true);
     try {
-      customer ? await api.patch(`/sales/customers/${customer.id}`, form)
-                : await api.post('/sales/customers', form);
+      if (customer) {
+        await api.patch(`/sales/customers/${customer.id}`, form);
+      } else {
+        const body = { ...form };
+        if (crmLeadPrefill?.id) body.lead_id = crmLeadPrefill.id;
+        await api.post('/sales/customers', body);
+      }
       onSaved();
     } finally { setLoading(false); }
   };
 
+  const title = customer ? 'Edit Customer' : crmLeadPrefill ? 'New Customer (from CRM lead)' : 'New Customer';
+
   return (
-    <Modal title={customer ? 'Edit Customer' : 'New Customer'} onClose={onClose}>
+    <Modal title={title} onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-3">
         <Field label="Name *"><input className={inputCls} value={form.name} onChange={set('name')} required /></Field>
         <div className="grid grid-cols-2 gap-3">
@@ -194,23 +219,65 @@ function CustomerModal({ customer, onClose, onSaved }) {
 
 // ─── Document Modal (Quotation / Order / Invoice) ─────────────
 
-function DocumentModal({ type, customers, products, onClose, onSaved }) {
+function DocumentModal({ type, customers, products, initialCustomerId = '', existingId = null, onClose, onSaved }) {
   const isQuote   = type === 'quotation';
   const isOrder   = type === 'order';
   const isInvoice = type === 'invoice';
+  const isEditQuote = Boolean(isQuote && existingId);
 
   const [form, setForm] = useState({
-    customer_id: '', valid_until: '', order_date: '', invoice_date: '', due_date: '',
-    notes: '', is_interstate: false,
+    customer_id: initialCustomerId || '', valid_until: '', order_date: '', invoice_date: '', due_date: '',
+    notes: '', is_interstate: false, status: 'draft',
   });
   const [items, setItems]       = useState([{ ...EMPTY_LINE }]);
-  const [totals, setTotals]     = useState({ subtotal:0, cgst:0, sgst:0, igst:0, total:0 });
   const [loading, setLoading]   = useState(false);
+  const [fetchingQuote, setFetchingQuote] = useState(() => Boolean(isQuote && existingId));
+  const [loadErr, setLoadErr]   = useState('');
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
-  const handleItems = (newItems, newTotals) => {
+  useEffect(() => {
+    setForm(f => ({ ...f, customer_id: initialCustomerId || '' }));
+  }, [initialCustomerId, type]);
+
+  useEffect(() => {
+    if (!isQuote || !existingId) {
+      setLoadErr('');
+      setFetchingQuote(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setFetchingQuote(true);
+    setLoadErr('');
+    api.get(`/sales/quotations/${existingId}`)
+      .then((r) => {
+        const q = r.data?.quotation;
+        if (cancelled || !q) return;
+        setForm((f) => ({
+          ...f,
+          customer_id: String(q.customer_id ?? ''),
+          valid_until: q.valid_until ? String(q.valid_until).slice(0, 10) : '',
+          notes: q.notes || '',
+          status: q.status || 'draft',
+        }));
+        setItems(
+          q.items?.length
+            ? q.items.map((it) => ({
+              product_id: it.product_id != null ? String(it.product_id) : '',
+              description: it.description || it.product_name || '',
+              quantity: it.quantity,
+              unit_price: it.unit_price,
+              gst_rate: it.gst_rate,
+            }))
+            : [{ ...EMPTY_LINE }],
+        );
+      })
+      .catch((e) => setLoadErr(e?.response?.data?.message || e.message || 'Failed to load quotation'))
+      .finally(() => { if (!cancelled) setFetchingQuote(false); });
+    return () => { cancelled = true; };
+  }, [isQuote, existingId]);
+
+  const handleItems = (newItems, _newTotals) => {
     setItems(newItems);
-    if (Object.keys(newTotals).length) setTotals(t => ({ ...t, ...newTotals }));
   };
 
   const handleSubmit = async (e) => {
@@ -227,17 +294,38 @@ function DocumentModal({ type, customers, products, onClose, onSaved }) {
         igst:        form.is_interstate ? l.gst : 0,
         total:       l.total,
       }));
-      const endpoint = isQuote ? '/sales/quotations' : isOrder ? '/sales/orders' : '/sales/invoices';
-      await api.post(endpoint, { ...form, items: lines });
+      if (isEditQuote) {
+        await api.patch(`/sales/quotations/${existingId}`, {
+          customer_id: Number(form.customer_id),
+          valid_until: form.valid_until || null,
+          notes: form.notes || null,
+          status: form.status || 'draft',
+          items: lines,
+        });
+      } else {
+        const endpoint = isQuote ? '/sales/quotations' : isOrder ? '/sales/orders' : '/sales/invoices';
+        await api.post(endpoint, { ...form, items: lines });
+      }
       onSaved();
     } finally { setLoading(false); }
   };
 
-  const title = isQuote ? 'New Quotation' : isOrder ? 'New Sales Order' : 'New Invoice';
+  const title = isEditQuote ? 'Edit Quotation' : isQuote ? 'New Quotation' : isOrder ? 'New Sales Order' : 'New Invoice';
+
+  if (fetchingQuote) {
+    return (
+      <Modal title={title} onClose={onClose}>
+        <p className="text-sm text-slate-500 dark:text-slate-400 py-8 text-center">Loading quotation…</p>
+      </Modal>
+    );
+  }
 
   return (
     <Modal title={title} onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-4">
+        {loadErr && (
+          <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{loadErr}</p>
+        )}
         <Field label="Customer *">
           <select className={selectCls} value={form.customer_id} onChange={set('customer_id')} required>
             <option value="">Select customer…</option>
@@ -246,6 +334,15 @@ function DocumentModal({ type, customers, products, onClose, onSaved }) {
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
+          {isQuote && isEditQuote && (
+            <Field label="Status">
+              <select className={selectCls} value={form.status} onChange={set('status')}>
+                {['draft', 'sent', 'accepted', 'rejected'].map((s) => (
+                  <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+                ))}
+              </select>
+            </Field>
+          )}
           {isQuote && <Field label="Valid Until"><input type="date" className={inputCls} value={form.valid_until} onChange={set('valid_until')} /></Field>}
           {isOrder && <Field label="Order Date"><input type="date" className={inputCls} value={form.order_date} onChange={set('order_date')} /></Field>}
           {isInvoice && (
@@ -267,7 +364,7 @@ function DocumentModal({ type, customers, products, onClose, onSaved }) {
         <LineItems items={items} onChange={handleItems} products={products} interstate={form.is_interstate} />
 
         <Field label="Notes"><textarea className={inputCls+' h-16 resize-none'} value={form.notes} onChange={set('notes')} /></Field>
-        <FormActions onCancel={onClose} submitLabel={`Create ${title.replace('New ','')}`} loading={loading} />
+        <FormActions onCancel={onClose} submitLabel={isEditQuote ? 'Save Quotation' : `Create ${title.replace('New ', '')}`} loading={loading} />
       </form>
     </Modal>
   );
@@ -314,7 +411,7 @@ function PaymentModal({ invoice, onClose, onSaved }) {
 
 // ─── Detail Drawer ────────────────────────────────────────────
 
-function DetailDrawer({ type, id, onClose, onRefresh }) {
+function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation }) {
   const [doc,     setDoc]     = useState(null);
   const [paying,  setPaying]  = useState(false);
 
@@ -361,6 +458,15 @@ function DetailDrawer({ type, id, onClose, onRefresh }) {
             </div>
             <div className="flex items-center gap-2">
               <StatusBadge s={doc.status} />
+              {type === 'quotation' && onEditQuotation && (
+                <button
+                  type="button"
+                  onClick={() => { onEditQuotation(id); onClose(); }}
+                  className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-brand-600 text-white hover:bg-brand-700 dark:bg-brand-500 dark:hover:bg-brand-600"
+                >
+                  Edit
+                </button>
+              )}
               <button onClick={onClose} className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 text-xl px-1">×</button>
             </div>
           </div>
@@ -484,19 +590,32 @@ function DetailDrawer({ type, id, onClose, onRefresh }) {
 
 // ─── Main Sales Page ──────────────────────────────────────────
 
-const TABS = ['Customers', 'Quotations', 'Orders', 'Invoices'];
+const TABS = ['Quotes', 'Orders', 'Invoices'];
 
 const SALES_TAB_BY_PARAM = {
-  customers: 'Customers',
-  quotations: 'Quotations',
+  quotes: 'Quotes',
+  quote: 'Quotes',
+  quotation: 'Quotes',
   orders: 'Orders',
   invoices: 'Invoices',
   payments: 'Invoices',
 };
 
+const TAB_TO_QUERY = { Quotes: 'quotes', Orders: 'orders', Invoices: 'invoices' };
+
+function leadBannerTitle(lead) {
+  if (!lead) return '';
+  const n = (lead.name || '').trim();
+  if (n) return n;
+  const p = (lead.phone || '').trim();
+  if (p) return p;
+  return (lead.company || '').trim() || `Lead #${lead.id}`;
+}
+
 export default function Sales() {
-  const [searchParams] = useSearchParams();
-  const [tab,       setTab]       = useState('Customers');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const [tab,       setTab]       = useState('Quotes');
   const [data,      setData]      = useState([]);
   const [stats,     setStats]     = useState(null);
   const [products,  setProducts]  = useState([]);
@@ -504,14 +623,18 @@ export default function Sales() {
   const [modal,     setModal]     = useState(null); // 'customer' | 'quotation' | 'order' | 'invoice' | 'edit-customer'
   const [editCust,  setEditCust]  = useState(null);
   const [drawer,    setDrawer]    = useState(null); // { type, id }
-  const [search,    setSearch]    = useState('');
-
+  /** Lead loaded from `?fromLead=` (CRM handoff). */
+  const [bannerLead, setBannerLead] = useState(null);
+  /** When opening “New Customer” from the banner, prefill + POST with lead_id. */
+  const [customerPrefillLead, setCustomerPrefillLead] = useState(null);
+  const [orderPrefillCustomerId, setOrderPrefillCustomerId] = useState('');
+  /** When set, open quotation modal in edit mode (PATCH with line items). */
+  const [quotationEditId, setQuotationEditId] = useState(null);
   const loadStats   = useCallback(() => { api.get('/sales/stats').then(r => setStats(r.data)).catch(() => {}); }, []);
   const loadData    = useCallback(() => {
-    const paths = { Customers:'/sales/customers', Quotations:'/sales/quotations', Orders:'/sales/orders', Invoices:'/sales/invoices' };
-    const params = tab === 'Customers' && search ? { search } : {};
-    api.get(paths[tab], { params }).then(r => setData(r.data || [])).catch(() => setData([]));
-  }, [tab, search]);
+    const paths = { Quotes:'/sales/quotations', Orders:'/sales/orders', Invoices:'/sales/invoices' };
+    api.get(paths[tab], { params: {} }).then(r => setData(r.data || [])).catch(() => setData([]));
+  }, [tab]);
 
   useEffect(() => {
     api.get('/inventory/products').then(r => setProducts(r.data.products || r.data || [])).catch(() => {});
@@ -520,13 +643,58 @@ export default function Sales() {
   }, []);
 
   useEffect(() => {
+    if (searchParams.get('tab')) return;
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', 'quotes');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
     const raw = (searchParams.get('tab') || '').toLowerCase().replace(/[\s_-]+/g, '');
     const mapped = SALES_TAB_BY_PARAM[raw];
     if (mapped) setTab(mapped);
-    else if (!searchParams.get('tab')) setTab('Customers');
+    else if (!searchParams.get('tab')) setTab('Quotes');
+  }, [searchParams]);
+
+  const syncTabToUrl = useCallback(
+    (nextTab) => {
+      const key = TAB_TO_QUERY[nextTab];
+      if (!key) return;
+      const sp = new URLSearchParams(searchParams);
+      sp.set('tab', key);
+      setSearchParams(sp, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
+  useEffect(() => {
+    const id = searchParams.get(SALES_FROM_LEAD_PARAM);
+    if (!id || !/^\d+$/.test(id)) {
+      setBannerLead(null);
+      return;
+    }
+    api
+      .get(`/crm/leads/${id}`)
+      .then((r) => {
+        const lead = r.data.lead || r.data;
+        setBannerLead(lead?.id ? lead : null);
+      })
+      .catch(() => setBannerLead(null));
   }, [searchParams]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  const clearFromLead = useCallback(() => {
+    const sp = new URLSearchParams(searchParams);
+    sp.delete(SALES_FROM_LEAD_PARAM);
+    const q = sp.toString();
+    navigate({ pathname: '/sales', search: q ? `?${q}` : '' }, { replace: true });
+    setBannerLead(null);
+  }, [navigate, searchParams]);
+
+  const customerLinkedToBanner = bannerLead
+    ? customers.find((c) => String(c.lead_id) === String(bannerLead.id))
+    : null;
 
   const handleDelete = async (type, id, e) => {
     e.stopPropagation();
@@ -535,9 +703,18 @@ export default function Sales() {
     loadData(); loadStats();
   };
 
-  const afterSave = () => { setModal(null); setEditCust(null); loadData(); loadStats(); if (tab === 'Customers') api.get('/sales/customers').then(r => setCustomers(r.data || [])); };
+  const afterSave = () => {
+    setModal(null);
+    setEditCust(null);
+    setCustomerPrefillLead(null);
+    setOrderPrefillCustomerId('');
+    setQuotationEditId(null);
+    loadData();
+    loadStats();
+    api.get('/sales/customers').then(r => setCustomers(r.data || [])).catch(() => {});
+  };
 
-  const tabType = { Quotations:'quotation', Orders:'order', Invoices:'invoice' };
+  const tabType = { Quotes: 'quotation', Orders: 'order', Invoices: 'invoice' };
 
   return (
     <div>
@@ -545,64 +722,104 @@ export default function Sales() {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-[16px] font-semibold text-slate-800 dark:text-slate-100">Sales</h2>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Customers, quotations, orders and invoices</p>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Quotations, orders, and invoices — add customers from Sales when needed</p>
         </div>
-        <button
-          onClick={() => setModal(tab === 'Customers' ? 'customer' : tabType[tab])}
-          className="btn-wf-primary"
-        >
-          + {tab === 'Customers' ? 'Customer' : tab.slice(0,-1)}
-        </button>
+        <div className="flex flex-wrap items-center gap-2 justify-end">
+          <button
+            type="button"
+            onClick={() => {
+              setCustomerPrefillLead(null);
+              setModal('customer');
+            }}
+            className="btn-wf-secondary text-xs"
+          >
+            + Customer
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setOrderPrefillCustomerId('');
+              setQuotationEditId(null);
+              if (tab === 'Quotes') setModal('quotation');
+              else if (tab === 'Orders') setModal('order');
+              else setModal('invoice');
+            }}
+            className="btn-wf-primary"
+          >
+            + {tab === 'Quotes' ? 'Quotation' : tab === 'Orders' ? 'Order' : 'Invoice'}
+          </button>
+        </div>
       </div>
+
+      {bannerLead && (
+        <div className="mb-4 rounded-xl border border-brand-200/80 dark:border-brand-800/50 bg-brand-50/90 dark:bg-brand-950/30 px-4 py-3 flex flex-wrap items-center gap-3">
+          <div className="flex-1 min-w-[200px]">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-brand-700 dark:text-brand-300">From CRM lead</p>
+            <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{leadBannerTitle(bannerLead)}</p>
+            {bannerLead.company && (bannerLead.name || bannerLead.phone) && (
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{bannerLead.company}</p>
+            )}
+          </div>
+          <button
+            type="button"
+            className="btn-wf-secondary text-xs"
+            onClick={() => {
+              setCustomerPrefillLead(bannerLead);
+              setModal('customer');
+            }}
+          >
+            + Customer from lead
+          </button>
+          {customerLinkedToBanner && (
+            <>
+              <button
+                type="button"
+                className="btn-wf-primary text-xs"
+                onClick={() => {
+                  setOrderPrefillCustomerId(String(customerLinkedToBanner.id));
+                  setTab('Quotes');
+                  syncTabToUrl('Quotes');
+                  setQuotationEditId(null);
+                  setModal('quotation');
+                }}
+              >
+                New quote
+              </button>
+              <button
+                type="button"
+                className="btn-wf-primary text-xs"
+                onClick={() => {
+                  setOrderPrefillCustomerId(String(customerLinkedToBanner.id));
+                  setTab('Orders');
+                  syncTabToUrl('Orders');
+                  setModal('order');
+                }}
+              >
+                New order
+              </button>
+            </>
+          )}
+          <button type="button" className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" onClick={clearFromLead}>
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Stats */}
       {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-          <StatCard icon="👥" label="Active Customers"  value={stats.customers}            />
-          <StatCard icon="📦" label="Open Orders"       value={stats.open_orders}          />
-          <StatCard icon="💰" label="Revenue (Paid)"    value={fmt(stats.revenue)}         />
-          <StatCard icon="⏳" label="Receivable"        value={fmt(stats.receivable)} sub={stats.overdue ? `${stats.overdue} overdue` : null} />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+          <StatCard icon="📦" label="Open Orders"    value={stats.open_orders}   />
+          <StatCard icon="💰" label="Revenue (Paid)" value={fmt(stats.revenue)} />
+          <StatCard icon="⏳" label="Receivable"   value={fmt(stats.receivable)} sub={stats.overdue ? `${stats.overdue} overdue` : null} />
         </div>
       )}
 
-      <Tabs tabs={TABS} active={tab} onChange={t => { setTab(t); setSearch(''); }} />
-
-      {/* Search (customers only) */}
-      {tab === 'Customers' && (
-        <div className="mb-4">
-          <input className={inputCls + ' max-w-sm'} placeholder="Search customers…"
-            value={search} onChange={e => setSearch(e.target.value)} />
-        </div>
-      )}
+      <Tabs tabs={TABS} active={tab} onChange={(t) => { setTab(t); syncTabToUrl(t); }} />
 
       {/* Table */}
       <div className="bg-white dark:bg-[#13152a] rounded-xl border border-slate-200 dark:border-slate-700/50 overflow-hidden">
         {data.length === 0 ? (
           <p className="text-center py-12 text-slate-400 dark:text-slate-500 text-sm">No records found</p>
-        ) : tab === 'Customers' ? (
-          <table className="w-full text-sm">
-            <thead><tr className="border-b border-slate-100 dark:border-slate-700/50">
-              {['Name','Phone','Email','GSTIN',''].map(h => <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">{h}</th>)}
-            </tr></thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-700/40">
-              {data.map(r => (
-                <tr key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 group">
-                  <td className="px-4 py-3 font-semibold text-slate-800 dark:text-slate-100">{r.name}</td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{r.phone || '—'}</td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{r.email || '—'}</td>
-                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400 font-mono text-xs">{r.gstin || '—'}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => { setEditCust(r); setModal('edit-customer'); }}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors text-xs">✏️</button>
-                      <button onClick={e => handleDelete('customers', r.id, e)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-xs">🗑</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         ) : (
           <table className="w-full text-sm min-w-[560px]">
             <thead><tr className="border-b border-slate-100 dark:border-slate-700/50">
@@ -636,15 +853,59 @@ export default function Sales() {
       </div>
 
       {/* Modals */}
-      {modal === 'customer' && <CustomerModal onClose={() => setModal(null)} onSaved={afterSave} />}
-      {modal === 'edit-customer' && editCust && <CustomerModal customer={editCust} onClose={() => { setModal(null); setEditCust(null); }} onSaved={afterSave} />}
-      {(modal === 'quotation' || modal === 'order' || modal === 'invoice') && (
-        <DocumentModal type={modal} customers={customers} products={products} onClose={() => setModal(null)} onSaved={afterSave} />
+      {modal === 'customer' && (
+        <CustomerModal
+          key={customerPrefillLead ? `crm-${customerPrefillLead.id}` : 'cust-new'}
+          crmLeadPrefill={customerPrefillLead}
+          onClose={() => {
+            setModal(null);
+            setCustomerPrefillLead(null);
+          }}
+          onSaved={afterSave}
+        />
+      )}
+      {modal === 'edit-customer' && editCust && (
+        <CustomerModal customer={editCust} onClose={() => { setModal(null); setEditCust(null); }} onSaved={afterSave} />
+      )}
+      {(modal === 'order' || modal === 'invoice') && (
+        <DocumentModal
+          type={modal}
+          customers={customers}
+          products={products}
+          initialCustomerId={orderPrefillCustomerId}
+          onClose={() => {
+            setModal(null);
+            setOrderPrefillCustomerId('');
+          }}
+          onSaved={afterSave}
+        />
+      )}
+      {(modal === 'quotation' || quotationEditId != null) && (
+        <DocumentModal
+          key={quotationEditId ?? 'new-quotation'}
+          type="quotation"
+          existingId={quotationEditId}
+          customers={customers}
+          products={products}
+          initialCustomerId={quotationEditId ? '' : orderPrefillCustomerId}
+          onClose={() => {
+            setModal(null);
+            setQuotationEditId(null);
+            setOrderPrefillCustomerId('');
+          }}
+          onSaved={afterSave}
+        />
       )}
 
       {/* Detail drawer */}
       {drawer && (
-        <DetailDrawer type={drawer.type} id={drawer.id} onClose={() => setDrawer(null)} onRefresh={() => { loadData(); loadStats(); }} />
+        <DetailDrawer
+          type={drawer.type}
+          id={drawer.id}
+          onClose={() => setDrawer(null)}
+          onRefresh={() => { loadData(); loadStats(); }}
+          onEditQuotation={(qid) => setQuotationEditId(qid)}
+        />
       )}
     </div>
   );

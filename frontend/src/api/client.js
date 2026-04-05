@@ -4,7 +4,10 @@ import axios, { AxiosHeaders } from 'axios';
 //   VITE_API_BASE_URL=https://your-api.up.railway.app/api
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
 
-const api = axios.create({ baseURL: API_BASE });
+/** Avoid infinite “Loading workspace…” when the API is unreachable or stalls. */
+const REQUEST_TIMEOUT_MS = 25_000;
+
+const api = axios.create({ baseURL: API_BASE, timeout: REQUEST_TIMEOUT_MS });
 
 // In-memory access token — always in sync with localStorage after login/refresh (avoids re-reading races).
 // Refresh only runs from the 401 response handler, never from the request interceptor.
@@ -52,7 +55,7 @@ function refreshSession() {
   }
 
   refreshing = axios
-    .post(`${API_BASE}/auth/refresh`, { refresh_token: refreshToken })
+    .post(`${API_BASE}/auth/refresh`, { refresh_token: refreshToken }, { timeout: REQUEST_TIMEOUT_MS })
     .then((res) => {
       const d = res.data;
       const access_token = d?.access_token;

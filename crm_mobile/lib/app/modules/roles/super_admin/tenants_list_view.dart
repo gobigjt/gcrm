@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../routes/app_routes.dart';
+import '../../../shared/widgets/app_navigation_drawer.dart';
 import '../../../shared/widgets/role_aware_bottom_nav.dart';
 
 class TenantsListView extends StatelessWidget {
@@ -17,6 +18,7 @@ class TenantsListView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: const AppNavigationDrawer(currentRoute: AppRoutes.tenantsList),
       appBar: AppBar(title: const Text('All tenants (demo)')),
       bottomNavigationBar: const RoleAwareBottomNav(currentRoute: AppRoutes.tenantsList),
       body: ListView(

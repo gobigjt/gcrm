@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import api from '../../api/client';
 import { buildAppCrmLeadUrl, buildWebCrmLeadUrl } from '../../utils/crmLeadLinks';
+import { salesFromLeadPath } from '../../utils/salesFromLeadUrl';
 import Modal from '../../components/Modal';
 import Tabs  from '../../components/Tabs';
 import { Field, inputCls, selectCls, FormActions } from '../../components/FormField';
@@ -68,28 +69,112 @@ function timeAgo(dt) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+function formatInrAmount(n) {
+  if (n == null || n === '') return '—';
+  const v = Number(n);
+  if (Number.isNaN(v)) return '—';
+  return `Rs ${v.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+}
+
+function scoreFmt(s) {
+  const n = Number(s);
+  if (Number.isNaN(n)) return '—';
+  return n.toFixed(1);
+}
+
+function potentialLabel(p) {
+  if (p === 'hot') return 'HIGH';
+  if (p === 'cold') return 'LOW';
+  return 'MED';
+}
+
+function leadDisplayTitle(l) {
+  if (!l) return '';
+  const name = (l.name || '').trim();
+  if (name) return name;
+  const phone = (l.phone || '').trim();
+  if (phone) return phone;
+  const co = (l.company || '').trim();
+  if (co) return co;
+  return l.id ? `Lead #${l.id}` : '';
+}
+
+function tagsToString(tags) {
+  if (!tags) return '';
+  if (Array.isArray(tags)) return tags.filter(Boolean).join(', ');
+  return String(tags);
+}
+
 // ─── Lead Form Modal ─────────────────────────────────────────
 
-const EMPTY = { name:'', email:'', phone:'', company:'', source_id:'', stage_id:'', assigned_to:'', priority:'warm', notes:'' };
+const EMPTY = {
+  name: '', email: '', phone: '', company: '', source_id: '', stage_id: '', assigned_to: '', priority: 'warm', notes: '',
+  lead_segment: '', job_title: '', website: '', address: '', tags: '', deal_size: '', lead_score: '',
+};
+
+function leadToForm(row) {
+  if (!row) return { ...EMPTY };
+  return {
+    name: row.name || '',
+    email: row.email || '',
+    phone: row.phone || '',
+    company: row.company || '',
+    source_id: row.source_id ?? '',
+    stage_id: row.stage_id ?? '',
+    assigned_to: row.assigned_to ?? '',
+    priority: row.priority || 'warm',
+    notes: row.notes || '',
+    lead_segment: row.lead_segment || '',
+    job_title: row.job_title || '',
+    website: row.website || '',
+    address: row.address || '',
+    tags: tagsToString(row.tags),
+    deal_size: row.deal_size != null && row.deal_size !== '' ? String(row.deal_size) : '',
+    lead_score: row.lead_score != null && row.lead_score !== '' ? String(row.lead_score) : '',
+  };
+}
 
 function LeadModal({ lead, stages, sources, users, onClose, onSaved }) {
-  const [form, setForm] = useState(lead ? {
-    name: lead.name, email: lead.email || '', phone: lead.phone || '',
-    company: lead.company || '', source_id: lead.source_id || '',
-    stage_id: lead.stage_id || '', assigned_to: lead.assigned_to || '',
-    priority: lead.priority || 'warm', notes: lead.notes || '',
-  } : EMPTY);
+  const [form, setForm] = useState(() => leadToForm(lead));
   const [loading, setLoading] = useState(false);
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
+
+  const buildPayload = () => {
+    const tagsArr = form.tags
+      .split(/[,;\n]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const dealRaw = form.deal_size.trim();
+    const scoreRaw = form.lead_score.trim();
+    return {
+      name: form.name.trim(),
+      email: form.email.trim() || null,
+      phone: form.phone.trim() || null,
+      company: form.company.trim() || null,
+      source_id: form.source_id ? Number(form.source_id) : null,
+      stage_id: form.stage_id ? Number(form.stage_id) : null,
+      assigned_to: form.assigned_to ? Number(form.assigned_to) : null,
+      priority: form.priority,
+      notes: form.notes.trim() || null,
+      lead_segment: form.lead_segment.trim() || null,
+      job_title: form.job_title.trim() || null,
+      website: form.website.trim() || null,
+      address: form.address.trim() || null,
+      tags: tagsArr,
+      deal_size: dealRaw === '' ? null : Number(dealRaw),
+      lead_score: scoreRaw === '' ? null : Number(scoreRaw),
+    };
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
+      const body = buildPayload();
       if (lead) {
-        await api.patch(`/crm/leads/${lead.id}`, form);
+        await api.patch(`/crm/leads/${lead.id}`, body);
       } else {
-        await api.post('/crm/leads', form);
+        await api.post('/crm/leads', body);
       }
       onSaved();
     } finally { setLoading(false); }
@@ -106,6 +191,31 @@ function LeadModal({ lead, stages, sources, users, onClose, onSaved }) {
           <Field label="Email"><input className={inputCls} type="email" value={form.email} onChange={set('email')} /></Field>
         </div>
         <Field label="Company"><input className={inputCls} value={form.company} onChange={set('company')} /></Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Segment (e.g. B2C)">
+            <input className={inputCls} value={form.lead_segment} onChange={set('lead_segment')} placeholder="B2C / B2B" />
+          </Field>
+          <Field label="Job title">
+            <input className={inputCls} value={form.job_title} onChange={set('job_title')} placeholder="Role / designation" />
+          </Field>
+        </div>
+        <Field label="Website">
+          <input className={inputCls} type="url" value={form.website} onChange={set('website')} placeholder="https://…" />
+        </Field>
+        <Field label="Address">
+          <textarea className={inputCls + ' h-16 resize-none'} value={form.address} onChange={set('address')} />
+        </Field>
+        <Field label="Tags">
+          <input className={inputCls} value={form.tags} onChange={set('tags')} placeholder="Comma-separated" />
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Deal size (INR)">
+            <input className={inputCls} inputMode="decimal" value={form.deal_size} onChange={set('deal_size')} placeholder="Optional" />
+          </Field>
+          <Field label="Lead score">
+            <input className={inputCls} inputMode="decimal" value={form.lead_score} onChange={set('lead_score')} placeholder="e.g. 2.5" />
+          </Field>
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Source">
             <select className={selectCls} value={form.source_id} onChange={set('source_id')}>
@@ -230,11 +340,10 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
     note: '📝', call: '📞', email: '📧', meeting: '🤝', whatsapp: '💬', sms: '💬',
   };
 
-  const leadScore = detail?.lead_score ?? 0;
-  const valueStr = `Rs ${(Number(leadScore) * 1000).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
-  const daysOpen = detail?.created_at
-    ? Math.max(0, Math.floor((Date.now() - new Date(detail.created_at).getTime()) / 86400000))
-    : '—';
+  const titleLine = leadDisplayTitle(detail);
+  const dealStr = formatInrAmount(detail?.deal_size);
+  const scoreLine = scoreFmt(detail?.lead_score ?? 0);
+  const potLine = potentialLabel(detail?.priority);
 
   return (
     <div className="fixed inset-0 z-40 flex">
@@ -249,11 +358,13 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
           <div className="flex items-start justify-between mb-3">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center text-white font-semibold flex-shrink-0">
-                {detail?.name?.[0]?.toUpperCase()}
+                {(titleLine || '?').slice(0, 1).toUpperCase()}
               </div>
               <div>
-                <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 leading-tight">{detail?.name}</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">{detail?.company || detail?.email || '—'}</p>
+                <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 leading-tight">{titleLine || '—'}</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {[detail?.job_title, detail?.lead_segment].filter(Boolean).join(' · ') || detail?.company || detail?.email || '—'}
+                </p>
               </div>
             </div>
             <button onClick={onClose} className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 text-xl leading-none px-1">×</button>
@@ -304,25 +415,26 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
             ) : (
               <span className="h-11 rounded-xl border border-dashed border-slate-200 dark:border-slate-600 text-slate-400 text-[10px] flex items-center justify-center">No phone</span>
             )}
-            <button type="button"
-              onClick={() => setActForm({ type: 'note', description: 'Quote — ' })}
+            <Link
+              to={salesFromLeadPath(lead.id)}
+              onClick={onClose}
               className="h-11 rounded-xl border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 text-[11px] font-semibold flex items-center justify-center gap-1 hover:bg-slate-50 dark:hover:bg-slate-800">
-              📄 Quote
-            </button>
+              🛒 Sales
+            </Link>
           </div>
 
           <div className="grid grid-cols-3 gap-2 mt-3">
-            <div className="rounded-lg bg-[#E6F1FB] dark:bg-blue-900/20 px-2 py-2 text-center">
-              <p className="text-[10px] text-[#0C447C] dark:text-blue-300 font-medium">Value</p>
-              <p className="text-xs font-bold text-[#0C447C] dark:text-blue-200">{valueStr}</p>
-            </div>
             <div className="rounded-lg bg-[#FAEEDA] dark:bg-amber-900/20 px-2 py-2 text-center">
-              <p className="text-[10px] text-[#633806] dark:text-amber-300 font-medium">Score</p>
-              <p className="text-xs font-bold text-[#633806] dark:text-amber-200">{leadScore}</p>
+              <p className="text-[10px] text-[#633806] dark:text-amber-300 font-medium">Potential</p>
+              <p className="text-xs font-bold text-[#633806] dark:text-amber-200">{potLine}</p>
+            </div>
+            <div className="rounded-lg bg-[#E6F1FB] dark:bg-blue-900/20 px-2 py-2 text-center">
+              <p className="text-[10px] text-[#0C447C] dark:text-blue-300 font-medium">Score</p>
+              <p className="text-xs font-bold text-[#0C447C] dark:text-blue-200">{scoreLine}</p>
             </div>
             <div className="rounded-lg bg-[#E1F5EE] dark:bg-emerald-900/20 px-2 py-2 text-center">
-              <p className="text-[10px] text-[#085041] dark:text-emerald-300 font-medium">Days</p>
-              <p className="text-xs font-bold text-[#085041] dark:text-emerald-200">{daysOpen}</p>
+              <p className="text-[10px] text-[#085041] dark:text-emerald-300 font-medium">Deal (INR)</p>
+              <p className="text-xs font-bold text-[#085041] dark:text-emerald-200">{dealStr}</p>
             </div>
           </div>
         </div>
@@ -349,6 +461,8 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
                 ['Email',    detail?.email    || '—'],
                 ['Phone',    detail?.phone    || '—'],
                 ['Company',  detail?.company  || '—'],
+                ['Website',  detail?.website  || '—'],
+                ['Address',  detail?.address  || '—'],
                 ['Source',   detail?.source   || '—'],
                 ['Assigned', detail?.assigned_name || 'Unassigned'],
                 ['Created',  formatDate(detail?.created_at)],
@@ -359,6 +473,19 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
                 </div>
               ))}
             </div>
+
+            {Array.isArray(detail?.tags) && detail.tags.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-2">Tags</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {detail.tags.map((t, i) => (
+                    <span key={`${t}-${i}`} className="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200">
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {detail?.notes && (
               <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200/60 dark:border-amber-800/30 rounded-xl p-3">
@@ -468,6 +595,7 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
       {/* Edit modal on top of drawer */}
       {editing && (
         <LeadModal
+          key={`crm-edit-${detail.id}`}
           lead={detail}
           stages={stages} sources={sources} users={users}
           onClose={() => setEditing(false)}
@@ -497,10 +625,13 @@ function KanbanView({ leads, stages, onSelectLead }) {
                 <div key={l.id} onClick={() => onSelectLead(l)}
                   className="bg-white dark:bg-[#13152a] rounded-xl p-3 shadow-sm border border-slate-100 dark:border-slate-700/50 cursor-pointer hover:border-brand-300 dark:hover:border-brand-600 hover:shadow-md transition-all group">
                   <div className="flex items-start justify-between gap-1 mb-1">
-                    <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 leading-tight">{l.name}</p>
-                    <PriorityBadge p={l.priority} />
+                    <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 leading-tight">{leadDisplayTitle(l)}</p>
+                    <div className="flex flex-col items-end gap-0.5">
+                      <PriorityBadge p={l.priority} />
+                      <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 tabular-nums">{scoreFmt(l.lead_score)}</span>
+                    </div>
                   </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">{l.company || l.email || '—'}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">{l.company || l.email || l.lead_segment || '—'}</p>
                   {l.phone && (
                     <div className="flex items-center gap-1.5">
                       <a href={`tel:${l.phone}`} onClick={e => e.stopPropagation()}
@@ -609,6 +740,7 @@ export default function CRM() {
   const [tab,      setTab]      = useState('List');
   const [drawer,   setDrawer]   = useState(null);
   const [addModal, setAddModal] = useState(false);
+  const [listEditLead, setListEditLead] = useState(null);
   const [dashEx, setDashEx] = useState(null);
 
   // Filters
@@ -617,6 +749,7 @@ export default function CRM() {
   const [fSource,  setFSource]  = useState('');
   const [fPrio,    setFPrio]    = useState('');
   const [fUser,    setFUser]    = useState('');
+  const [sourceCounts, setSourceCounts] = useState(null);
 
   const loadLeads = useCallback(() => {
     const params = {};
@@ -636,6 +769,7 @@ export default function CRM() {
     api.get('/crm/leads/stages').then(r => setStages(r.data || []));
     api.get('/crm/leads/sources').then(r => setSources(r.data || []));
     api.get('/crm/leads/assignees').then(r => setUsers(r.data || []));
+    api.get('/crm/leads/source-counts').then((r) => setSourceCounts(r.data || null)).catch(() => setSourceCounts(null));
     api.get('/settings/dashboard').then((r) => setDashEx(r.data || null)).catch(() => {});
   }, []);
 
@@ -758,6 +892,37 @@ export default function CRM() {
         onChange={(v) => setTab(v === 'Pipeline' ? 'Kanban' : v)}
       />
 
+      {/* Lead lists by source (parity with mobile “All lists”) */}
+      {tab !== 'Follow-ups' && sourceCounts && (
+        <div className="flex gap-2 overflow-x-auto pb-2 mb-3 -mx-1 px-1 scrollbar-thin">
+          <button
+            type="button"
+            onClick={() => setFSource('')}
+            className={`flex-shrink-0 px-3 py-2 rounded-full text-xs font-bold border transition-colors ${
+              !fSource
+                ? 'bg-[#E6F1FB] border-[#185FA5] text-[#0C447C]'
+                : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-slate-300'
+            }`}
+          >
+            All leads ({sourceCounts.total ?? 0})
+          </button>
+          {(sourceCounts.sources || []).map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => setFSource(String(s.id))}
+              className={`flex-shrink-0 px-3 py-2 rounded-full text-xs font-bold border transition-colors ${
+                fSource === String(s.id)
+                  ? 'bg-[#E6F1FB] border-[#185FA5] text-[#0C447C]'
+                  : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-slate-300'
+              }`}
+            >
+              {s.name} ({s.lead_count ?? 0})
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Stage chips (showcase / mobile parity) */}
       {tab !== 'Follow-ups' && stats && (() => {
         const newSt = stages.find((s) => s.name === 'New');
@@ -827,10 +992,10 @@ export default function CRM() {
           {leads.length === 0 ? (
             <p className="text-center py-12 text-slate-400 dark:text-slate-500 text-sm">No leads found</p>
           ) : (
-            <table className="w-full text-sm min-w-[640px]">
+            <table className="w-full text-sm min-w-[880px]">
               <thead>
                 <tr className="border-b border-slate-100 dark:border-slate-700/50">
-                  {['Name', 'Phone', 'Company', 'Source', 'Stage', 'Priority', 'Assigned', ''].map(h => (
+                  {['Name', 'Phone', 'Company', 'Segment', 'Source', 'Stage', 'Score', 'Priority', 'Assigned', ''].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -841,7 +1006,7 @@ export default function CRM() {
                     className="hover:bg-slate-50 dark:hover:bg-slate-800/40 cursor-pointer transition-colors group">
                     <td className="px-4 py-3">
                       <div>
-                        <p className="font-semibold text-slate-800 dark:text-slate-100">{l.name}</p>
+                        <p className="font-semibold text-slate-800 dark:text-slate-100">{leadDisplayTitle(l)}</p>
                         {l.email && <p className="text-xs text-slate-400 dark:text-slate-500">{l.email}</p>}
                       </div>
                     </td>
@@ -852,26 +1017,58 @@ export default function CRM() {
                       ) : '—'}
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{l.company || '—'}</td>
+                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{l.lead_segment || '—'}</td>
                     <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{l.source || '—'}</td>
                     <td className="px-4 py-3"><StageBadge s={l.stage} /></td>
+                    <td className="px-4 py-3 text-xs font-semibold tabular-nums text-slate-600 dark:text-slate-300">{scoreFmt(l.lead_score)}</td>
                     <td className="px-4 py-3"><PriorityBadge p={l.priority} /></td>
                     <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{l.assigned_name || '—'}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                    <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                      <div className="inline-flex items-center justify-end gap-0.5">
                         {l.phone && (
-                          <a href={`https://wa.me/${l.phone.replace(/\D/g,'')}`} target="_blank" rel="noreferrer"
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors text-base">
+                          <a
+                            href={`https://wa.me/${l.phone.replace(/\D/g, '')}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors text-base"
+                          >
                             💬
                           </a>
                         )}
-                        <button onClick={e => { e.stopPropagation(); openDrawer(l); setDrawer(l); }}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors text-xs font-medium">
-                          ✏️
-                        </button>
-                        <button onClick={e => handleDelete(l.id, e)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-xs font-medium">
-                          🗑
-                        </button>
+                        <details className="relative">
+                          <summary className="list-none cursor-pointer p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 [&::-webkit-details-marker]:hidden">
+                            <span className="text-lg font-bold leading-none">⋮</span>
+                          </summary>
+                          <div className="absolute right-0 mt-1 w-44 py-1 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-[#1a1d2e] shadow-lg z-40 text-left">
+                            <button
+                              type="button"
+                              className="w-full px-3 py-2 text-sm text-left hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200"
+                              onClick={() => openDrawer(l)}
+                            >
+                              View details
+                            </button>
+                            <button
+                              type="button"
+                              className="w-full px-3 py-2 text-sm text-left hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200"
+                              onClick={() => setListEditLead(l)}
+                            >
+                              Edit lead
+                            </button>
+                            <Link
+                              to={salesFromLeadPath(l.id)}
+                              className="block px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200"
+                            >
+                              Sales / order…
+                            </Link>
+                            <button
+                              type="button"
+                              className="w-full px-3 py-2 text-sm text-left text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
+                              onClick={(e) => handleDelete(l.id, e)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </details>
                       </div>
                     </td>
                   </tr>
@@ -892,9 +1089,34 @@ export default function CRM() {
         <FollowupsView onSelectLead={openDrawer} />
       )}
 
+      {/* Edit from list row */}
+      {listEditLead && (
+        <LeadModal
+          key={`crm-list-edit-${listEditLead.id}`}
+          lead={listEditLead}
+          stages={stages} sources={sources} users={users}
+          onClose={() => setListEditLead(null)}
+          onSaved={() => {
+            const editedId = listEditLead.id;
+            setListEditLead(null);
+            loadLeads();
+            loadStats();
+            api
+              .get(`/crm/leads/${editedId}`)
+              .then((r) => {
+                const row = r.data.lead || r.data;
+                if (!row?.id) return;
+                setDrawer((d) => (d && d.id === row.id ? row : d));
+              })
+              .catch(() => {});
+          }}
+        />
+      )}
+
       {/* Add Lead Modal */}
       {addModal && (
         <LeadModal
+          key="crm-new-lead"
           stages={stages} sources={sources} users={users}
           onClose={() => setAddModal(false)}
           onSaved={() => { setAddModal(false); loadLeads(); loadStats(); }}

@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 
 import '../../routes/app_routes.dart';
 import '../../shared/widgets/app_error_banner.dart';
+import '../../shared/widgets/app_navigation_drawer.dart';
 import '../../shared/widgets/role_aware_bottom_nav.dart';
 import 'users_controller.dart';
 
@@ -12,6 +13,7 @@ class UsersView extends GetView<UsersController> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: const AppNavigationDrawer(currentRoute: AppRoutes.users),
       appBar: AppBar(
         title: const Text('Users'),
         actions: [
@@ -69,7 +71,7 @@ class UsersView extends GetView<UsersController> {
     final nameCtrl = TextEditingController();
     final emailCtrl = TextEditingController();
     final passwordCtrl = TextEditingController();
-    final role = 'Agent'.obs;
+    final role = 'Sales Executive'.obs;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -95,11 +97,11 @@ class UsersView extends GetView<UsersController> {
                 value: role.value,
                 items: controller.roles
                     .map((r) => DropdownMenuItem<String>(
-                          value: r.name.isEmpty ? 'Agent' : r.name,
-                          child: Text(r.name.isEmpty ? 'Agent' : r.name),
+                          value: r.name.isEmpty ? 'Sales Executive' : r.name,
+                          child: Text(r.name.isEmpty ? 'Sales Executive' : r.name),
                         ))
                     .toList(),
-                onChanged: (v) => role.value = v ?? 'Agent',
+                onChanged: (v) => role.value = v ?? 'Sales Executive',
                 decoration: const InputDecoration(labelText: 'Role'),
               ),
               const SizedBox(height: 12),

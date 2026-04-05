@@ -31,6 +31,7 @@ class ShowcaseHomeTopBar extends StatelessWidget {
     super.key,
     required this.title,
     this.subtitle,
+    this.onOpenMenu,
     this.onNotifications,
     this.notificationBadgeCount = 0,
     this.onRefresh,
@@ -40,6 +41,7 @@ class ShowcaseHomeTopBar extends StatelessWidget {
 
   final String title;
   final String? subtitle;
+  final VoidCallback? onOpenMenu;
   final VoidCallback? onNotifications;
   final int notificationBadgeCount;
   final VoidCallback? onRefresh;
@@ -61,6 +63,17 @@ class ShowcaseHomeTopBar extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          if (onOpenMenu != null) ...[
+            IconButton(
+              onPressed: onOpenMenu,
+              icon: const Icon(Icons.menu_rounded, size: 24),
+              color: onSurface,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+              tooltip: 'Menu',
+            ),
+            const SizedBox(width: 4),
+          ],
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -157,7 +170,7 @@ class ShowcaseHomeTopBar extends StatelessWidget {
   }
 }
 
-/// 2×2 KPI grid (wireframe `.krow` / `.kcell`).
+/// 2×2 KPI grid — matches documents/EZcrmcrm_mobile_showcase_1.html `.krow` / `.kc` / `.kl` / `.kv` / `.kt`.
 class ShowcaseKpiGrid extends StatelessWidget {
   const ShowcaseKpiGrid({
     super.key,
@@ -166,17 +179,32 @@ class ShowcaseKpiGrid extends StatelessWidget {
 
   final List<ShowcaseKpiCell> cells;
 
+  static const double _gap = 5;
+
   @override
   Widget build(BuildContext context) {
     assert(cells.length == 4, 'ShowcaseKpiGrid expects 4 cells');
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 6,
-      crossAxisSpacing: 6,
-      childAspectRatio: 1.35,
-      children: cells.map((c) => _KpiCell(data: c)).toList(),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: _KpiCell(data: cells[0])),
+            const SizedBox(width: _gap),
+            Expanded(child: _KpiCell(data: cells[1])),
+          ],
+        ),
+        const SizedBox(height: _gap),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: _KpiCell(data: cells[2])),
+            const SizedBox(width: _gap),
+            Expanded(child: _KpiCell(data: cells[3])),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -187,12 +215,15 @@ class ShowcaseKpiCell {
     required this.value,
     this.hint,
     this.valueColor,
+    this.onTap,
   });
 
   final String label;
   final String value;
   final String? hint;
   final Color? valueColor;
+  /// When set, the cell is tappable (e.g. deep-link to CRM / Sales).
+  final VoidCallback? onTap;
 }
 
 class _KpiCell extends StatelessWidget {
@@ -200,53 +231,97 @@ class _KpiCell extends StatelessWidget {
 
   final ShowcaseKpiCell data;
 
+  /// Showcase `--color-background-secondary` (light / dark).
+  static const Color _cardBgLight = Color(0xFFF1EFE8);
+  static const Color _cardBgDark = Color(0xFF2A2A28);
+
+  /// Showcase `--color-text-secondary`.
+  static const Color _labelLight = Color(0xFF73726C);
+  static const Color _labelDark = Color(0xFF9C9A92);
+
+  /// Showcase `--color-text-primary` on KPI cards.
+  static const Color _valueLight = Color(0xFF1A1A18);
+  static const Color _valueDark = Color(0xFFE8E6DF);
+
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardBg = scheme.surfaceContainerHighest;
-    final border = Theme.of(context).dividerColor;
-    final hintGreen = isDark ? const Color(0xFF86EFAC) : ShowcaseColors.greenText;
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: border),
-      ),
+    final cardBg = isDark ? _cardBgDark : _cardBgLight;
+    final labelColor = isDark ? _labelDark : _labelLight;
+    final valueColor = data.valueColor ?? (isDark ? _valueDark : _valueLight);
+    // HTML uses #27500A for `.kt`; on dark cards use palette green for contrast.
+    final hintPositive = isDark ? ShowcaseColors.green : ShowcaseColors.greenText;
+
+    final borderSide = BorderSide(
+      color: isDark ? const Color(0x1AFFFFFF) : const Color(0x1A000000),
+    );
+    final radius = BorderRadius.circular(12);
+
+    final inner = Padding(
+      padding: const EdgeInsets.fromLTRB(11, 9, 11, 9),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Text(
             data.label,
             style: TextStyle(
-              fontSize: 11,
-              color: scheme.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
+              fontSize: 12,
+              height: 1.15,
+              color: labelColor,
+              fontWeight: FontWeight.w500,
+              letterSpacing: -0.1,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           Text(
             data.value,
             style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: data.valueColor ?? scheme.onSurface,
+              fontSize: 19,
+              height: 1.15,
+              fontWeight: FontWeight.w500,
+              color: valueColor,
+              letterSpacing: -0.2,
             ),
           ),
           if (data.hint != null && data.hint!.isNotEmpty) ...[
-            const SizedBox(height: 2),
+            const SizedBox(height: 3),
             Text(
               data.hint!,
               style: TextStyle(
-                fontSize: 11,
-                color: data.valueColor != null ? data.valueColor! : hintGreen,
-                fontWeight: FontWeight.w600,
+                fontSize: 12,
+                height: 1.2,
+                color: data.valueColor != null ? data.valueColor! : hintPositive,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ],
         ],
+      ),
+    );
+
+    if (data.onTap == null) {
+      return Container(
+        decoration: BoxDecoration(
+          color: cardBg,
+          borderRadius: radius,
+          border: Border.all(color: borderSide.color),
+        ),
+        child: inner,
+      );
+    }
+
+    return Material(
+      color: cardBg,
+      shape: RoundedRectangleBorder(
+        borderRadius: radius,
+        side: borderSide,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: data.onTap,
+        borderRadius: radius,
+        child: inner,
       ),
     );
   }

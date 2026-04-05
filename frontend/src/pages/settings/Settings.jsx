@@ -7,28 +7,26 @@ import { Field, inputCls, selectCls, FormActions } from '../../components/FormFi
 
 // ─── Constants ───────────────────────────────────────────────
 
-const ALL_ROLES = ['Super Admin', 'Admin', 'Manager', 'Agent', 'Accountant', 'HR'];
+const ALL_ROLES = ['Super Admin', 'Admin', 'Sales Executive', 'HR'];
 
 const ROLE_COLORS = {
   'Super Admin': 'bg-gradient-to-r from-amber-100 to-orange-100 text-orange-700 dark:from-amber-900/30 dark:to-orange-900/30 dark:text-orange-300 ring-1 ring-orange-300 dark:ring-orange-700',
   Admin:         'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300',
-  Manager:       'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
-  Accountant:    'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  'Sales Executive': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
   HR:            'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300',
-  Agent:         'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
+  default:       'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
 };
 
 const MODULE_ICONS = {
-  crm:           '◎',
-  sales:         '◈',
-  purchase:      '⊕',
-  inventory:     '◫',
-  production:    '⚙',
-  finance:       '◑',
-  hr:            '◉',
-  communication: '◐',
-  settings:      '◌',
-  users:         '◈',
+  crm:        '◎',
+  sales:      '◈',
+  purchase:   '⊕',
+  inventory:  '◫',
+  production: '⚙',
+  finance:    '◑',
+  hr:         '◉',
+  settings:   '◌',
+  users:      '◈',
 };
 
 // ─── Company Tab ─────────────────────────────────────────────
@@ -186,9 +184,9 @@ function ModulesTab() {
                   title={locked ? 'Super Admin always has access' : isOn ? 'Click to revoke access' : 'Click to grant access'}
                   className={`px-2.5 py-1 rounded-full text-xs font-semibold transition-all duration-150 border
                     ${locked
-                      ? `${ROLE_COLORS[role]} opacity-80 cursor-default`
+                      ? `${ROLE_COLORS[role] ?? ROLE_COLORS.default} opacity-80 cursor-default`
                       : isOn
-                        ? `${ROLE_COLORS[role]} hover:opacity-80 cursor-pointer`
+                        ? `${ROLE_COLORS[role] ?? ROLE_COLORS.default} hover:opacity-80 cursor-pointer`
                         : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 border-transparent hover:border-slate-300 dark:hover:border-slate-600 cursor-pointer'
                     } ${!mod.is_enabled ? 'pointer-events-none' : ''} ${isSaving ? 'opacity-50' : ''}`}>
                   {isOn && !locked && <span className="mr-0.5">✓</span>}

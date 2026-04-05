@@ -22,7 +22,25 @@ class CrmController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    loadInitial();
+    _bootstrap();
+  }
+
+  int? _sourceIdFromArgs() {
+    final a = Get.arguments;
+    if (a is! Map) return null;
+    final v = a['sourceId'] ?? a['source_id'];
+    if (v == null) return null;
+    if (v is int) return v;
+    return int.tryParse(v.toString());
+  }
+
+  Future<void> _bootstrap() async {
+    final fromLists = _sourceIdFromArgs();
+    await loadInitial();
+    if (fromLists != null) {
+      selectedSourceId.value = fromLists;
+      await applyFilters();
+    }
   }
 
   Future<void> loadInitial() async {
@@ -73,6 +91,14 @@ class CrmController extends GetxController {
     String? phone,
     String? company,
     int? sourceId,
+    String? leadSegment,
+    String? jobTitle,
+    String? website,
+    String? address,
+    String? notes,
+    List<String>? tags,
+    double? dealSize,
+    double? leadScore,
   }) async {
     isSubmitting.value = true;
     try {
@@ -84,6 +110,14 @@ class CrmController extends GetxController {
         'priority': 'warm',
         if (sourceId != null) 'source_id': sourceId,
         if (selectedStageId.value != null) 'stage_id': selectedStageId.value,
+        if (leadSegment != null && leadSegment.trim().isNotEmpty) 'lead_segment': leadSegment.trim(),
+        if (jobTitle != null && jobTitle.trim().isNotEmpty) 'job_title': jobTitle.trim(),
+        if (website != null && website.trim().isNotEmpty) 'website': website.trim(),
+        if (address != null && address.trim().isNotEmpty) 'address': address.trim(),
+        if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+        if (tags != null && tags.isNotEmpty) 'tags': tags,
+        if (dealSize != null) 'deal_size': dealSize,
+        'lead_score': leadScore ?? 0,
       };
       final created = await _auth.authorizedRequest(method: 'POST', path: '/crm/leads', body: body);
       await applyFilters();

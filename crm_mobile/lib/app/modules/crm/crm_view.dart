@@ -2,28 +2,56 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/models/crm_models.dart';
-import '../../core/utils/ui_format.dart';
 import '../../shared/widgets/app_error_banner.dart';
+import '../../shared/widgets/app_navigation_drawer.dart';
 import '../../routes/app_routes.dart';
 import '../../shared/widgets/role_aware_bottom_nav.dart';
 import '../../showcase/showcase_widgets.dart';
 import 'crm_add_lead_view.dart';
 import 'crm_controller.dart';
+import 'crm_edit_lead_view.dart';
 import 'crm_lead_detail_view.dart';
+import 'crm_sales_launch.dart';
 
 class CrmView extends GetView<CrmController> {
   const CrmView({super.key});
 
+  static const Color _leadsAppBarBg = Color(0xFF263238);
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: const AppNavigationDrawer(currentRoute: AppRoutes.crm),
       appBar: AppBar(
-        title: Obx(() => Text('My leads (${controller.leads.length})')),
+        backgroundColor: _leadsAppBarBg,
+        foregroundColor: Colors.white,
+        iconTheme: const IconThemeData(color: Colors.white),
+        actionsIconTheme: const IconThemeData(color: Colors.white),
+        title: Obx(
+          () => Text(
+            'Leads (${controller.leads.length})',
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+              fontSize: 18,
+            ),
+          ),
+        ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.list_alt_rounded),
+            tooltip: 'Lead lists',
+            onPressed: () => Get.toNamed(AppRoutes.crmLists),
+          ),
+          IconButton(
+            icon: const Icon(Icons.filter_list_rounded),
+            tooltip: 'Source filter',
+            onPressed: () => _openSourceFilterSheet(context, controller),
+          ),
           IconButton(
             onPressed: controller.loadInitial,
             icon: const Icon(Icons.refresh_rounded),
-            tooltip: '',
+            tooltip: 'Refresh',
           ),
         ],
       ),
@@ -35,6 +63,42 @@ class CrmView extends GetView<CrmController> {
       bottomNavigationBar: const RoleAwareBottomNav(currentRoute: AppRoutes.crm),
       body: Column(
         children: [
+          Obx(() {
+            final id = controller.selectedSourceId.value;
+            if (id == null) return const SizedBox.shrink();
+            var label = 'Filtered list';
+            for (final s in controller.sources) {
+              if (s.id == id) {
+                label = s.name;
+                break;
+              }
+            }
+            return Material(
+              color: const Color(0xFFE8F5E9),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  children: [
+                    const Icon(Icons.folder_outlined, size: 18, color: Color(0xFF2E7D32)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        label,
+                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF1B5E20)),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        controller.selectedSourceId.value = null;
+                        controller.applyFilters();
+                      },
+                      child: const Text('Clear'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
             child: Column(
@@ -158,6 +222,7 @@ class CrmView extends GetView<CrmController> {
                         await Get.to(() => CrmLeadDetailView(leadId: lead.id));
                         await controller.applyFilters();
                       },
+                      onAfterEdit: () => controller.applyFilters(),
                     );
                   },
                 ),
@@ -172,56 +237,189 @@ class CrmView extends GetView<CrmController> {
 }
 
 class _LeadCard extends StatelessWidget {
-  const _LeadCard({required this.lead, required this.onTap});
+  const _LeadCard({
+    required this.lead,
+    required this.onTap,
+    required this.onAfterEdit,
+  });
 
   final CrmLead lead;
   final VoidCallback onTap;
+  final VoidCallback onAfterEdit;
 
   @override
   Widget build(BuildContext context) {
-    final stage = lead.stage;
-    final source = lead.source;
-    final value = (lead.leadScore * 1000).toInt();
-
-    final initialsSource = (lead.company.isNotEmpty ? lead.company : lead.name).trim();
-    final parts = initialsSource.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
-    final initials =
-        parts.isEmpty ? '?' : (parts.length == 1 ? parts.first.substring(0, parts.first.length.clamp(0, 2)) : (parts[0][0] + parts[1][0])).toUpperCase();
+    final display = lead.displayTitle;
+    final sub = lead.displaySubtitle;
+    final parts = display.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    final initials = parts.isEmpty
+        ? '?'
+        : (parts.length == 1
+            ? (parts.first.length >= 2 ? parts.first.substring(0, 2) : parts.first.substring(0, 1))
+            : (parts[0][0] + parts[1][0])).toUpperCase();
+    final hues = [0xFF5C6BC0, 0xFF26A69A, 0xFFEC407A, 0xFFAB47BC, 0xFFFF7043];
+    final bg = Color(hues[lead.id.abs() % hues.length]);
 
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircleAvatar(
-                radius: 16,
-                backgroundColor: const Color(0xFFE6F1FB),
-                child: Text(
-                  initials,
-                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF0C447C)),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      lead.company.isNotEmpty ? lead.company : lead.name,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CircleAvatar(
+                    radius: 20,
+                    backgroundColor: bg,
+                    child: Text(
+                      initials,
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '$source · ${formatCurrencyInr(value)}',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).hintColor),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          display,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        if (sub.isNotEmpty && sub != display) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            sub,
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).hintColor),
+                          ),
+                        ],
+                        const SizedBox(height: 6),
+                        InkWell(
+                          onTap: onTap,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.notifications_active_outlined, size: 15, color: Colors.teal.shade700),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Set follow-up',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.teal.shade700),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ShowcaseStagePill(lead.stage),
+                          PopupMenuButton<String>(
+                            icon: Icon(Icons.more_vert_rounded, size: 20, color: Theme.of(context).hintColor),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                            onSelected: (v) async {
+                              if (v == 'detail') {
+                                onTap();
+                              } else if (v == 'edit') {
+                                await Get.to(() => CrmEditLeadView(leadId: lead.id));
+                                onAfterEdit();
+                              } else if (v == 'sales') {
+                                await openCrmSalesOptions(context, lead.id);
+                              }
+                            },
+                            itemBuilder: (ctx) => [
+                              PopupMenuItem(
+                                value: 'detail',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.open_in_new_rounded, size: 20, color: Theme.of(ctx).colorScheme.onSurface),
+                                    const SizedBox(width: 10),
+                                    const Text('View details'),
+                                  ],
+                                ),
+                              ),
+                              PopupMenuItem(
+                                value: 'edit',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.edit_outlined, size: 20, color: Theme.of(ctx).colorScheme.onSurface),
+                                    const SizedBox(width: 10),
+                                    const Text('Edit lead'),
+                                  ],
+                                ),
+                              ),
+                              PopupMenuItem(
+                                value: 'sales',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.shopping_bag_outlined, size: 20, color: Theme.of(ctx).colorScheme.onSurface),
+                                    const SizedBox(width: 10),
+                                    const Text('Sales…'),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: _priorityDotColor(lead.priority),
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            _priorityShort(lead.priority),
+                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              lead.leadScore.toStringAsFixed(1),
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              ShowcaseStagePill(stage),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Flexible(
+                    child: Text(
+                      lead.assignedName.isNotEmpty ? lead.assignedName : lead.source,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(Icons.person_outline_rounded, size: 15, color: Colors.blueGrey.shade400),
+                ],
+              ),
             ],
           ),
         ),
@@ -230,7 +428,62 @@ class _LeadCard extends StatelessWidget {
   }
 }
 
-// (intentionally no priority chip: the showcase uses a stage pill instead)
+void _openSourceFilterSheet(BuildContext context, CrmController c) {
+  final items = List<CrmLookupItem>.from(c.sources);
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (ctx) => SafeArea(
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.clear_all_rounded),
+            title: const Text('All sources'),
+            onTap: () {
+              c.selectedSourceId.value = null;
+              c.applyFilters();
+              Navigator.pop(ctx);
+            },
+          ),
+          const Divider(height: 1),
+          ...items.map(
+            (s) => ListTile(
+              title: Text(s.name),
+              onTap: () {
+                c.selectedSourceId.value = s.id;
+                c.applyFilters();
+                Navigator.pop(ctx);
+              },
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+String _priorityShort(String p) {
+  switch (p) {
+    case 'hot':
+      return 'HIGH';
+    case 'cold':
+      return 'LOW';
+    default:
+      return 'MED';
+  }
+}
+
+Color _priorityDotColor(String p) {
+  switch (p) {
+    case 'hot':
+      return const Color(0xFF2E7D32);
+    case 'cold':
+      return const Color(0xFFF9A825);
+    default:
+      return const Color(0xFF78909C);
+  }
+}
 
 class _StagePillChip extends StatelessWidget {
   const _StagePillChip({
