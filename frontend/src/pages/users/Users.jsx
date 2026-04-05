@@ -10,13 +10,13 @@ import { Field, inputCls, selectCls, FormActions } from '../../components/FormFi
 // ─── Constants ──────────────────────────────────────────────
 
 const MODULE_ORDER = [
-  'crm','sales','purchase','inventory','production',
-  'finance','hr','communication','settings','users',
+  'crm', 'sales', 'purchase', 'inventory', 'production',
+  'finance', 'hr', 'settings', 'users',
 ];
 const MODULE_LABELS = {
-  crm:'CRM', sales:'Sales', purchase:'Purchase', inventory:'Inventory',
-  production:'Production', finance:'Finance', hr:'HR & Payroll',
-  communication:'Communication', settings:'Settings', users:'Users',
+  crm: 'CRM', sales: 'Sales', purchase: 'Purchase', inventory: 'Inventory',
+  production: 'Production', finance: 'Finance', hr: 'HR & Payroll',
+  settings: 'Settings', users: 'Users',
 };
 
 // Paired display order: [base, all] — shown as twin pills
@@ -43,16 +43,15 @@ const OFF_CLS = 'bg-slate-100 text-slate-400 border-transparent dark:bg-slate-80
 const ROLE_COLORS = {
   'Super Admin': 'bg-gradient-to-r from-amber-100 to-orange-100 text-orange-700 dark:from-amber-900/30 dark:to-orange-900/30 dark:text-orange-300 ring-1 ring-orange-300 dark:ring-orange-700',
   Admin:         'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300',
-  Manager:       'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
-  Accountant:    'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  'Sales Executive': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
   HR:            'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300',
-  Agent:         'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
+  default:       'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
 };
 
 // ─── Helpers ────────────────────────────────────────────────
 
 const RoleBadge = ({ role }) => (
-  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${ROLE_COLORS[role] ?? ROLE_COLORS.Agent}`}>
+  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${ROLE_COLORS[role] ?? ROLE_COLORS.default}`}>
     {role}
   </span>
 );
@@ -216,8 +215,8 @@ function UsersTab({ allPerms, roles }) {
   const [editModal,   setEditModal]   = useState(null);
   const [permModal,   setPermModal]   = useState(null);
 
-  const [cForm, setCForm] = useState({ name:'', email:'', password:'', role:'Agent' });
-  const [eForm, setEForm] = useState({ name:'', email:'', role:'Agent', newPassword:'' });
+  const [cForm, setCForm] = useState({ name:'', email:'', password:'', role:'Sales Executive' });
+  const [eForm, setEForm] = useState({ name:'', email:'', role:'Sales Executive', newPassword:'' });
 
   const load = useCallback(() =>
     api.get('/users').then(r => setUsers(r.data || [])).catch(() => {}), []);
@@ -235,7 +234,7 @@ function UsersTab({ allPerms, roles }) {
 
   const handleCreate = async (e) => {
     e.preventDefault(); setSaving(true);
-    try { await api.post('/users', cForm); setCreateModal(false); setCForm({ name:'', email:'', password:'', role:'Agent' }); load(); }
+    try { await api.post('/users', cForm); setCreateModal(false); setCForm({ name:'', email:'', password:'', role:'Sales Executive' }); load(); }
     finally { setSaving(false); }
   };
 

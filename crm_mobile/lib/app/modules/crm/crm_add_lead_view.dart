@@ -23,7 +23,23 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
     text: DateTime.now().toIso8601String().split('T').first,
   );
   final TextEditingController taskDescCtrl = TextEditingController();
+  final TextEditingController segmentCtrl = TextEditingController();
+  final TextEditingController jobTitleCtrl = TextEditingController();
+  final TextEditingController websiteCtrl = TextEditingController();
+  final TextEditingController addressCtrl = TextEditingController();
+  final TextEditingController tagsCtrl = TextEditingController();
+  final TextEditingController notesCtrl = TextEditingController();
+  final TextEditingController dealSizeCtrl = TextEditingController();
+  final TextEditingController scoreCtrl = TextEditingController();
   final RxnInt sourceId = RxnInt();
+
+  List<String> _parseTags(String raw) {
+    return raw
+        .split(RegExp(r'[,\n]'))
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+  }
 
   @override
   void dispose() {
@@ -33,6 +49,14 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
     emailCtrl.dispose();
     dueDateCtrl.dispose();
     taskDescCtrl.dispose();
+    segmentCtrl.dispose();
+    jobTitleCtrl.dispose();
+    websiteCtrl.dispose();
+    addressCtrl.dispose();
+    tagsCtrl.dispose();
+    notesCtrl.dispose();
+    dealSizeCtrl.dispose();
+    scoreCtrl.dispose();
     super.dispose();
   }
 
@@ -47,6 +71,14 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
       phone: phoneCtrl.text.trim(),
       company: companyCtrl.text.trim(),
       sourceId: sourceId.value,
+      leadSegment: segmentCtrl.text.trim().isEmpty ? null : segmentCtrl.text.trim(),
+      jobTitle: jobTitleCtrl.text.trim().isEmpty ? null : jobTitleCtrl.text.trim(),
+      website: websiteCtrl.text.trim().isEmpty ? null : websiteCtrl.text.trim(),
+      address: addressCtrl.text.trim().isEmpty ? null : addressCtrl.text.trim(),
+      notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
+      tags: _parseTags(tagsCtrl.text),
+      dealSize: double.tryParse(dealSizeCtrl.text.trim()),
+      leadScore: double.tryParse(scoreCtrl.text.trim()),
     );
     if (!mounted) return;
     Navigator.of(context).pop();
@@ -82,6 +114,14 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
       phone: phoneCtrl.text.trim(),
       company: companyCtrl.text.trim(),
       sourceId: sourceId.value,
+      leadSegment: segmentCtrl.text.trim().isEmpty ? null : segmentCtrl.text.trim(),
+      jobTitle: jobTitleCtrl.text.trim().isEmpty ? null : jobTitleCtrl.text.trim(),
+      website: websiteCtrl.text.trim().isEmpty ? null : websiteCtrl.text.trim(),
+      address: addressCtrl.text.trim().isEmpty ? null : addressCtrl.text.trim(),
+      notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
+      tags: _parseTags(tagsCtrl.text),
+      dealSize: double.tryParse(dealSizeCtrl.text.trim()),
+      leadScore: double.tryParse(scoreCtrl.text.trim()),
     );
     if (createdLeadId == null) {
       Get.snackbar('Error', 'Lead created but unable to attach task');
@@ -221,6 +261,139 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
                           color: scheme.onSurfaceVariant,
                         ),
                       ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              _sectionLabel(context, 'Qualifiers & contact extra'),
+              const SizedBox(height: 6),
+              Theme(
+                data: Theme.of(context).copyWith(inputDecorationTheme: denseInput),
+                child: Column(
+                  children: [
+                    TextField(
+                      controller: segmentCtrl,
+                      decoration: InputDecoration(
+                        labelText: 'Segment (e.g. B2C, B2B)',
+                        hintText: 'B2C',
+                        floatingLabelBehavior: FloatingLabelBehavior.always,
+                        labelStyle: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: jobTitleCtrl,
+                      decoration: InputDecoration(
+                        labelText: 'Job title / role',
+                        hintText: 'House Owner',
+                        floatingLabelBehavior: FloatingLabelBehavior.always,
+                        labelStyle: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: websiteCtrl,
+                      keyboardType: TextInputType.url,
+                      decoration: InputDecoration(
+                        labelText: 'Website',
+                        hintText: 'https://',
+                        floatingLabelBehavior: FloatingLabelBehavior.always,
+                        labelStyle: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: addressCtrl,
+                      decoration: InputDecoration(
+                        labelText: 'Address',
+                        floatingLabelBehavior: FloatingLabelBehavior.always,
+                        labelStyle: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                      minLines: 2,
+                      maxLines: 4,
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: tagsCtrl,
+                      decoration: InputDecoration(
+                        labelText: 'Tags',
+                        hintText: 'Comma-separated',
+                        floatingLabelBehavior: FloatingLabelBehavior.always,
+                        labelStyle: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: notesCtrl,
+                      decoration: InputDecoration(
+                        labelText: 'Notes',
+                        floatingLabelBehavior: FloatingLabelBehavior.always,
+                        labelStyle: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                      minLines: 2,
+                      maxLines: 5,
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: dealSizeCtrl,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            decoration: InputDecoration(
+                              labelText: 'Deal size (INR)',
+                              floatingLabelBehavior: FloatingLabelBehavior.always,
+                              labelStyle: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextField(
+                            controller: scoreCtrl,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            decoration: InputDecoration(
+                              labelText: 'Lead score',
+                              hintText: 'e.g. 2.5',
+                              floatingLabelBehavior: FloatingLabelBehavior.always,
+                              labelStyle: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),

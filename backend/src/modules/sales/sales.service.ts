@@ -183,8 +183,80 @@ export class SalesService {
     await this.cache.del('dashboard:stats');
   }
 
-  async patchQuotation(id: number, status: string) {
-    return (await this.db.query('UPDATE quotations SET status=$1 WHERE id=$2 RETURNING *', [status, id])).rows[0];
+  /**
+   * Partial update. If `items` is an array, line items are replaced and `total_amount` recalculated.
+   * Optional fields: `status`, `notes`, `valid_until`, `customer_id`.
+   */
+  async patchQuotation(id: number, b: any) {
+    if (b?.items !== undefined && Array.isArray(b.items)) {
+      return this.db.transaction(async (client) => {
+        const ex = await client.query('SELECT id FROM quotations WHERE id=$1', [id]);
+        if (!ex.rows[0]) return null;
+        await client.query('DELETE FROM quotation_items WHERE quotation_id=$1', [id]);
+        let sum = 0;
+        for (const it of b.items) {
+          const lineTotal = Number(it.total ?? 0);
+          sum += lineTotal;
+          await client.query(
+            'INSERT INTO quotation_items (quotation_id,product_id,description,quantity,unit_price,gst_rate,total) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+            [
+              id,
+              it.product_id ?? null,
+              String(it.description ?? ''),
+              Number(it.quantity),
+              Number(it.unit_price),
+              Number(it.gst_rate ?? 0),
+              lineTotal,
+            ],
+          );
+        }
+        const sets = ['total_amount = $1'];
+        const vals: any[] = [sum];
+        let n = 2;
+        if (b.customer_id !== undefined) {
+          sets.push(`customer_id = $${n++}`);
+          vals.push(b.customer_id);
+        }
+        if (b.valid_until !== undefined) {
+          sets.push(`valid_until = $${n++}`);
+          vals.push(b.valid_until);
+        }
+        if (b.notes !== undefined) {
+          sets.push(`notes = $${n++}`);
+          vals.push(b.notes);
+        }
+        if (b.status !== undefined) {
+          sets.push(`status = $${n++}`);
+          vals.push(b.status);
+        }
+        vals.push(id);
+        await client.query(`UPDATE quotations SET ${sets.join(', ')} WHERE id = $${n}`, vals);
+        return this.getQuotation(id);
+      });
+    }
+    const sets: string[] = [];
+    const vals: any[] = [];
+    let n = 1;
+    if (b?.status !== undefined) {
+      sets.push(`status = $${n++}`);
+      vals.push(b.status);
+    }
+    if (b?.notes !== undefined) {
+      sets.push(`notes = $${n++}`);
+      vals.push(b.notes);
+    }
+    if (b?.valid_until !== undefined) {
+      sets.push(`valid_until = $${n++}`);
+      vals.push(b.valid_until);
+    }
+    if (b?.customer_id !== undefined) {
+      sets.push(`customer_id = $${n++}`);
+      vals.push(b.customer_id);
+    }
+    if (!sets.length) return this.getQuotation(id);
+    vals.push(id);
+    await this.db.query(`UPDATE quotations SET ${sets.join(', ')} WHERE id = $${n}`, vals);
+    return this.getQuotation(id);
   }
 
   async addPayment(invoiceId: number, data: any) {

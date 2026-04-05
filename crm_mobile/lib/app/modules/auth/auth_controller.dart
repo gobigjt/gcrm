@@ -21,6 +21,7 @@ class AuthController extends GetxController {
   final isBootstrapping = true.obs;
   final isLoggedIn = false.obs;
   final userName = 'Guest'.obs;
+  final userEmail = ''.obs;
   final userId = 0.obs;
   final role = ''.obs;
   final grantedPermissions = <String>{}.obs;
@@ -176,6 +177,7 @@ class AuthController extends GetxController {
     required String refresh,
   }) async {
     userName.value = (user['name'] ?? 'User').toString();
+    userEmail.value = (user['email'] ?? '').toString();
     userId.value = (user['id'] as num? ?? 0).toInt();
     role.value = (user['role'] ?? '').toString();
     accessToken.value = access;
@@ -223,9 +225,6 @@ class AuthController extends GetxController {
         case 'production':
           can.add(AppPermissions.production);
           break;
-        case 'communication':
-          can.add(AppPermissions.communication);
-          break;
         case 'finance':
           can.add(AppPermissions.finance);
           break;
@@ -247,6 +246,7 @@ class AuthController extends GetxController {
     isLoggedIn.value = false;
     password.value = '';
     role.value = '';
+    userEmail.value = '';
     userId.value = 0;
     accessToken.value = '';
     refreshToken.value = '';

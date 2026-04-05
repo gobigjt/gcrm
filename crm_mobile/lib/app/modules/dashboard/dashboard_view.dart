@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../core/auth/role_permissions.dart';
 import '../../core/models/crm_models.dart';
 import '../../core/utils/ui_format.dart';
 import '../../routes/app_routes.dart';
 import '../../shared/widgets/app_error_banner.dart';
+import '../../shared/widgets/app_navigation_drawer.dart';
 import '../../shared/widgets/role_aware_bottom_nav.dart';
 import '../../showcase/showcase_widgets.dart';
 import '../auth/auth_controller.dart';
@@ -35,6 +37,8 @@ class DashboardView extends GetView<DashboardController> {
   Widget build(BuildContext context) {
     final auth = Get.find<AuthController>();
     return Scaffold(
+      key: controller.scaffoldKey,
+      drawer: const AppNavigationDrawer(currentRoute: AppRoutes.dashboard),
       body: Column(
         children: [
           SafeArea(
@@ -44,6 +48,7 @@ class DashboardView extends GetView<DashboardController> {
                 title: '${_greeting()}, ${auth.userName.value}',
                 subtitle: 'Your pipeline snapshot',
                 avatarInitial: auth.userName.value,
+                onOpenMenu: () => controller.scaffoldKey.currentState?.openDrawer(),
                 onRefresh: controller.refreshStats,
                 notificationBadgeCount: controller.unreadNotifications.value,
                 onNotifications: () async {
@@ -75,11 +80,25 @@ class DashboardView extends GetView<DashboardController> {
                           label: 'My leads',
                           value: '${controller.openLeads.value}',
                           hint: _myLeadsHint(controller),
+                          onTap: () {
+                            if (!auth.hasPermission(AppPermissions.crm)) {
+                              Get.snackbar('Unavailable', "You don't have access to Leads.");
+                              return;
+                            }
+                            Get.toNamed(AppRoutes.crm);
+                          },
                         ),
                         ShowcaseKpiCell(
                           label: 'Won MTD',
                           value: '${controller.activeOrders.value}',
                           hint: 'Active orders (company)',
+                          onTap: () {
+                            if (!auth.hasPermission(AppPermissions.sales)) {
+                              Get.snackbar('Unavailable', "You don't have access to Sales.");
+                              return;
+                            }
+                            Get.toNamed(AppRoutes.sales, arguments: const {'initialTab': 2});
+                          },
                         ),
                         ShowcaseKpiCell(
                           label: 'Revenue',

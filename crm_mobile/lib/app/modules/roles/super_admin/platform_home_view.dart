@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 
 import '../../../routes/app_routes.dart';
 import '../../../shared/widgets/app_error_banner.dart';
+import '../../../shared/widgets/app_navigation_drawer.dart';
 import '../../../shared/widgets/role_aware_bottom_nav.dart';
 import '../../../showcase/showcase_colors.dart';
 import '../../../showcase/showcase_widgets.dart';
@@ -15,6 +16,7 @@ class PlatformHomeView extends GetView<PlatformSummaryController> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: const AppNavigationDrawer(currentRoute: AppRoutes.platformHome),
       appBar: AppBar(
         title: const Text('Platform overview'),
         actions: [

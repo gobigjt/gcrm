@@ -24,7 +24,11 @@ export class SalesController {
   @Get('quotations')           listQuotations()                           { return this.svc.listQuotations(); }
   @Post('quotations')          createQuotation(@Body() b: any, @CurrentUser() u: any) { const {items=[],...d}=b; return this.svc.createQuotation({...d,created_by:u.id}, items); }
   @Get('quotations/:id')       async getQuotation(@Param('id') id: string) { const q=await this.svc.getQuotation(Number(id)); if(!q) throw new NotFoundException(); return {quotation:q}; }
-  @Patch('quotations/:id')     patchQuotation(@Param('id') id: string, @Body() b: any) { return this.svc.patchQuotation(Number(id), b.status); }
+  @Patch('quotations/:id')     async patchQuotation(@Param('id') id: string, @Body() b: any) {
+    const q = await this.svc.patchQuotation(Number(id), b);
+    if (!q) throw new NotFoundException();
+    return { quotation: q };
+  }
   @Delete('quotations/:id')    deleteQuotation(@Param('id') id: string) { return this.svc.deleteQuotation(Number(id)); }
 
   // Orders

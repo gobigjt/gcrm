@@ -6,14 +6,9 @@ import { useModules } from '../context/ModuleContext';
 const PAGE_META = {
   '/': { title: 'Dashboard', cta: '+ New Lead', ctaTo: '/crm?tab=list' },
   '/crm': { title: 'CRM', cta: '+ New Lead', ctaTo: '/crm?tab=list' },
-  '/sales': { title: 'Sales', cta: '+ Quotation', ctaTo: '/sales?tab=quotations' },
-  '/purchase': { title: 'Purchase', cta: '+ Purchase', ctaTo: '/purchase' },
+  '/sales': { title: 'Sales', cta: '+ Quotation', ctaTo: '/sales?tab=quotes' },
   '/inventory': { title: 'Inventory', cta: '+ Product', ctaTo: '/inventory?tab=products' },
-  '/production': { title: 'Production', cta: '+ Job Card', ctaTo: '/production' },
-  '/finance': { title: 'Finance', cta: '+ Record', ctaTo: '/finance' },
   '/hr': { title: 'HR', cta: '+ Employee', ctaTo: '/hr' },
-  '/communication': { title: 'Communication', cta: '+ Template', ctaTo: '/communication' },
-  '/notifications': { title: 'Notifications', cta: 'View All', ctaTo: '/notifications' },
   '/settings': { title: 'Settings', cta: 'Save All', ctaTo: '/settings' },
   '/users': { title: 'Users & Roles', cta: '+ Invite User', ctaTo: '/users?tab=users' },
 };
@@ -36,41 +31,25 @@ const NAV_SECTIONS = [
   {
     label: 'Sales',
     items: [
-      { to: '/sales?tab=quotations', label: 'Quotations', icon: '◇', module: 'sales' },
+      { to: '/sales?tab=quotes', label: 'Quotes', icon: '❝', module: 'sales' },
+      { to: '/sales?tab=orders', label: 'Orders', icon: '◇', module: 'sales' },
       { to: '/sales?tab=invoices', label: 'Invoices', icon: '◫', module: 'sales' },
-      { to: '/sales?tab=invoices&view=payments', label: 'Payments', icon: '◧', module: 'sales' },
     ],
   },
   {
     label: 'Inventory',
     items: [
       { to: '/inventory?tab=products', label: 'Products', icon: '◆', module: 'inventory' },
-      { to: '/inventory?tab=warehouses', label: 'Inventory', icon: '◫', module: 'inventory' },
-      { to: '/purchase', label: 'Purchases', icon: '⊕', module: 'purchase' },
+      { to: '/inventory?tab=warehouses', label: 'Warehouses', icon: '◫', module: 'inventory' },
     ],
   },
   {
     label: 'Operations',
-    items: [
-      { to: '/production', label: 'Production', icon: '⚙', module: 'production' },
-      { to: '/hr', label: 'HR', icon: '◉', module: 'hr' },
-    ],
-  },
-  {
-    label: 'Finance',
-    items: [
-      { to: '/finance?tab=gst', label: 'GST / Tax', icon: '◑', module: 'finance' },
-      { to: '/finance?tab=reports', label: 'Reports', icon: '▥', module: 'finance' },
-    ],
-  },
-  {
-    label: 'Communication',
-    items: [{ to: '/communication', label: 'WhatsApp', icon: '◐', module: 'communication' }],
+    items: [{ to: '/hr', label: 'HR', icon: '◉', module: 'hr' }],
   },
   {
     label: 'Admin',
     items: [
-      { to: '/notifications', label: 'Notifications', icon: '◍', module: null },
       { to: '/users?tab=users', label: 'Users & Roles', icon: '◈', module: 'users' },
       { to: '/users?tab=permissions', label: 'Permissions', icon: '▦', module: 'users' },
       { to: '/settings', label: 'Settings', icon: '◌', module: 'settings' },
@@ -114,6 +93,7 @@ function navItemActive(pathname, search, hash, to) {
   for (const [k, v] of want.entries()) {
     if (have.get(k) !== v) {
       if (path === '/crm' && k === 'tab' && v === 'list' && !have.get('tab')) return true;
+      if (path === '/sales' && k === 'tab' && v === 'quotes' && !have.get('tab')) return true;
       return false;
     }
   }
@@ -123,10 +103,8 @@ function navItemActive(pathname, search, hash, to) {
 const roleColors = {
   'Super Admin': 'bg-gradient-to-r from-amber-100 to-orange-100 text-orange-700 dark:from-amber-900/30 dark:to-orange-900/30 dark:text-orange-300 ring-1 ring-orange-300 dark:ring-orange-700',
   Admin:         'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
-  Manager:       'bg-blue-100   text-blue-700   dark:bg-blue-900/40   dark:text-blue-300',
-  Accountant:    'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+  'Sales Executive': 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
   HR:            'bg-amber-100  text-amber-700  dark:bg-amber-900/40  dark:text-amber-300',
-  Agent:         'bg-slate-200  text-slate-700  dark:bg-slate-800     dark:text-slate-300',
   default:       'bg-slate-100  text-slate-600  dark:bg-slate-700     dark:text-slate-300',
 };
 
@@ -289,18 +267,6 @@ export default function Layout({ children }) {
             <div className="text-[11px] text-slate-400 dark:text-slate-500 truncate">Home / {page.title}</div>
           </div>
           <div className="hidden md:block flex-1" />
-          <button
-            onClick={() => navigate('/notifications')}
-            className="btn-wf-secondary hidden sm:inline-flex"
-          >
-            Notifications
-          </button>
-          <button
-            onClick={() => navigate('/communication')}
-            className="btn-wf-secondary hidden sm:inline-flex"
-          >
-            WhatsApp
-          </button>
           <button
             onClick={() => navigate(page.ctaTo)}
             className="btn-wf-primary shrink-0"

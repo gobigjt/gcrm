@@ -53,7 +53,7 @@ export class AuthService {
     const exists = await this.db.query('SELECT id FROM users WHERE email=$1', [dto.email]);
     if (exists.rows[0]) throw new ConflictException('Email already registered');
     const hashed   = await bcrypt.hash(dto.password, 10);
-    const roleName = dto.role || 'Agent';
+    const roleName = dto.role || 'Sales Executive';
     const roleRes  = await this.db.query('SELECT id FROM roles WHERE name=$1', [roleName]);
     const roleId   = roleRes.rows[0]?.id ?? null;
     const res = await this.db.query(

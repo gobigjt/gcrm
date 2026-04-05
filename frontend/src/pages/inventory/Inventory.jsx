@@ -6,16 +6,13 @@ import Tabs  from '../../components/Tabs';
 import Modal from '../../components/Modal';
 import { Field, inputCls, FormActions } from '../../components/FormField';
 
-const TABS = ['Products','Warehouses','Low Stock','Movements'];
+const TABS = ['Products', 'Warehouses'];
 const EMPTY = { name:'', sku:'', hsn_code:'', unit:'pcs', purchase_price:'', sale_price:'', gst_rate:'0', low_stock_alert:'0' };
 
 const INV_TAB_BY_PARAM = {
   products: 'Products',
   warehouses: 'Warehouses',
   inventory: 'Warehouses',
-  lowstock: 'Low Stock',
-  low: 'Low Stock',
-  movements: 'Movements',
 };
 
 export default function Inventory() {
@@ -23,8 +20,6 @@ export default function Inventory() {
   const [tab, setTab] = useState('Products');
   const [products,   setProducts]   = useState([]);
   const [warehouses, setWarehouses] = useState([]);
-  const [lowStock,   setLowStock]   = useState([]);
-  const [movements,  setMovements]  = useState([]);
   const [modal, setModal] = useState(false);
   const [form, setForm]   = useState(EMPTY);
   const [loading, setLoading] = useState(false);
@@ -32,8 +27,6 @@ export default function Inventory() {
   const loadAll = () => {
     api.get('/inventory/products').then(r => setProducts(r.data.products||r.data||[]));
     api.get('/inventory/warehouses').then(r => setWarehouses(r.data.warehouses||r.data||[]));
-    api.get('/inventory/stock/low').then(r => setLowStock(r.data.low_stock||r.data||[]));
-    api.get('/inventory/movements').then(r => setMovements(r.data.movements||r.data||[]));
   };
   useEffect(() => { loadAll(); }, []);
 
@@ -52,14 +45,12 @@ export default function Inventory() {
     finally { setLoading(false); }
   };
 
-  const movTypeCls = t => t === 'in' ? 'text-emerald-600 font-medium' : 'text-red-500 font-medium';
-
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-[16px] font-semibold text-slate-800 dark:text-slate-100">Inventory management</h2>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400">Products, warehouses, low-stock alerts and movements</p>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">Products and warehouses</p>
         </div>
         {tab === 'Products' && (
           <button
@@ -82,32 +73,6 @@ export default function Inventory() {
 
       {tab === 'Warehouses' && (
         <Table cols={['Name','Location','Active']} rows={warehouses.map(w => [w.name, w.location, w.is_active ? '✓' : '—'])} />
-      )}
-
-      {tab === 'Low Stock' && (
-        <Table
-          cols={['Product','SKU','Alert Level','Current Stock']}
-          rows={lowStock.map(p => [
-            p.name, p.sku,
-            p.low_stock_alert,
-            <span className="text-red-600 font-bold">{p.total_stock}</span>
-          ])}
-          empty="No low stock alerts 🎉"
-        />
-      )}
-
-      {tab === 'Movements' && (
-        <Table
-          cols={['Date','Product','Warehouse','Type','Quantity','Reference']}
-          rows={movements.map(m => [
-            m.created_at?.slice(0,10),
-            m.product_name,
-            m.warehouse_name,
-            <span className={movTypeCls(m.type)}>{m.type.toUpperCase()}</span>,
-            m.quantity,
-            m.reference
-          ])}
-        />
       )}
 
       {modal && (

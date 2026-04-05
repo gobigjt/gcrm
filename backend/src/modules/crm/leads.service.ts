@@ -47,8 +47,15 @@ export class LeadsService {
     if (filters.assigned_to) { conds.push(`l.assigned_to=$${i++}`); vals.push(filters.assigned_to); }
     if (filters.priority)    { conds.push(`l.priority=$${i++}`);    vals.push(filters.priority); }
     if (filters.search) {
-      conds.push(`(l.name ILIKE $${i} OR l.email ILIKE $${i} OR l.company ILIKE $${i} OR l.phone ILIKE $${i})`);
-      vals.push(`%${filters.search}%`); i++;
+      const term = `%${filters.search}%`;
+      conds.push(`(
+        l.name ILIKE $${i} OR l.email ILIKE $${i} OR l.company ILIKE $${i} OR l.phone ILIKE $${i}
+        OR l.website ILIKE $${i} OR l.address ILIKE $${i} OR l.job_title ILIKE $${i}
+        OR l.lead_segment ILIKE $${i}
+        OR COALESCE(array_to_string(l.tags, ' '), '') ILIKE $${i}
+      )`);
+      vals.push(term);
+      i++;
     }
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
     const res = await this.db.query(
@@ -78,13 +85,26 @@ export class LeadsService {
   }
 
   async create(data: any) {
+    const tags = Array.isArray(data.tags) ? data.tags.map(String) : [];
     const res = await this.db.query(
-      `INSERT INTO leads (name,email,phone,company,source_id,stage_id,assigned_to,notes,priority,custom_fields)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-      [data.name, data.email, data.phone, data.company, data.source_id,
-       data.stage_id, data.assigned_to || null, data.notes,
-       data.priority || 'warm',
-       data.custom_fields ? JSON.stringify(data.custom_fields) : null],
+      `INSERT INTO leads (
+         name,email,phone,company,source_id,stage_id,assigned_to,notes,priority,custom_fields,
+         lead_segment,job_title,deal_size,website,address,tags,lead_score
+       )
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::text[],$17) RETURNING *`,
+      [
+        data.name, data.email, data.phone, data.company, data.source_id,
+        data.stage_id, data.assigned_to || null, data.notes,
+        data.priority || 'warm',
+        data.custom_fields ? JSON.stringify(data.custom_fields) : null,
+        data.lead_segment ?? null,
+        data.job_title ?? null,
+        data.deal_size ?? null,
+        data.website ?? null,
+        data.address ?? null,
+        tags,
+        data.lead_score != null ? Number(data.lead_score) : 0,
+      ],
     );
     const row = res.rows[0];
     await this.cache.delPattern('leads:*');
@@ -101,14 +121,23 @@ export class LeadsService {
       const cur = await this.get(id);
       prevAssignee = cur ? (cur.assigned_to != null ? Number(cur.assigned_to) : null) : null;
     }
-    const fields = ['name','email','phone','company','source_id','stage_id','assigned_to','notes','priority','custom_fields','is_converted','lead_score'];
+    const fields = [
+      'name', 'email', 'phone', 'company', 'source_id', 'stage_id', 'assigned_to', 'notes',
+      'priority', 'custom_fields', 'is_converted', 'lead_score',
+      'lead_segment', 'job_title', 'deal_size', 'website', 'address', 'tags',
+    ];
     const sets: string[] = [];
     const vals: any[] = [];
     let i = 1;
     for (const f of fields) {
       if (data[f] !== undefined) {
-        sets.push(`${f}=$${i++}`);
-        vals.push(f === 'custom_fields' ? JSON.stringify(data[f]) : data[f]);
+        if (f === 'tags') {
+          sets.push(`tags=$${i++}::text[]`);
+          vals.push(Array.isArray(data.tags) ? data.tags.map(String) : []);
+        } else {
+          sets.push(`${f}=$${i++}`);
+          vals.push(f === 'custom_fields' ? JSON.stringify(data[f]) : data[f]);
+        }
       }
     }
     if (!sets.length) return null;
@@ -139,6 +168,28 @@ export class LeadsService {
 
   async stages()  { return (await this.db.query('SELECT * FROM lead_stages ORDER BY position')).rows; }
   async sources() { return (await this.db.query('SELECT * FROM lead_sources ORDER BY name')).rows; }
+
+  /** Per-source lead counts + total (for “All lists” mobile UI). */
+  async sourceCounts() {
+    const [bySource, totalRow] = await Promise.all([
+      this.db.query(`
+        SELECT s.id, s.name, COUNT(l.id)::int AS lead_count
+        FROM lead_sources s
+        LEFT JOIN leads l ON l.source_id = s.id
+        GROUP BY s.id, s.name
+        ORDER BY s.name
+      `),
+      this.db.query(`SELECT COUNT(*)::int AS total FROM leads`),
+    ]);
+    return {
+      total: Number(totalRow.rows[0]?.total ?? 0),
+      sources: bySource.rows.map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        lead_count: Number(r.lead_count),
+      })),
+    };
+  }
   async assignees() {
     const res = await this.db.query("SELECT id,name FROM users WHERE is_active=TRUE ORDER BY name");
     return res.rows;

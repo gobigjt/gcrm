@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../routes/app_routes.dart';
+import '../../../shared/widgets/app_navigation_drawer.dart';
 import '../../../shared/widgets/role_aware_bottom_nav.dart';
 
 class SaasBillingView extends StatelessWidget {
@@ -9,6 +10,7 @@ class SaasBillingView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: const AppNavigationDrawer(currentRoute: AppRoutes.saasBilling),
       appBar: AppBar(title: const Text('SaaS billing (demo)')),
       bottomNavigationBar: const RoleAwareBottomNav(currentRoute: AppRoutes.saasBilling),
       body: ListView(

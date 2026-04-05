@@ -15,6 +15,7 @@ export class LeadsController {
 
   @Get('stages')    stages()    { return this.svc.stages(); }
   @Get('sources')   sources()   { return this.svc.sources(); }
+  @Get('source-counts') sourceCounts() { return this.svc.sourceCounts(); }
   @Get('assignees') assignees() { return this.svc.assignees(); }
   @Get('stats')     stats()     { return this.svc.stats(); }
   @Get('followups') allFollowups(@Query() q: any) { return this.svc.allFollowups(q); }

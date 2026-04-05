@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import '../../core/models/crm_models.dart';
 import '../../core/utils/ui_format.dart';
 import '../../shared/widgets/app_error_banner.dart';
+import '../../shared/widgets/app_navigation_drawer.dart';
 import '../../routes/app_routes.dart';
 import '../../shared/widgets/role_aware_bottom_nav.dart';
 import '../../showcase/showcase_widgets.dart';
@@ -15,6 +16,7 @@ class TasksView extends GetView<TasksController> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: const AppNavigationDrawer(currentRoute: AppRoutes.tasks),
       appBar: AppBar(
         title: const Text('Tasks & follow-ups'),
         actions: [

@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import '../../core/utils/ui_format.dart';
 import '../../routes/app_routes.dart';
 import '../../shared/widgets/app_error_banner.dart';
+import '../../shared/widgets/app_navigation_drawer.dart';
 import '../../shared/widgets/role_aware_bottom_nav.dart';
 import 'hr_controller.dart';
 
@@ -15,6 +16,7 @@ class HrView extends GetView<HrController> {
     return DefaultTabController(
       length: 3,
       child: Scaffold(
+        drawer: const AppNavigationDrawer(currentRoute: AppRoutes.hr),
         appBar: AppBar(
           title: const Text('HR & Payroll'),
           bottom: TabBar(
