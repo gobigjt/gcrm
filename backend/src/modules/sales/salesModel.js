@@ -81,8 +81,17 @@ export async function listQuotations() {
 }
 export async function getQuotation(id) {
   const [q, items] = await Promise.all([
-    db.query(`SELECT q.*,c.name AS customer_name FROM quotations q JOIN customers c ON c.id=q.customer_id WHERE q.id=$1`, [id]),
-    db.query("SELECT qi.*, pr.name AS product_name FROM quotation_items qi LEFT JOIN products pr ON pr.id=qi.product_id WHERE qi.quotation_id=$1", [id]),
+    db.query(
+      `SELECT q.*, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
+              c.gstin AS customer_gstin, c.address AS customer_address
+         FROM quotations q JOIN customers c ON c.id=q.customer_id WHERE q.id=$1`,
+      [id],
+    ),
+    db.query(
+      `SELECT qi.*, pr.name AS product_name, pr.hsn_code AS product_hsn_code
+         FROM quotation_items qi LEFT JOIN products pr ON pr.id=qi.product_id WHERE qi.quotation_id=$1`,
+      [id],
+    ),
   ]);
   if (!q.rows[0]) return null;
   return { ...q.rows[0], items: items.rows };
@@ -119,8 +128,17 @@ export async function listOrders() {
 }
 export async function getOrder(id) {
   const [o, items] = await Promise.all([
-    db.query(`SELECT o.*,c.name AS customer_name FROM sales_orders o JOIN customers c ON c.id=o.customer_id WHERE o.id=$1`, [id]),
-    db.query("SELECT oi.*, pr.name AS product_name FROM sales_order_items oi LEFT JOIN products pr ON pr.id=oi.product_id WHERE oi.order_id=$1", [id]),
+    db.query(
+      `SELECT o.*, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
+              c.gstin AS customer_gstin, c.address AS customer_address
+         FROM sales_orders o JOIN customers c ON c.id=o.customer_id WHERE o.id=$1`,
+      [id],
+    ),
+    db.query(
+      `SELECT oi.*, pr.name AS product_name, pr.hsn_code AS product_hsn_code
+         FROM sales_order_items oi LEFT JOIN products pr ON pr.id=oi.product_id WHERE oi.order_id=$1`,
+      [id],
+    ),
   ]);
   if (!o.rows[0]) return null;
   return { ...o.rows[0], items: items.rows };
@@ -161,8 +179,17 @@ export async function listInvoices() {
 }
 export async function getInvoice(id) {
   const [inv, items, pays] = await Promise.all([
-    db.query(`SELECT i.*,c.name AS customer_name FROM invoices i JOIN customers c ON c.id=i.customer_id WHERE i.id=$1`, [id]),
-    db.query("SELECT ii.*, pr.name AS product_name FROM invoice_items ii LEFT JOIN products pr ON pr.id=ii.product_id WHERE ii.invoice_id=$1", [id]),
+    db.query(
+      `SELECT i.*, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
+              c.gstin AS customer_gstin, c.address AS customer_address
+         FROM invoices i JOIN customers c ON c.id=i.customer_id WHERE i.id=$1`,
+      [id],
+    ),
+    db.query(
+      `SELECT ii.*, pr.name AS product_name, pr.hsn_code AS product_hsn_code
+         FROM invoice_items ii LEFT JOIN products pr ON pr.id=ii.product_id WHERE ii.invoice_id=$1`,
+      [id],
+    ),
     db.query("SELECT * FROM payments WHERE invoice_id=$1 ORDER BY payment_date", [id]),
   ]);
   if (!inv.rows[0]) return null;

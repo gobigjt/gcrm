@@ -229,6 +229,13 @@ CREATE TABLE IF NOT EXISTS company_settings (
   logo_url          TEXT,
   currency          VARCHAR(10) NOT NULL DEFAULT 'INR',
   fiscal_year_start DATE,
+  invoice_tagline   TEXT,
+  payment_terms     TEXT,
+  invoice_bank_details TEXT,
+  bank_name         VARCHAR(200),
+  bank_branch       VARCHAR(200),
+  bank_account_number VARCHAR(80),
+  bank_ifsc         VARCHAR(20),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

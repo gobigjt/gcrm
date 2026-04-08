@@ -2,11 +2,15 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useModules } from '../context/ModuleContext';
+import { useTheme } from '../context/ThemeContext';
 
 const PAGE_META = {
   '/': { title: 'Dashboard', cta: '+ New Lead', ctaTo: '/crm?tab=list' },
   '/crm': { title: 'CRM', cta: '+ New Lead', ctaTo: '/crm?tab=list' },
-  '/sales': { title: 'Sales', cta: '+ Quotation', ctaTo: '/sales?tab=quotes' },
+  '/sales': { title: 'Sales', cta: '+ Quotation', ctaTo: '/sales/quotes/new' },
+  '/sales/quotes': { title: 'Quotes', cta: '+ Quotation', ctaTo: '/sales/quotes/new' },
+  '/sales/orders': { title: 'Orders', cta: '+ Order', ctaTo: '/sales/orders/new' },
+  '/sales/invoices': { title: 'Invoices', cta: '+ Invoice', ctaTo: '/sales/invoices/new' },
   '/inventory': { title: 'Inventory', cta: '+ Product', ctaTo: '/inventory?tab=products' },
   '/hr': { title: 'HR', cta: '+ Employee', ctaTo: '/hr' },
   '/settings': { title: 'Settings', cta: 'Save All', ctaTo: '/settings' },
@@ -31,9 +35,9 @@ const NAV_SECTIONS = [
   {
     label: 'Sales',
     items: [
-      { to: '/sales?tab=quotes', label: 'Quotes', icon: '❝', module: 'sales' },
-      { to: '/sales?tab=orders', label: 'Orders', icon: '◇', module: 'sales' },
-      { to: '/sales?tab=invoices', label: 'Invoices', icon: '◫', module: 'sales' },
+      { to: '/sales/quotes', label: 'Quotes', icon: '❝', module: 'sales' },
+      { to: '/sales/orders', label: 'Orders', icon: '◇', module: 'sales' },
+      { to: '/sales/invoices', label: 'Invoices', icon: '◫', module: 'sales' },
     ],
   },
   {
@@ -71,6 +75,14 @@ function navItemActive(pathname, search, hash, to) {
   const qi = rest.indexOf('?');
   const path = qi >= 0 ? rest.slice(0, qi) : rest;
   const want = new URLSearchParams(qi >= 0 ? rest.slice(qi + 1) : '');
+  const salesNavRoots = ['/sales/quotes', '/sales/orders', '/sales/invoices'];
+  if (salesNavRoots.includes(path)) {
+    if (pathname === path || pathname.startsWith(`${path}/`)) {
+      if (wantHash) return (hash || '') === wantHash;
+      return true;
+    }
+    return false;
+  }
   if (pathname !== path) return false;
   if (wantHash) {
     return (hash || '') === wantHash;
@@ -82,18 +94,9 @@ function navItemActive(pathname, search, hash, to) {
     return true;
   }
 
-  if (path === '/sales' && want.get('tab') === 'invoices') {
-    const wv = want.get('view') || '';
-    if (want.has('view')) {
-      return have.get('tab') === 'invoices' && (have.get('view') || '') === wv;
-    }
-    return have.get('tab') === 'invoices' && !(have.get('view') || '');
-  }
-
   for (const [k, v] of want.entries()) {
     if (have.get(k) !== v) {
       if (path === '/crm' && k === 'tab' && v === 'list' && !have.get('tab')) return true;
-      if (path === '/sales' && k === 'tab' && v === 'quotes' && !have.get('tab')) return true;
       return false;
     }
   }
@@ -111,6 +114,7 @@ const roleColors = {
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
   const { canAccess } = useModules();
+  const { dark, toggle } = useTheme();
   const navigate = useNavigate();
   const { pathname, search, hash } = useLocation();
   const pathRef = useRef(pathname);
@@ -272,6 +276,18 @@ export default function Layout({ children }) {
             className="btn-wf-primary shrink-0"
           >
             {page.cta}
+          </button>
+          <button
+            type="button"
+            onClick={toggle}
+            aria-label={dark ? 'Switch to light theme' : 'Switch to dark theme'}
+            title={dark ? 'Switch to light theme' : 'Switch to dark theme'}
+            className="h-8 w-8 shrink-0 rounded-lg border border-slate-200 dark:border-slate-700
+                       bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-300
+                       hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300
+                       transition-colors"
+          >
+            {dark ? '☀️' : '🌙'}
           </button>
           <div className="hidden sm:flex items-center gap-2">
             <div className="w-7 h-7 rounded-full bg-[#eeedfe] text-[#3c3489] flex items-center justify-center text-xs font-semibold">

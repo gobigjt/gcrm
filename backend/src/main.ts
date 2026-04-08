@@ -3,11 +3,20 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { join } from 'path';
+import { existsSync, mkdirSync } from 'fs';
 import { AppModule } from './app.module';
 import * as morgan from 'morgan';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { rawBody: true });
+  const uploadRoot = join(process.cwd(), 'uploads');
+  const companyDir = join(uploadRoot, 'company');
+  if (!existsSync(companyDir)) mkdirSync(companyDir, { recursive: true });
+
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
+
+  app.useStaticAssets(uploadRoot, { prefix: '/uploads/', index: false });
 
   app.setGlobalPrefix('api');
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));

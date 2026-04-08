@@ -7,7 +7,7 @@ export async function getCompanySettings() {
 export async function upsertCompanySettings(data) {
   const existing = await getCompanySettings();
   if (existing) {
-    const fields = ["company_name","gstin","address","phone","email","logo_url","currency","fiscal_year_start"];
+    const fields = ["company_name","gstin","address","phone","email","logo_url","currency","fiscal_year_start","invoice_tagline","payment_terms","invoice_bank_details","bank_name","bank_branch","bank_account_number","bank_ifsc"];
     const sets=[]; const vals=[]; let i=1;
     for (const f of fields) { if(data[f]!==undefined){ sets.push(`${f}=$${i++}`); vals.push(data[f]); } }
     sets.push("updated_at=NOW()");
@@ -16,8 +16,8 @@ export async function upsertCompanySettings(data) {
     return res.rows[0];
   } else {
     const res = await db.query(
-      "INSERT INTO company_settings (company_name,gstin,address,phone,email,logo_url,currency,fiscal_year_start) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
-      [data.company_name||"My Company", data.gstin, data.address, data.phone, data.email, data.logo_url, data.currency||"INR", data.fiscal_year_start]
+      "INSERT INTO company_settings (company_name,gstin,address,phone,email,logo_url,currency,fiscal_year_start,invoice_tagline,payment_terms,invoice_bank_details,bank_name,bank_branch,bank_account_number,bank_ifsc) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *",
+      [data.company_name||"My Company", data.gstin, data.address, data.phone, data.email, data.logo_url, data.currency||"INR", data.fiscal_year_start, data.invoice_tagline, data.payment_terms, data.invoice_bank_details, data.bank_name, data.bank_branch, data.bank_account_number, data.bank_ifsc]
     );
     return res.rows[0];
   }

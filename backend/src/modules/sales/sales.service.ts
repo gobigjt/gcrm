@@ -75,8 +75,17 @@ export class SalesService {
   }
   async getQuotation(id: number) {
     const [q, items] = await Promise.all([
-      this.db.query(`SELECT q.*,c.name AS customer_name FROM quotations q JOIN customers c ON c.id=q.customer_id WHERE q.id=$1`, [id]),
-      this.db.query(`SELECT qi.*,pr.name AS product_name FROM quotation_items qi LEFT JOIN products pr ON pr.id=qi.product_id WHERE qi.quotation_id=$1`, [id]),
+      this.db.query(
+        `SELECT q.*, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
+                c.gstin AS customer_gstin, c.address AS customer_address
+           FROM quotations q JOIN customers c ON c.id=q.customer_id WHERE q.id=$1`,
+        [id],
+      ),
+      this.db.query(
+        `SELECT qi.*, pr.name AS product_name, pr.hsn_code AS product_hsn_code
+           FROM quotation_items qi LEFT JOIN products pr ON pr.id=qi.product_id WHERE qi.quotation_id=$1`,
+        [id],
+      ),
     ]);
     return q.rows[0] ? { ...q.rows[0], items: items.rows } : null;
   }
@@ -103,8 +112,17 @@ export class SalesService {
   }
   async getOrder(id: number) {
     const [o, items] = await Promise.all([
-      this.db.query(`SELECT o.*,c.name AS customer_name FROM sales_orders o JOIN customers c ON c.id=o.customer_id WHERE o.id=$1`, [id]),
-      this.db.query(`SELECT oi.*,pr.name AS product_name FROM sales_order_items oi LEFT JOIN products pr ON pr.id=oi.product_id WHERE oi.order_id=$1`, [id]),
+      this.db.query(
+        `SELECT o.*, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
+                c.gstin AS customer_gstin, c.address AS customer_address
+           FROM sales_orders o JOIN customers c ON c.id=o.customer_id WHERE o.id=$1`,
+        [id],
+      ),
+      this.db.query(
+        `SELECT oi.*, pr.name AS product_name, pr.hsn_code AS product_hsn_code
+           FROM sales_order_items oi LEFT JOIN products pr ON pr.id=oi.product_id WHERE oi.order_id=$1`,
+        [id],
+      ),
     ]);
     return o.rows[0] ? { ...o.rows[0], items: items.rows } : null;
   }
@@ -134,8 +152,17 @@ export class SalesService {
   }
   async getInvoice(id: number) {
     const [inv, items, pays] = await Promise.all([
-      this.db.query(`SELECT i.*,c.name AS customer_name FROM invoices i JOIN customers c ON c.id=i.customer_id WHERE i.id=$1`, [id]),
-      this.db.query(`SELECT ii.*,pr.name AS product_name FROM invoice_items ii LEFT JOIN products pr ON pr.id=ii.product_id WHERE ii.invoice_id=$1`, [id]),
+      this.db.query(
+        `SELECT i.*, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
+                c.gstin AS customer_gstin, c.address AS customer_address
+           FROM invoices i JOIN customers c ON c.id=i.customer_id WHERE i.id=$1`,
+        [id],
+      ),
+      this.db.query(
+        `SELECT ii.*, pr.name AS product_name, pr.hsn_code AS product_hsn_code
+           FROM invoice_items ii LEFT JOIN products pr ON pr.id=ii.product_id WHERE ii.invoice_id=$1`,
+        [id],
+      ),
       this.db.query(`SELECT * FROM payments WHERE invoice_id=$1 ORDER BY payment_date`, [id]),
     ]);
     return inv.rows[0] ? { ...inv.rows[0], items: items.rows, payments: pays.rows } : null;
@@ -257,6 +284,83 @@ export class SalesService {
     vals.push(id);
     await this.db.query(`UPDATE quotations SET ${sets.join(', ')} WHERE id = $${n}`, vals);
     return this.getQuotation(id);
+  }
+
+  async patchInvoice(id: number, b: any) {
+    if (b?.items !== undefined && Array.isArray(b.items)) {
+      const row = await this.db.transaction(async (client) => {
+        const ex = await client.query('SELECT id FROM invoices WHERE id=$1', [id]);
+        if (!ex.rows[0]) return null;
+
+        await client.query('DELETE FROM invoice_items WHERE invoice_id=$1', [id]);
+
+        let subtotal = 0;
+        let cgst = 0;
+        let sgst = 0;
+        let igst = 0;
+        for (const it of b.items) {
+          const qty = Number(it.quantity ?? 0);
+          const unit = Number(it.unit_price ?? 0);
+          const rate = Number(it.gst_rate ?? 0);
+          const base = qty * unit;
+          const gst = base * rate / 100;
+          const lineCgst = Number(it.cgst ?? (b.is_interstate ? 0 : gst / 2));
+          const lineSgst = Number(it.sgst ?? (b.is_interstate ? 0 : gst / 2));
+          const lineIgst = Number(it.igst ?? (b.is_interstate ? gst : 0));
+          const lineTotal = Number(it.total ?? (base + lineCgst + lineSgst + lineIgst));
+
+          subtotal += base;
+          cgst += lineCgst;
+          sgst += lineSgst;
+          igst += lineIgst;
+
+          await client.query(
+            'INSERT INTO invoice_items (invoice_id,product_id,description,quantity,unit_price,gst_rate,cgst,sgst,igst,total) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+            [
+              id,
+              it.product_id ?? null,
+              String(it.description ?? ''),
+              qty,
+              unit,
+              rate,
+              lineCgst,
+              lineSgst,
+              lineIgst,
+              lineTotal,
+            ],
+          );
+        }
+
+        const total = subtotal + cgst + sgst + igst;
+        const sets = ['subtotal=$1', 'cgst=$2', 'sgst=$3', 'igst=$4', 'total_amount=$5'];
+        const vals: any[] = [subtotal, cgst, sgst, igst, total];
+        let n = 6;
+        if (b.customer_id !== undefined) { sets.push(`customer_id=$${n++}`); vals.push(b.customer_id); }
+        if (b.invoice_date !== undefined) { sets.push(`invoice_date=$${n++}`); vals.push(b.invoice_date); }
+        if (b.due_date !== undefined) { sets.push(`due_date=$${n++}`); vals.push(b.due_date); }
+        if (b.notes !== undefined) { sets.push(`notes=$${n++}`); vals.push(b.notes); }
+        if (b.status !== undefined) { sets.push(`status=$${n++}`); vals.push(b.status); }
+        vals.push(id);
+        await client.query(`UPDATE invoices SET ${sets.join(', ')} WHERE id=$${n}`, vals);
+        return this.getInvoice(id);
+      });
+      await this.cache.del('dashboard:stats');
+      return row;
+    }
+
+    const sets: string[] = [];
+    const vals: any[] = [];
+    let n = 1;
+    if (b?.status !== undefined) { sets.push(`status=$${n++}`); vals.push(b.status); }
+    if (b?.notes !== undefined) { sets.push(`notes=$${n++}`); vals.push(b.notes); }
+    if (b?.invoice_date !== undefined) { sets.push(`invoice_date=$${n++}`); vals.push(b.invoice_date); }
+    if (b?.due_date !== undefined) { sets.push(`due_date=$${n++}`); vals.push(b.due_date); }
+    if (b?.customer_id !== undefined) { sets.push(`customer_id=$${n++}`); vals.push(b.customer_id); }
+    if (!sets.length) return this.getInvoice(id);
+    vals.push(id);
+    await this.db.query(`UPDATE invoices SET ${sets.join(', ')} WHERE id=$${n}`, vals);
+    await this.cache.del('dashboard:stats');
+    return this.getInvoice(id);
   }
 
   async addPayment(invoiceId: number, data: any) {
