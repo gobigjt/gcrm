@@ -70,7 +70,7 @@ class HrController extends GetxController {
   }
 
   Future<void> markAttendance({
-    required int employeeId,
+    required int userId,
     required String date,
     required String status,
     String? checkIn,
@@ -82,7 +82,7 @@ class HrController extends GetxController {
         method: 'POST',
         path: '/hr/attendance',
         body: {
-          'employee_id': employeeId,
+          'user_id': userId,
           'date': date,
           'status': status,
           'check_in': (checkIn ?? '').trim().isEmpty ? null : checkIn,

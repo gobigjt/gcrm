@@ -7,6 +7,8 @@ import '../modules/crm/crm_controller.dart';
 import '../modules/crm/crm_lead_detail_view.dart';
 import '../modules/crm/crm_lists_view.dart';
 import '../modules/crm/crm_view.dart';
+import '../modules/attendance/sales_attendance_controller.dart';
+import '../modules/attendance/sales_attendance_view.dart';
 import '../modules/dashboard/dashboard_controller.dart';
 import '../modules/dashboard/dashboard_view.dart';
 import '../modules/hr/hr_controller.dart';
@@ -35,6 +37,7 @@ import '../modules/roles/super_admin/saas_billing_view.dart';
 import '../modules/roles/super_admin/tenants_list_view.dart';
 import 'app_routes.dart';
 import 'permission_middleware.dart';
+import 'role_middleware.dart';
 import 'super_admin_middleware.dart';
 
 abstract class AppPages {
@@ -54,6 +57,18 @@ abstract class AppPages {
         Get.lazyPut<DashboardController>(() => DashboardController());
       }),
       middlewares: [PermissionMiddleware(permission: AppPermissions.dashboard)],
+    ),
+    GetPage(
+      name: AppRoutes.attendance,
+      page: () => const SalesAttendanceView(),
+      binding: BindingsBuilder(() {
+        if (!Get.isRegistered<SalesAttendanceController>()) {
+          Get.put(SalesAttendanceController());
+        }
+      }),
+      middlewares: [
+        RoleMiddleware(allowedRoles: [AppRoles.salesExecutive]),
+      ],
     ),
     GetPage(
       name: AppRoutes.crm,
@@ -132,12 +147,15 @@ abstract class AppPages {
       name: AppRoutes.invoiceForm,
       page: () {
         int? initialCustomerId;
+        int? invoiceId;
         final args = Get.arguments;
         if (args is Map) {
           final ic = args['initialCustomerId'];
           if (ic is num) initialCustomerId = ic.toInt();
+          final inv = args['invoiceId'];
+          if (inv is num) invoiceId = inv.toInt();
         }
-        return InvoiceFormView(initialCustomerId: initialCustomerId);
+        return InvoiceFormView(initialCustomerId: initialCustomerId, invoiceId: invoiceId);
       },
       middlewares: [PermissionMiddleware(permission: AppPermissions.sales)],
     ),

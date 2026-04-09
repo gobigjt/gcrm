@@ -25,7 +25,7 @@ describe('salesFromLeadQuery', () => {
 });
 
 describe('salesFromLeadPath', () => {
-  it('prefixes /sales', () => {
-    expect(salesFromLeadPath(99)).toBe('/sales?fromLead=99');
+  it('opens quotes with lead handoff query', () => {
+    expect(salesFromLeadPath(99)).toBe('/sales/quotes?fromLead=99');
   });
 });

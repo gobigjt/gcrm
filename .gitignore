@@ -46,6 +46,9 @@ ezcrm/ios/Flutter/ephemeral/
 ezcrm/macos/Pods/
 ezcrm/macos/Flutter/ephemeral/
 
+# Uploaded company assets (local dev)
+backend/uploads/
+
 # Misc
 *.tmp
 *.temp

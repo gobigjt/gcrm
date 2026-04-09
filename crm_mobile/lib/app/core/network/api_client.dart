@@ -10,18 +10,45 @@ class ApiClient {
   final http.Client _client;
 
   // Android emulator localhost mapping; override with --dart-define=API_BASE_URL=...
+  // Use a full absolute URL, e.g. http://127.0.0.1:4000/api (note the double slash after http:).
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: 'http://10.0.2.2:4000/api',
   );
 
+  /// Ensures [raw] becomes an absolute http(s) URL. On Flutter Web, a host without a scheme
+  /// is treated as a path on the app origin (e.g. localhost:port/127.0.0.1:4000/...).
+  static String normalizeApiBase(String raw) {
+    var s = raw.trim();
+    if (s.isEmpty) {
+      return 'http://10.0.2.2:4000/api';
+    }
+    while (s.endsWith('/')) {
+      s = s.substring(0, s.length - 1);
+    }
+    // Common typo: --dart-define=API_BASE_URL=http:/127.0.0.1:4000/api (only one slash).
+    if (s.startsWith('http:/') && !s.startsWith('http://')) {
+      s = 'http://${s.substring('http:/'.length)}';
+    }
+    if (s.startsWith('https:/') && !s.startsWith('https://')) {
+      s = 'https://${s.substring('https:/'.length)}';
+    }
+    if (!s.contains('://')) {
+      s = 'http://$s';
+    }
+    return s;
+  }
+
   Uri _uri(String path) {
-    // Defensive: `--dart-define` / env values sometimes contain whitespace.
-    // Also avoid accidental double slashes when `baseUrl` ends with `/`.
-    final raw = baseUrl.trim();
-    final b = raw.endsWith('/') ? raw.substring(0, raw.length - 1) : raw;
+    final b = normalizeApiBase(baseUrl);
     final p = path.startsWith('/') ? path : '/$path';
-    return Uri.parse('$b$p');
+    final u = Uri.parse('$b$p');
+    if (!u.hasScheme || !u.hasAuthority) {
+      throw FormatException(
+        'API_BASE_URL must be an absolute URL with host (e.g. http://127.0.0.1:4000/api). Got: $baseUrl',
+      );
+    }
+    return u;
   }
 
   Future<dynamic> request({

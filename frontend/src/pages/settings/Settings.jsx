@@ -31,9 +31,20 @@ const MODULE_ICONS = {
 
 // ─── Company Tab ─────────────────────────────────────────────
 
+function logoPreviewSrc(logoUrl) {
+  if (!logoUrl || typeof logoUrl !== 'string') return '';
+  if (/^https?:\/\//i.test(logoUrl)) return logoUrl;
+  const p = logoUrl.startsWith('/') ? logoUrl : `/${logoUrl}`;
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return `${window.location.origin}${p}`;
+  }
+  return p;
+}
+
 function CompanyTab({ user }) {
   const [form,  setForm]  = useState({});
   const [saved, setSaved] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   useEffect(() => {
     api.get('/settings/company').then(r => setForm(r.data || {})).catch(() => {});
@@ -46,6 +57,35 @@ function CompanyTab({ user }) {
     await api.patch('/settings/company', form);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
+  };
+
+  const handleLogoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploadingLogo(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const r = await api.post('/settings/company/logo', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setForm((f) => ({ ...f, ...(r.data || {}) }));
+    } catch {
+      /* toast optional */
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const clearLogo = async () => {
+    setUploadingLogo(true);
+    try {
+      await api.patch('/settings/company', { logo_url: '' });
+      setForm((f) => ({ ...f, logo_url: '' }));
+    } finally {
+      setUploadingLogo(false);
+    }
   };
 
   return (
@@ -71,8 +111,90 @@ function CompanyTab({ user }) {
           </Field>
         ))}
 
+        <Field label="Company logo">
+          <div className="flex flex-wrap items-start gap-4">
+            {form.logo_url ? (
+              <img
+                src={logoPreviewSrc(form.logo_url)}
+                alt="Company logo"
+                className="max-h-20 max-w-[200px] object-contain rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 p-1"
+              />
+            ) : (
+              <div className="h-20 w-[120px] rounded-lg border border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center text-[11px] text-slate-400">
+                No logo
+              </div>
+            )}
+            <div className="flex flex-col gap-2">
+              <label className="btn-wf-secondary text-xs cursor-pointer inline-block text-center">
+                {uploadingLogo ? 'Uploading…' : 'Upload image'}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
+                  className="hidden"
+                  disabled={uploadingLogo}
+                  onChange={handleLogoUpload}
+                />
+              </label>
+              {form.logo_url && (
+                <button type="button" className="btn-wf-secondary text-xs" disabled={uploadingLogo} onClick={clearLogo}>
+                  Remove logo
+                </button>
+              )}
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 max-w-[220px]">
+                JPEG, PNG, WebP, GIF, or SVG. Max 2 MB. Used on Tax Invoice print/PDF.
+              </p>
+            </div>
+          </div>
+        </Field>
+
         <Field label="Address">
           <textarea className={inputCls} rows={3} value={form.address || ''} onChange={set('address')} />
+        </Field>
+
+        <div className="pt-2 border-t border-slate-200 dark:border-slate-700/50">
+          <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 mb-3">Bank details (invoice)</p>
+          <div className="space-y-3">
+            <Field label="Bank name">
+              <input className={inputCls} value={form.bank_name || ''} onChange={set('bank_name')} placeholder="e.g. ICICI Bank" />
+            </Field>
+            <Field label="Branch">
+              <input className={inputCls} value={form.bank_branch || ''} onChange={set('bank_branch')} />
+            </Field>
+            <Field label="Account number">
+              <input className={inputCls} value={form.bank_account_number || ''} onChange={set('bank_account_number')} />
+            </Field>
+            <Field label="IFSC">
+              <input className={inputCls} value={form.bank_ifsc || ''} onChange={set('bank_ifsc')} placeholder="e.g. ICIC0000568" />
+            </Field>
+          </div>
+        </div>
+
+        <Field label="Invoice header (print & PDF)">
+          <textarea
+            className={inputCls}
+            rows={3}
+            value={form.invoice_tagline || ''}
+            onChange={set('invoice_tagline')}
+            placeholder="Optional lines above Tax Invoice (e.g. services / tagline)."
+          />
+        </Field>
+        <Field label="Payment terms (invoice)">
+          <textarea
+            className={inputCls}
+            rows={2}
+            value={form.payment_terms || ''}
+            onChange={set('payment_terms')}
+            placeholder="Shown on Tax Invoice after totals."
+          />
+        </Field>
+        <Field label="Extra bank / cheque notes (invoice)">
+          <textarea
+            className={inputCls}
+            rows={3}
+            value={form.invoice_bank_details || ''}
+            onChange={set('invoice_bank_details')}
+            placeholder="Cheque favour, UPI, or other lines appended after structured bank details."
+          />
         </Field>
 
         <Field label="Fiscal Year Start">

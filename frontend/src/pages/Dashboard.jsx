@@ -32,14 +32,14 @@ export default function Dashboard() {
       },
       {
         label: 'Revenue (MTD)',
-        to: '/sales?tab=invoices',
+        to: '/sales/invoices',
         value: `₹${fmt(stats?.revenue)}`,
         sub: '8% vs last month',
         subCls: 'text-[#1D9E75]',
       },
       {
         label: 'Active Orders',
-        to: '/sales?tab=orders',
+        to: '/sales/orders',
         value: fmt(stats?.active_orders),
         sub: 'In progress',
         subCls: 'text-slate-400',
@@ -174,7 +174,7 @@ export default function Dashboard() {
         </div>
         <div className="bg-white dark:bg-[#13152a] border border-slate-200 dark:border-slate-700/50 rounded-xl p-4">
           <Link
-            to="/sales?tab=invoices"
+            to="/sales/invoices"
             className="inline-block text-[12px] font-semibold text-slate-800 dark:text-slate-100 mb-2 hover:text-brand-600 dark:hover:text-brand-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 rounded"
           >
             Recent invoices
@@ -186,7 +186,7 @@ export default function Dashboard() {
           ].map(([inv, amt, status, cls]) => (
             <Link
               key={inv}
-              to="/sales?tab=invoices"
+              to="/sales/invoices"
               className={`${rowLinkCls} justify-between items-center text-[11px] py-1.5 border-b border-slate-200 dark:border-slate-700/40 last:border-b-0 rounded-none no-underline text-inherit`}
             >
               <div className="min-w-0 pr-2">

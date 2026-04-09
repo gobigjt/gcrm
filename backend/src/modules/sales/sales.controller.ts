@@ -42,6 +42,11 @@ export class SalesController {
   @Get('invoices')             listInvoices()                             { return this.svc.listInvoices(); }
   @Post('invoices')            createInvoice(@Body() b: any, @CurrentUser() u: any) { const {items=[],...d}=b; return this.svc.createInvoice({...d,created_by:u.id}, items); }
   @Get('invoices/:id')         async getInvoice(@Param('id') id: string) { const inv=await this.svc.getInvoice(Number(id)); if(!inv) throw new NotFoundException(); return {invoice:inv}; }
+  @Patch('invoices/:id')       async patchInvoice(@Param('id') id: string, @Body() b: any) {
+    const inv = await this.svc.patchInvoice(Number(id), b);
+    if (!inv) throw new NotFoundException();
+    return { invoice: inv };
+  }
   @Delete('invoices/:id')      deleteInvoice(@Param('id') id: string) { return this.svc.deleteInvoice(Number(id)); }
   @Post('invoices/:id/payments') addPayment(@Param('id') id: string, @Body() b: any, @CurrentUser() u: any) { return this.svc.addPayment(Number(id), {...b,created_by:u.id}); }
 }

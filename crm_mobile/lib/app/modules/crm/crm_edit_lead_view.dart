@@ -189,7 +189,7 @@ class _CrmEditLeadViewState extends State<CrmEditLeadView> {
     final denseInput = InputDecorationTheme(
       isDense: true,
       filled: true,
-      fillColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+      fillColor: isDark ? scheme.surfaceContainer : Colors.white,
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
       border: border,
       enabledBorder: border,

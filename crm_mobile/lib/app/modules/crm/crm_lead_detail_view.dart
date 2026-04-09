@@ -61,6 +61,7 @@ class CrmLeadDetailView extends StatelessWidget {
       final title = lead.source.trim().isNotEmpty ? lead.source : 'Lead detail';
       final hues = [0xFF5C6BC0, 0xFF26A69A, 0xFFEC407A, 0xFFAB47BC, 0xFFFF7043];
       final avatarBg = Color(hues[lead.id.abs() % hues.length]);
+      final isDark = Theme.of(context).brightness == Brightness.dark;
       final headline = lead.displayTitle;
       final subParts = <String>[];
       if (lead.jobTitle.trim().isNotEmpty) subParts.add(lead.jobTitle.trim());
@@ -145,9 +146,11 @@ class CrmLeadDetailView extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
                       decoration: BoxDecoration(
-                        color: Theme.of(context).cardColor,
+                        color: Theme.of(context).colorScheme.surfaceContainer,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: isDark ? 0.65 : 0.35),
+                        ),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -177,8 +180,8 @@ class CrmLeadDetailView extends StatelessWidget {
                             children: [
                               Expanded(
                                 child: _InfoBlock(
-                                  bg: const Color(0xFFFAEEDA),
-                                  fg: const Color(0xFF633806),
+                                  bg: isDark ? const Color(0xFF3D3310) : const Color(0xFFFAEEDA),
+                                  fg: isDark ? const Color(0xFFFFE082) : const Color(0xFF633806),
                                   label: 'Potential',
                                   value: _priorityShort(lead.priority),
                                 ),
@@ -186,8 +189,8 @@ class CrmLeadDetailView extends StatelessWidget {
                               const SizedBox(width: 8),
                               Expanded(
                                 child: _InfoBlock(
-                                  bg: const Color(0xFFE6F1FB),
-                                  fg: const Color(0xFF0C447C),
+                                  bg: isDark ? const Color(0xFF1A3A5C) : const Color(0xFFE6F1FB),
+                                  fg: isDark ? const Color(0xFF93C5FD) : const Color(0xFF0C447C),
                                   label: 'Lead stage',
                                   value: lead.stage,
                                 ),
@@ -195,8 +198,8 @@ class CrmLeadDetailView extends StatelessWidget {
                               const SizedBox(width: 8),
                               Expanded(
                                 child: _InfoBlock(
-                                  bg: const Color(0xFFE1F5EE),
-                                  fg: const Color(0xFF085041),
+                                  bg: isDark ? const Color(0xFF0D2818) : const Color(0xFFE1F5EE),
+                                  fg: isDark ? const Color(0xFF6EE7B7) : const Color(0xFF085041),
                                   label: 'Deal (INR)',
                                   value: lead.dealSize != null
                                       ? formatCurrencyInr(lead.dealSize, decimals: 0)

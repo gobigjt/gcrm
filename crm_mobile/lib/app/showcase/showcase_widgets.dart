@@ -231,24 +231,22 @@ class _KpiCell extends StatelessWidget {
 
   final ShowcaseKpiCell data;
 
-  /// Showcase `--color-background-secondary` (light / dark).
+  /// Showcase `--color-background-secondary` (light); dark uses theme surface.
   static const Color _cardBgLight = Color(0xFFF1EFE8);
-  static const Color _cardBgDark = Color(0xFF2A2A28);
 
-  /// Showcase `--color-text-secondary`.
+  /// Showcase `--color-text-secondary` (light).
   static const Color _labelLight = Color(0xFF73726C);
-  static const Color _labelDark = Color(0xFF9C9A92);
 
-  /// Showcase `--color-text-primary` on KPI cards.
+  /// Showcase `--color-text-primary` on KPI cards (light).
   static const Color _valueLight = Color(0xFF1A1A18);
-  static const Color _valueDark = Color(0xFFE8E6DF);
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardBg = isDark ? _cardBgDark : _cardBgLight;
-    final labelColor = isDark ? _labelDark : _labelLight;
-    final valueColor = data.valueColor ?? (isDark ? _valueDark : _valueLight);
+    final cardBg = isDark ? scheme.surfaceContainer : _cardBgLight;
+    final labelColor = isDark ? scheme.onSurfaceVariant : _labelLight;
+    final valueColor = data.valueColor ?? (isDark ? scheme.onSurface : _valueLight);
     // HTML uses #27500A for `.kt`; on dark cards use palette green for contrast.
     final hintPositive = isDark ? ShowcaseColors.green : ShowcaseColors.greenText;
 

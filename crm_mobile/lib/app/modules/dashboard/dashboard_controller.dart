@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../core/auth/role_permissions.dart';
 import '../../core/models/dashboard_stats.dart';
 import '../../core/models/crm_models.dart';
 import '../../core/network/error_utils.dart';
+import '../attendance/sales_attendance_controller.dart';
 import '../auth/auth_controller.dart';
 
 class DashboardController extends GetxController {
@@ -32,7 +34,20 @@ class DashboardController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    _ensureSalesAttendanceController();
     refreshStats();
+  }
+
+  void _ensureSalesAttendanceController() {
+    if (_auth.role.value != AppRoles.salesExecutive) return;
+    if (!Get.isRegistered<SalesAttendanceController>()) {
+      Get.put(SalesAttendanceController());
+    }
+  }
+
+  /// Idempotent — safe to call from build; registers controller before the home attendance card.
+  void registerSalesAttendanceIfNeeded() {
+    _ensureSalesAttendanceController();
   }
 
   DateTime? _parseDue(dynamic v) {
@@ -43,6 +58,7 @@ class DashboardController extends GetxController {
   }
 
   Future<void> refreshStats() async {
+    _ensureSalesAttendanceController();
     isLoading.value = true;
     errorMessage.value = '';
     try {
@@ -140,6 +156,7 @@ class DashboardController extends GetxController {
       errorMessage.value = userFriendlyError(e);
     } finally {
       isLoading.value = false;
+      await _auth.refreshSalesExecutiveAttendance();
     }
   }
 }

@@ -229,6 +229,13 @@ CREATE TABLE IF NOT EXISTS company_settings (
   logo_url          TEXT,
   currency          VARCHAR(10) NOT NULL DEFAULT 'INR',
   fiscal_year_start DATE,
+  invoice_tagline   TEXT,
+  payment_terms     TEXT,
+  invoice_bank_details TEXT,
+  bank_name         VARCHAR(200),
+  bank_branch       VARCHAR(200),
+  bank_account_number VARCHAR(80),
+  bank_ifsc         VARCHAR(20),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -661,13 +668,13 @@ CREATE TABLE IF NOT EXISTS employees (
 
 CREATE TABLE IF NOT EXISTS attendance (
   id            SERIAL PRIMARY KEY,
-  employee_id   INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+  user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   date          DATE NOT NULL,
   check_in      TIME,
   check_out     TIME,
   status        VARCHAR(20) NOT NULL DEFAULT 'present' CHECK (status IN ('present','absent','half_day','leave','holiday')),
   notes         TEXT,
-  UNIQUE(employee_id, date)
+  UNIQUE(user_id, date)
 );
 
 CREATE TABLE IF NOT EXISTS payroll (

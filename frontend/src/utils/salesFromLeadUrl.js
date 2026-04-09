@@ -14,5 +14,5 @@ export function salesFromLeadQuery(leadId) {
  * @param {number|string} leadId
  */
 export function salesFromLeadPath(leadId) {
-  return `/sales?${salesFromLeadQuery(leadId)}`;
+  return `/sales/quotes?${salesFromLeadQuery(leadId)}`;
 }

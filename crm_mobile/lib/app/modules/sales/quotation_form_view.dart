@@ -201,7 +201,7 @@ class _QuotationFormViewState extends State<QuotationFormView> {
                   final isDark = Theme.of(context).brightness == Brightness.dark;
                   return Card(
                     margin: const EdgeInsets.only(bottom: 10),
-                    color: isDark ? cs.surfaceContainer : Colors.white,
+                    color: cs.surfaceContainer,
                     elevation: isDark ? 0 : 1.5,
                     shadowColor: isDark ? Colors.transparent : Colors.black26,
                     shape: RoundedRectangleBorder(
@@ -368,9 +368,7 @@ class _QuotationFormViewState extends State<QuotationFormView> {
               child: Material(
                 elevation: Theme.of(context).brightness == Brightness.dark ? 8 : 6,
                 shadowColor: Colors.black38,
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? Theme.of(context).colorScheme.surfaceContainer
-                    : Colors.white,
+                color: Theme.of(context).colorScheme.surfaceContainer,
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
                   child: SizedBox(

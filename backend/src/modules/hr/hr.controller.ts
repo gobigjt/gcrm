@@ -1,9 +1,16 @@
-import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Patch, Post, Query, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard }   from '../../common/guards/roles.guard';
 import { Roles }        from '../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { HrService }    from './hr.service';
+
+function sessionUserId(user: { id?: unknown }): number {
+  const uid = Number(user?.id);
+  if (!Number.isInteger(uid) || uid < 1) throw new UnauthorizedException();
+  return uid;
+}
 
 @ApiTags('HR')
 @ApiBearerAuth('access-token')
@@ -22,9 +29,36 @@ export class HrController {
   }
 
   @Post('attendance')         markAttendance(@Body() b: any) { return this.svc.markAttendance(b); }
+
+  /** Sales Executive: today’s row + whether an employee profile exists (no HR screen access required). */
+  @Get('me/attendance/today')
+  @Roles('Sales Executive')
+  async myAttendanceToday(@CurrentUser() user: { id: number }) {
+    const attendance = await this.svc.getTodayAttendanceByUserId(sessionUserId(user));
+    return { employeeLinked: true, attendance };
+  }
+
+  @Post('me/attendance/check-in')
+  @Roles('Sales Executive')
+  async myCheckIn(@CurrentUser() user: { id: number }) {
+    return { attendance: await this.svc.selfCheckIn(sessionUserId(user)) };
+  }
+
+  @Post('me/attendance/check-out')
+  @Roles('Sales Executive')
+  async myCheckOut(@CurrentUser() user: { id: number }) {
+    return { attendance: await this.svc.selfCheckOut(sessionUserId(user)) };
+  }
+
   @Get('attendance/summary')  getAttendanceSummary(@Query('from') from: string, @Query('to') to: string) {
     if(!from||!to) throw new BadRequestException('from and to required');
     return this.svc.getAttendanceSummary(from, to);
+  }
+
+  @Get('attendance/records')
+  listAttendanceRecords(@Query('from') from: string, @Query('to') to: string) {
+    if (!from || !to) throw new BadRequestException('from and to required');
+    return this.svc.listAttendanceRecords(from, to);
   }
 
   @Get('payroll')          listPayroll(@Query('month') m: string, @Query('year') y: string) {

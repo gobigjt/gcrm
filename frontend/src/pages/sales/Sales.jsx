@@ -1,15 +1,34 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useSearchParams, useLocation } from 'react-router-dom';
+import { useSearchParams, useLocation, Link, Navigate, useParams, useNavigate } from 'react-router-dom';
+import { salesListPath, salesNewPath, salesViewPath, salesEditPath } from './salesPaths';
 import api from '../../api/client';
+import { printSalesDocument, downloadSalesDocument } from './invoicePdf';
 import { SALES_FROM_LEAD_PARAM } from '../../utils/salesFromLeadUrl';
 import Modal from '../../components/Modal';
-import Tabs  from '../../components/Tabs';
 import { Field, inputCls, selectCls, FormActions } from '../../components/FormField';
 
 // ─── Helpers ─────────────────────────────────────────────────
 
 const fmt  = n  => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const fmtD = dt => dt ? new Date(dt).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '—';
+
+function printSalesDoc(kind, doc) {
+  if (!doc) return;
+  void printSalesDocument(kind, doc);
+}
+
+function downloadSalesPdf(kind, doc) {
+  if (!doc) return;
+  void downloadSalesDocument(kind, doc);
+}
+
+function printInvoiceDoc(invoice) {
+  void printSalesDocument('invoice', invoice);
+}
+
+function downloadInvoicePdf(invoice) {
+  void downloadSalesDocument('invoice', invoice);
+}
 
 const STATUS_CLS = {
   draft:'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
@@ -219,11 +238,12 @@ function CustomerModal({ customer, crmLeadPrefill, onClose, onSaved }) {
 
 // ─── Document Modal (Quotation / Order / Invoice) ─────────────
 
-function DocumentModal({ type, customers, products, initialCustomerId = '', existingId = null, onClose, onSaved }) {
+function DocumentModal({ type, customers, products, initialCustomerId = '', existingId = null, onClose, onSaved, fullPage = false }) {
   const isQuote   = type === 'quotation';
   const isOrder   = type === 'order';
   const isInvoice = type === 'invoice';
   const isEditQuote = Boolean(isQuote && existingId);
+  const isEditInvoice = Boolean(isInvoice && existingId);
 
   const [form, setForm] = useState({
     customer_id: initialCustomerId || '', valid_until: '', order_date: '', invoice_date: '', due_date: '',
@@ -231,7 +251,7 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
   });
   const [items, setItems]       = useState([{ ...EMPTY_LINE }]);
   const [loading, setLoading]   = useState(false);
-  const [fetchingQuote, setFetchingQuote] = useState(() => Boolean(isQuote && existingId));
+  const [fetchingDoc, setFetchingDoc] = useState(() => Boolean(existingId && (isQuote || isInvoice)));
   const [loadErr, setLoadErr]   = useState('');
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
@@ -240,24 +260,28 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
   }, [initialCustomerId, type]);
 
   useEffect(() => {
-    if (!isQuote || !existingId) {
+    if ((!isQuote && !isInvoice) || !existingId) {
       setLoadErr('');
-      setFetchingQuote(false);
+      setFetchingDoc(false);
       return undefined;
     }
     let cancelled = false;
-    setFetchingQuote(true);
+    setFetchingDoc(true);
     setLoadErr('');
-    api.get(`/sales/quotations/${existingId}`)
+    const endpoint = isQuote ? `/sales/quotations/${existingId}` : `/sales/invoices/${existingId}`;
+    api.get(endpoint)
       .then((r) => {
-        const q = r.data?.quotation;
+        const q = r.data?.quotation || r.data?.invoice;
         if (cancelled || !q) return;
         setForm((f) => ({
           ...f,
           customer_id: String(q.customer_id ?? ''),
           valid_until: q.valid_until ? String(q.valid_until).slice(0, 10) : '',
+          invoice_date: q.invoice_date ? String(q.invoice_date).slice(0, 10) : '',
+          due_date: q.due_date ? String(q.due_date).slice(0, 10) : '',
           notes: q.notes || '',
           status: q.status || 'draft',
+          is_interstate: Number(q.igst || 0) > 0,
         }));
         setItems(
           q.items?.length
@@ -271,10 +295,10 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
             : [{ ...EMPTY_LINE }],
         );
       })
-      .catch((e) => setLoadErr(e?.response?.data?.message || e.message || 'Failed to load quotation'))
-      .finally(() => { if (!cancelled) setFetchingQuote(false); });
+      .catch((e) => setLoadErr(e?.response?.data?.message || e.message || `Failed to load ${isInvoice ? 'invoice' : 'quotation'}`))
+      .finally(() => { if (!cancelled) setFetchingDoc(false); });
     return () => { cancelled = true; };
-  }, [isQuote, existingId]);
+  }, [isQuote, isInvoice, existingId]);
 
   const handleItems = (newItems, _newTotals) => {
     setItems(newItems);
@@ -302,6 +326,16 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
           status: form.status || 'draft',
           items: lines,
         });
+      } else if (isEditInvoice) {
+        await api.patch(`/sales/invoices/${existingId}`, {
+          customer_id: Number(form.customer_id),
+          invoice_date: form.invoice_date || null,
+          due_date: form.due_date || null,
+          notes: form.notes || null,
+          status: form.status || 'unpaid',
+          is_interstate: form.is_interstate,
+          items: lines,
+        });
       } else {
         const endpoint = isQuote ? '/sales/quotations' : isOrder ? '/sales/orders' : '/sales/invoices';
         await api.post(endpoint, { ...form, items: lines });
@@ -310,62 +344,95 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
     } finally { setLoading(false); }
   };
 
-  const title = isEditQuote ? 'Edit Quotation' : isQuote ? 'New Quotation' : isOrder ? 'New Sales Order' : 'New Invoice';
+  const title = isEditQuote ? 'Edit Quotation' : isEditInvoice ? 'Edit Invoice' : isQuote ? 'New Quotation' : isOrder ? 'New Sales Order' : 'New Invoice';
 
-  if (fetchingQuote) {
+  if (fetchingDoc) {
+    if (fullPage) {
+      return (
+        <div className="w-full min-w-0 bg-white dark:bg-[#13152a] rounded-2xl border border-slate-200/80 dark:border-slate-700/50 shadow-card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">{title}</h3>
+            <button type="button" className="btn-wf-secondary" onClick={onClose}>Back</button>
+          </div>
+          <p className="text-sm text-slate-500 dark:text-slate-400 py-8 text-center">Loading…</p>
+        </div>
+      );
+    }
     return (
       <Modal title={title} onClose={onClose}>
-        <p className="text-sm text-slate-500 dark:text-slate-400 py-8 text-center">Loading quotation…</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400 py-8 text-center">Loading…</p>
       </Modal>
+    );
+  }
+
+  const body = (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {loadErr && (
+        <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{loadErr}</p>
+      )}
+      <Field label="Customer *">
+        <select className={selectCls} value={form.customer_id} onChange={set('customer_id')} required>
+          <option value="">Select customer…</option>
+          {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      </Field>
+
+      <div className="grid grid-cols-2 gap-3">
+        {isQuote && isEditQuote && (
+          <Field label="Status">
+            <select className={selectCls} value={form.status} onChange={set('status')}>
+              {['draft', 'sent', 'accepted', 'rejected'].map((s) => (
+                <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+              ))}
+            </select>
+          </Field>
+        )}
+        {isQuote && <Field label="Valid Until"><input type="date" className={inputCls} value={form.valid_until} onChange={set('valid_until')} /></Field>}
+        {isOrder && <Field label="Order Date"><input type="date" className={inputCls} value={form.order_date} onChange={set('order_date')} /></Field>}
+        {isInvoice && (
+          <>
+            <Field label="Invoice Date"><input type="date" className={inputCls} value={form.invoice_date} onChange={set('invoice_date')} /></Field>
+            <Field label="Due Date"><input type="date" className={inputCls} value={form.due_date} onChange={set('due_date')} /></Field>
+          </>
+        )}
+      </div>
+
+      {isInvoice && (
+        <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 cursor-pointer">
+          <input type="checkbox" checked={form.is_interstate}
+            onChange={e => setForm(f => ({ ...f, is_interstate: e.target.checked }))} />
+          Interstate supply (IGST instead of CGST+SGST)
+        </label>
+      )}
+
+      <LineItems items={items} onChange={handleItems} products={products} interstate={form.is_interstate} />
+
+      <Field label="Notes"><textarea className={inputCls+' h-16 resize-none'} value={form.notes} onChange={set('notes')} /></Field>
+      <FormActions
+        onCancel={onClose}
+        submitLabel={
+          isEditQuote ? 'Save Quotation' : isEditInvoice ? 'Save Invoice' : `Create ${title.replace('New ', '')}`
+        }
+        loading={loading}
+      />
+    </form>
+  );
+
+  if (fullPage) {
+    return (
+      <div className="w-full min-w-0 bg-white dark:bg-[#13152a] rounded-2xl border border-slate-200/80 dark:border-slate-700/50 shadow-card p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">{title}</h3>
+          <button type="button" className="btn-wf-secondary" onClick={onClose}>Back</button>
+        </div>
+        {body}
+      </div>
     );
   }
 
   return (
     <Modal title={title} onClose={onClose}>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {loadErr && (
-          <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{loadErr}</p>
-        )}
-        <Field label="Customer *">
-          <select className={selectCls} value={form.customer_id} onChange={set('customer_id')} required>
-            <option value="">Select customer…</option>
-            {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </Field>
-
-        <div className="grid grid-cols-2 gap-3">
-          {isQuote && isEditQuote && (
-            <Field label="Status">
-              <select className={selectCls} value={form.status} onChange={set('status')}>
-                {['draft', 'sent', 'accepted', 'rejected'].map((s) => (
-                  <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
-                ))}
-              </select>
-            </Field>
-          )}
-          {isQuote && <Field label="Valid Until"><input type="date" className={inputCls} value={form.valid_until} onChange={set('valid_until')} /></Field>}
-          {isOrder && <Field label="Order Date"><input type="date" className={inputCls} value={form.order_date} onChange={set('order_date')} /></Field>}
-          {isInvoice && (
-            <>
-              <Field label="Invoice Date"><input type="date" className={inputCls} value={form.invoice_date} onChange={set('invoice_date')} /></Field>
-              <Field label="Due Date"><input type="date" className={inputCls} value={form.due_date} onChange={set('due_date')} /></Field>
-            </>
-          )}
-        </div>
-
-        {isInvoice && (
-          <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 cursor-pointer">
-            <input type="checkbox" checked={form.is_interstate}
-              onChange={e => setForm(f => ({ ...f, is_interstate: e.target.checked }))} />
-            Interstate supply (IGST instead of CGST+SGST)
-          </label>
-        )}
-
-        <LineItems items={items} onChange={handleItems} products={products} interstate={form.is_interstate} />
-
-        <Field label="Notes"><textarea className={inputCls+' h-16 resize-none'} value={form.notes} onChange={set('notes')} /></Field>
-        <FormActions onCancel={onClose} submitLabel={isEditQuote ? 'Save Quotation' : `Create ${title.replace('New ', '')}`} loading={loading} />
-      </form>
+      {body}
     </Modal>
   );
 }
@@ -411,7 +478,13 @@ function PaymentModal({ invoice, onClose, onSaved }) {
 
 // ─── Detail Drawer ────────────────────────────────────────────
 
-function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation }) {
+const DETAIL_FULL_PAGE_TITLE = {
+  quotation: 'Quotation details',
+  order: 'Order details',
+  invoice: 'Invoice details',
+};
+
+function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation, onEditInvoice, fullPage = false }) {
   const [doc,     setDoc]     = useState(null);
   const [paying,  setPaying]  = useState(false);
 
@@ -429,23 +502,38 @@ function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation }) {
     load(); onRefresh();
   };
 
-  if (!doc) return (
-    <div className="fixed inset-0 z-40 flex">
-      <div className="flex-1" onClick={onClose} />
-      <div className="w-full max-w-lg bg-white dark:bg-[#13152a] flex items-center justify-center border-l border-slate-200 dark:border-slate-700">
-        <p className="text-slate-400 text-sm">Loading…</p>
+  if (!doc) {
+    if (fullPage) {
+      return (
+        <div className="w-full min-w-0 bg-white dark:bg-[#13152a] rounded-2xl border border-slate-200/80 dark:border-slate-700/50 shadow-card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">{DETAIL_FULL_PAGE_TITLE[type] || 'Details'}</h3>
+            <button type="button" className="btn-wf-secondary" onClick={onClose}>Back</button>
+          </div>
+          <p className="text-slate-400 text-sm py-8 text-center">Loading…</p>
+        </div>
+      );
+    }
+    return (
+      <div className="fixed inset-0 z-40 flex">
+        <div className="flex-1" onClick={onClose} />
+        <div className="w-full max-w-lg bg-white dark:bg-[#13152a] flex items-center justify-center border-l border-slate-200 dark:border-slate-700">
+          <p className="text-slate-400 text-sm">Loading…</p>
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
 
   const QUOTE_STATUSES = ['draft','sent','accepted','rejected'];
   const ORDER_STATUSES = ['pending','confirmed','processing','delivered','cancelled'];
   const statuses = type === 'quotation' ? QUOTE_STATUSES : type === 'order' ? ORDER_STATUSES : [];
 
-  return (
-    <div className="fixed inset-0 z-40 flex">
-      <div className="flex-1 bg-black/30 backdrop-blur-sm" onClick={onClose} />
-      <div className="w-full max-w-lg bg-white dark:bg-[#13152a] shadow-2xl flex flex-col border-l border-slate-200/80 dark:border-slate-700/50 overflow-hidden">
+  const contentShellCls = fullPage
+    ? 'w-full max-w-none bg-white dark:bg-[#13152a] flex flex-col overflow-hidden'
+    : 'w-full max-w-lg bg-white dark:bg-[#13152a] shadow-2xl flex flex-col border-l border-slate-200/80 dark:border-slate-700/50 overflow-hidden';
+
+  const content = (
+    <div className={contentShellCls}>
 
         {/* Header */}
         <div className="px-6 pt-5 pb-4 border-b border-slate-100 dark:border-slate-700/50 flex-shrink-0">
@@ -461,11 +549,38 @@ function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation }) {
               {type === 'quotation' && onEditQuotation && (
                 <button
                   type="button"
-                  onClick={() => { onEditQuotation(id); onClose(); }}
+                  onClick={() => onEditQuotation(id)}
                   className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-brand-600 text-white hover:bg-brand-700 dark:bg-brand-500 dark:hover:bg-brand-600"
                 >
                   Edit
                 </button>
+              )}
+              {type === 'invoice' && onEditInvoice && (
+                <button
+                  type="button"
+                  onClick={() => onEditInvoice(id)}
+                  className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-brand-600 text-white hover:bg-brand-700 dark:bg-brand-500 dark:hover:bg-brand-600"
+                >
+                  Edit
+                </button>
+              )}
+              {(type === 'quotation' || type === 'order' || type === 'invoice') && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => printSalesDoc(type, doc)}
+                    className="text-xs font-semibold px-2.5 py-1 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  >
+                    Print
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => downloadSalesPdf(type, doc)}
+                    className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600"
+                  >
+                    Download PDF
+                  </button>
+                </>
               )}
               <button onClick={onClose} className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 text-xl px-1">×</button>
             </div>
@@ -584,24 +699,112 @@ function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation }) {
           <PaymentModal invoice={doc} onClose={() => setPaying(false)} onSaved={() => { setPaying(false); load(); onRefresh(); }} />
         )}
       </div>
+  );
+
+  if (fullPage) {
+    return (
+      <div className="w-full min-w-0 bg-white dark:bg-[#13152a] rounded-2xl border border-slate-200/80 dark:border-slate-700/50 shadow-card overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700/50 flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">{DETAIL_FULL_PAGE_TITLE[type] || 'Details'}</h3>
+          <button type="button" className="btn-wf-secondary" onClick={onClose}>Back</button>
+        </div>
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-40 flex">
+      <div className="flex-1 bg-black/30 backdrop-blur-sm" onClick={onClose} />
+      {content}
+    </div>
+  );
+}
+
+// ─── Routed form / detail pages ───────────────────────────────
+
+function segmentToDocType(segment) {
+  if (segment === 'quotes') return 'quotation';
+  if (segment === 'orders') return 'order';
+  return 'invoice';
+}
+
+export function SalesFormPage({ segment }) {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const prefillCustomer = searchParams.get('customerId') || '';
+  const [products, setProducts] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const existingId = id != null ? id : null;
+  const type = segmentToDocType(segment);
+
+  useEffect(() => {
+    api.get('/inventory/products').then((r) => setProducts(r.data.products || r.data || [])).catch(() => {});
+    api.get('/sales/customers').then((r) => setCustomers(r.data || [])).catch(() => {});
+  }, []);
+
+  const goBack = () => {
+    navigate({ pathname: salesListPath(segment), search: location.search });
+  };
+
+  const handleSaved = () => {
+    navigate({ pathname: salesListPath(segment), search: location.search });
+  };
+
+  return (
+    <div className="w-full min-w-0 -mx-5">
+      <DocumentModal
+        key={existingId ? `edit-${type}-${existingId}` : `new-${type}`}
+        type={type}
+        customers={customers}
+        products={products}
+        initialCustomerId={prefillCustomer}
+        existingId={existingId}
+        fullPage
+        onClose={goBack}
+        onSaved={handleSaved}
+      />
+    </div>
+  );
+}
+
+export function SalesDetailPage({ segment }) {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const type = segmentToDocType(segment);
+
+  const goBack = () => {
+    navigate({ pathname: salesListPath(segment), search: location.search });
+  };
+
+  return (
+    <div className="w-full min-w-0 -mx-5">
+      <DetailDrawer
+        type={type}
+        id={id}
+        fullPage
+        onClose={goBack}
+        onRefresh={() => {}}
+        onEditQuotation={type === 'quotation' ? (qid) => navigate({ pathname: salesEditPath('quotes', qid), search: location.search }) : undefined}
+        onEditInvoice={type === 'invoice' ? (iid) => navigate({ pathname: salesEditPath('invoices', iid), search: location.search }) : undefined}
+      />
     </div>
   );
 }
 
 // ─── Main Sales Page ──────────────────────────────────────────
 
-const TABS = ['Quotes', 'Orders', 'Invoices'];
+const VALID_SALES_SEGMENTS = new Set(['quotes', 'orders', 'invoices']);
+const SEGMENT_TO_TAB = { quotes: 'Quotes', orders: 'Orders', invoices: 'Invoices' };
 
-const SALES_TAB_BY_PARAM = {
-  quotes: 'Quotes',
-  quote: 'Quotes',
-  quotation: 'Quotes',
-  orders: 'Orders',
-  invoices: 'Invoices',
-  payments: 'Invoices',
+const LIST_PAGE_COPY = {
+  Quotes: { title: 'Quotes', subtitle: 'Open quotations — click a row for details or print.' },
+  Orders: { title: 'Orders', subtitle: 'Sales orders — click a row for details or print.' },
+  Invoices: { title: 'Invoices', subtitle: 'Invoices and payments — click a row for details.' },
 };
-
-const TAB_TO_QUERY = { Quotes: 'quotes', Orders: 'orders', Invoices: 'invoices' };
 
 function leadBannerTitle(lead) {
   if (!lead) return '';
@@ -612,69 +815,32 @@ function leadBannerTitle(lead) {
   return (lead.company || '').trim() || `Lead #${lead.id}`;
 }
 
-export default function Sales() {
+export function SalesListPage({ segment }) {
+  const navigate = useNavigate();
   const location = useLocation();
   const [, setSearchParams] = useSearchParams();
-  const [tab,       setTab]       = useState('Quotes');
+  const tab = segment && VALID_SALES_SEGMENTS.has(segment) ? SEGMENT_TO_TAB[segment] : null;
+
   const [data,      setData]      = useState([]);
   const [stats,     setStats]     = useState(null);
-  const [products,  setProducts]  = useState([]);
   const [customers, setCustomers] = useState([]);
-  const [modal,     setModal]     = useState(null); // 'customer' | 'quotation' | 'order' | 'invoice' | 'edit-customer'
+  const [modal,     setModal]     = useState(null); // 'customer' | 'edit-customer'
   const [editCust,  setEditCust]  = useState(null);
-  const [drawer,    setDrawer]    = useState(null); // { type, id }
   /** Lead loaded from `?fromLead=` (CRM handoff). */
   const [bannerLead, setBannerLead] = useState(null);
   /** When opening “New Customer” from the banner, prefill + POST with lead_id. */
   const [customerPrefillLead, setCustomerPrefillLead] = useState(null);
-  const [orderPrefillCustomerId, setOrderPrefillCustomerId] = useState('');
-  /** When set, open quotation modal in edit mode (PATCH with line items). */
-  const [quotationEditId, setQuotationEditId] = useState(null);
   const loadStats   = useCallback(() => { api.get('/sales/stats').then(r => setStats(r.data)).catch(() => {}); }, []);
   const loadData    = useCallback(() => {
+    if (!tab) return;
     const paths = { Quotes:'/sales/quotations', Orders:'/sales/orders', Invoices:'/sales/invoices' };
     api.get(paths[tab], { params: {} }).then(r => setData(r.data || [])).catch(() => setData([]));
   }, [tab]);
 
   useEffect(() => {
-    api.get('/inventory/products').then(r => setProducts(r.data.products || r.data || [])).catch(() => {});
     api.get('/sales/customers').then(r => setCustomers(r.data || [])).catch(() => {});
     loadStats();
   }, []);
-
-  // Use `location.search` (string) in deps — `searchParams` from RR7 changes identity often and can cause
-  // infinite setSearchParams loops → blank page / "Maximum update depth exceeded".
-  useEffect(() => {
-    const sp = new URLSearchParams(location.search);
-    const t = sp.get('tab');
-    if (t != null && t !== '') return;
-    sp.set('tab', 'quotes');
-    setSearchParams(sp, { replace: true });
-  }, [location.search, setSearchParams]);
-
-  useEffect(() => {
-    const sp = new URLSearchParams(location.search);
-    const raw = (sp.get('tab') || '').toLowerCase().replace(/[\s_-]+/g, '');
-    const mapped = SALES_TAB_BY_PARAM[raw];
-    if (mapped) setTab(mapped);
-    else if (!sp.get('tab') || sp.get('tab') === '') setTab('Quotes');
-  }, [location.search]);
-
-  const syncTabToUrl = useCallback(
-    (nextTab) => {
-      const key = TAB_TO_QUERY[nextTab];
-      if (!key) return;
-      setSearchParams(
-        (prev) => {
-          const sp = new URLSearchParams(prev);
-          sp.set('tab', key);
-          return sp;
-        },
-        { replace: true },
-      );
-    },
-    [setSearchParams],
-  );
 
   useEffect(() => {
     const sp = new URLSearchParams(location.search);
@@ -721,8 +887,6 @@ export default function Sales() {
     setModal(null);
     setEditCust(null);
     setCustomerPrefillLead(null);
-    setOrderPrefillCustomerId('');
-    setQuotationEditId(null);
     loadData();
     loadStats();
     api.get('/sales/customers').then(r => setCustomers(r.data || [])).catch(() => {});
@@ -730,13 +894,17 @@ export default function Sales() {
 
   const tabType = { Quotes: 'quotation', Orders: 'order', Invoices: 'invoice' };
 
+  if (!tab) {
+    return <Navigate to="/sales/quotes" replace />;
+  }
+
   return (
     <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-[16px] font-semibold text-slate-800 dark:text-slate-100">Sales</h2>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Quotations, orders, and invoices — add customers from Sales when needed</p>
+          <h2 className="text-[16px] font-semibold text-slate-800 dark:text-slate-100">{LIST_PAGE_COPY[tab].title}</h2>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{LIST_PAGE_COPY[tab].subtitle}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 justify-end">
           <button
@@ -751,13 +919,7 @@ export default function Sales() {
           </button>
           <button
             type="button"
-            onClick={() => {
-              setOrderPrefillCustomerId('');
-              setQuotationEditId(null);
-              if (tab === 'Quotes') setModal('quotation');
-              else if (tab === 'Orders') setModal('order');
-              else setModal('invoice');
-            }}
+            onClick={() => navigate(salesNewPath(segment, location.search.replace(/^\?/, '')))}
             className="btn-wf-primary"
           >
             + {tab === 'Quotes' ? 'Quotation' : tab === 'Orders' ? 'Order' : 'Invoice'}
@@ -790,11 +952,9 @@ export default function Sales() {
                 type="button"
                 className="btn-wf-primary text-xs"
                 onClick={() => {
-                  setOrderPrefillCustomerId(String(customerLinkedToBanner.id));
-                  setTab('Quotes');
-                  syncTabToUrl('Quotes');
-                  setQuotationEditId(null);
-                  setModal('quotation');
+                  const sp = new URLSearchParams(location.search);
+                  sp.set('customerId', String(customerLinkedToBanner.id));
+                  navigate({ pathname: '/sales/quotes/new', search: sp.toString() });
                 }}
               >
                 New quote
@@ -803,10 +963,9 @@ export default function Sales() {
                 type="button"
                 className="btn-wf-primary text-xs"
                 onClick={() => {
-                  setOrderPrefillCustomerId(String(customerLinkedToBanner.id));
-                  setTab('Orders');
-                  syncTabToUrl('Orders');
-                  setModal('order');
+                  const sp = new URLSearchParams(location.search);
+                  sp.set('customerId', String(customerLinkedToBanner.id));
+                  navigate({ pathname: '/sales/orders/new', search: sp.toString() });
                 }}
               >
                 New order
@@ -828,7 +987,24 @@ export default function Sales() {
         </div>
       )}
 
-      <Tabs tabs={TABS} active={tab} onChange={(t) => { setTab(t); syncTabToUrl(t); }} />
+      <div className="flex items-center gap-1 p-1 bg-slate-100/80 dark:bg-slate-800/60 rounded-xl w-fit mb-6">
+        {[
+          { tabKey: 'Quotes', label: 'Quotes', path: '/sales/quotes' },
+          { tabKey: 'Orders', label: 'Orders', path: '/sales/orders' },
+          { tabKey: 'Invoices', label: 'Invoices', path: '/sales/invoices' },
+        ].map(({ tabKey, label, path }) => (
+          <Link
+            key={path}
+            to={{ pathname: path, search: location.search }}
+            className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-all duration-150 whitespace-nowrap
+              ${tab === tabKey
+                ? 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-400 shadow-card font-semibold'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+          >
+            {label}
+          </Link>
+        ))}
+      </div>
 
       {/* Table */}
       <div className="bg-white dark:bg-[#13152a] rounded-xl border border-slate-200 dark:border-slate-700/50 overflow-hidden">
@@ -844,10 +1020,21 @@ export default function Sales() {
                 const num  = r.invoice_number || r.quotation_number || r.order_number;
                 const date = r.invoice_date || r.order_date || r.created_at;
                 const type = tabType[tab];
+                const viewTo = `${salesViewPath(segment, r.id)}${location.search || ''}`;
                 return (
-                  <tr key={r.id} onClick={() => setDrawer({ type, id: r.id })}
+                  <tr
+                    key={r.id}
+                    onClick={() => navigate(viewTo)}
                     className="hover:bg-slate-50 dark:hover:bg-slate-800/40 cursor-pointer group">
-                    <td className="px-4 py-3 font-mono text-xs font-semibold text-brand-600 dark:text-brand-400">{num}</td>
+                    <td className="px-4 py-3 font-mono text-xs font-semibold text-brand-600 dark:text-brand-400">
+                      <Link
+                        to={viewTo}
+                        className="text-brand-600 dark:text-brand-400 hover:underline"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {num}
+                      </Link>
+                    </td>
                     <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-100">{r.customer_name}</td>
                     <td className="px-4 py-3"><StatusBadge s={r.status} /></td>
                     <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{fmtD(date)}</td>
@@ -880,46 +1067,6 @@ export default function Sales() {
       )}
       {modal === 'edit-customer' && editCust && (
         <CustomerModal customer={editCust} onClose={() => { setModal(null); setEditCust(null); }} onSaved={afterSave} />
-      )}
-      {(modal === 'order' || modal === 'invoice') && (
-        <DocumentModal
-          type={modal}
-          customers={customers}
-          products={products}
-          initialCustomerId={orderPrefillCustomerId}
-          onClose={() => {
-            setModal(null);
-            setOrderPrefillCustomerId('');
-          }}
-          onSaved={afterSave}
-        />
-      )}
-      {(modal === 'quotation' || quotationEditId != null) && (
-        <DocumentModal
-          key={quotationEditId ?? 'new-quotation'}
-          type="quotation"
-          existingId={quotationEditId}
-          customers={customers}
-          products={products}
-          initialCustomerId={quotationEditId ? '' : orderPrefillCustomerId}
-          onClose={() => {
-            setModal(null);
-            setQuotationEditId(null);
-            setOrderPrefillCustomerId('');
-          }}
-          onSaved={afterSave}
-        />
-      )}
-
-      {/* Detail drawer */}
-      {drawer && (
-        <DetailDrawer
-          type={drawer.type}
-          id={drawer.id}
-          onClose={() => setDrawer(null)}
-          onRefresh={() => { loadData(); loadStats(); }}
-          onEditQuotation={(qid) => setQuotationEditId(qid)}
-        />
       )}
     </div>
   );
