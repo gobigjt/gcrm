@@ -14,7 +14,7 @@ export const createEmployee = wrap(async (req, res) => {
 export const updateEmployee = wrap(async (req, res) => { const e=await model.updateEmployee(Number(req.params.id),req.body); e?res.json({employee:e}):res.status(404).json({message:"Not found"}); });
 
 export const markAttendance = wrap(async (req, res) => {
-  if(!req.body.employee_id||!req.body.date) return res.status(400).json({message:"employee_id and date required"});
+  if(!req.body.user_id||!req.body.date) return res.status(400).json({message:"user_id and date required"});
   res.json({attendance: await model.markAttendance(req.body)});
 });
 export const getAttendance = wrap(async (req, res) => {

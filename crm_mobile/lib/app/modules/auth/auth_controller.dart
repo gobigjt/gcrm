@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/scheduler.dart';
 import 'package:get/get.dart';
 
 import '../../core/network/api_exception.dart';
@@ -9,6 +10,7 @@ import '../../core/auth/role_permissions.dart';
 import '../../core/storage/secure_storage_service.dart';
 import '../../core/auth/role_home_route.dart';
 import '../../routes/app_routes.dart';
+import '../attendance/sales_attendance_controller.dart';
 
 class AuthController extends GetxController {
   final ApiClient _api = ApiClient();
@@ -52,9 +54,9 @@ class AuthController extends GetxController {
       await _storage.saveSession(accessToken: access, refreshToken: refresh, user: user);
       await _applySession(user: user, access: access, refresh: refresh);
       isLoggedIn.value = true;
-      Get.offAllNamed(
-        resolveRoleHome(roleName: role.value, hasPermission: hasPermission),
-      );
+      final home = resolveRoleHome(roleName: role.value, hasPermission: hasPermission);
+      Get.offAllNamed(home);
+      _showSalesExecutiveAttendanceAfterLogin();
     } catch (e) {
       Get.snackbar('Login failed', userFriendlyError(e, loginAttempt: true));
     } finally {
@@ -186,6 +188,39 @@ class AuthController extends GetxController {
     refreshToken.value = refresh;
     await _loadPermissionsFromServer(access);
     isLoggedIn.value = true;
+    await refreshSalesExecutiveAttendance();
+  }
+
+  /// Loads today’s attendance for Sales Executive (any home route, not only dashboard).
+  Future<void> refreshSalesExecutiveAttendance() async {
+    if (role.value != AppRoles.salesExecutive) return;
+    try {
+      if (!Get.isRegistered<SalesAttendanceController>()) {
+        Get.put(SalesAttendanceController());
+      }
+      await Get.find<SalesAttendanceController>().refreshTodayAttendance();
+    } catch (_) {}
+  }
+
+  void _showSalesExecutiveAttendanceAfterLogin() {
+    if (role.value != AppRoles.salesExecutive) return;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (!Get.isRegistered<SalesAttendanceController>()) return;
+      final c = Get.find<SalesAttendanceController>();
+      if (c.attendanceMessage.value.isNotEmpty) {
+        Get.snackbar('Attendance', c.attendanceMessage.value);
+        return;
+      }
+      final inTime = c.attendanceCheckIn.value;
+      final outTime = c.attendanceCheckOut.value;
+      if (inTime != null && inTime.isNotEmpty) {
+        final outPart =
+            (outTime != null && outTime.isNotEmpty) ? ' · out $outTime' : '';
+        Get.snackbar('Attendance', 'Checked in at $inTime$outPart');
+      } else {
+        Get.snackbar('Attendance', 'Not checked in yet — open the menu for Check-in / Attendance');
+      }
+    });
   }
 
   Future<void> _refreshSessionTokens() async {

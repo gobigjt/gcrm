@@ -22,6 +22,7 @@ class AppNavigationDrawer extends StatelessWidget {
   final String? section;
 
   static const Color _headerBg = Color(0xFF2D3E50);
+  static const Color _menuBg = Color(0xFF142F4A);
 
   static String _homeRoute(AuthController auth) {
     final persona = ShowcaseRoles.fromBackendRole(auth.role.value);
@@ -58,42 +59,150 @@ class AppNavigationDrawer extends StatelessWidget {
 
     return Drawer(
       width: width,
-      backgroundColor: Colors.white,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _DrawerHeader(auth: auth),
-          Expanded(
-            child: Obx(() {
-              if (_isSuper(auth)) {
+      backgroundColor: AppNavigationDrawer._menuBg,
+      child: Theme(
+        data: Theme.of(context).copyWith(
+          dividerColor: Colors.white.withValues(alpha: 0.14),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _DrawerHeader(auth: auth),
+            Expanded(
+              child: Obx(() {
+                if (_isSuper(auth)) {
+                  return ListView(
+                    padding: EdgeInsets.zero,
+                    children: [
+                      _DrawerTile(
+                        icon: Icons.dashboard_outlined,
+                        label: 'Platform',
+                        selected: _selected(AppRoutes.platformHome),
+                        onTap: () => _closeAndGo(AppRoutes.platformHome),
+                      ),
+                      _DrawerTile(
+                        icon: Icons.apartment_outlined,
+                        label: 'Tenants',
+                        selected: _selected(AppRoutes.tenantsList),
+                        onTap: () => _closeAndGo(AppRoutes.tenantsList),
+                      ),
+                      _DrawerTile(
+                        icon: Icons.payments_outlined,
+                        label: 'SaaS billing',
+                        selected: _selected(AppRoutes.saasBilling),
+                        onTap: () => _closeAndGo(AppRoutes.saasBilling),
+                      ),
+                      const Divider(height: 1),
+                      _DrawerTile(
+                        icon: Icons.settings_outlined,
+                        label: 'Settings',
+                        selected: _selected(AppRoutes.settings),
+                        onTap: () => _closeAndGo(AppRoutes.settings),
+                      ),
+                      const Divider(height: 1),
+                      _DrawerSignOutTile(
+                        onTap: () {
+                          Get.back();
+                          auth.logout();
+                        },
+                      ),
+                    ],
+                  );
+                }
+
                 return ListView(
                   padding: EdgeInsets.zero,
                   children: [
-                    _DrawerTile(
-                      icon: Icons.dashboard_outlined,
-                      label: 'Platform',
-                      selected: _selected(AppRoutes.platformHome),
-                      onTap: () => _closeAndGo(AppRoutes.platformHome),
-                    ),
-                    _DrawerTile(
-                      icon: Icons.apartment_outlined,
-                      label: 'Tenants',
-                      selected: _selected(AppRoutes.tenantsList),
-                      onTap: () => _closeAndGo(AppRoutes.tenantsList),
-                    ),
-                    _DrawerTile(
-                      icon: Icons.payments_outlined,
-                      label: 'SaaS billing',
-                      selected: _selected(AppRoutes.saasBilling),
-                      onTap: () => _closeAndGo(AppRoutes.saasBilling),
-                    ),
+                    if (auth.hasPermission(AppPermissions.dashboard)) ...[
+                      _DrawerTile(
+                        icon: Icons.home_outlined,
+                        label: 'Home',
+                        selected: _selectedHome(auth),
+                        onTap: () => _closeAndGo(_homeRoute(auth)),
+                      ),
+                      const Divider(height: 1),
+                    ],
+                    if (auth.role.value == AppRoles.salesExecutive) ...[
+                      _DrawerTile(
+                        icon: Icons.how_to_reg_outlined,
+                        label: 'Check-in / Attendance',
+                        selected: currentRoute == AppRoutes.attendance,
+                        onTap: () => _closeAndGo(AppRoutes.attendance),
+                      ),
+                      const Divider(height: 1),
+                    ],
+                    if (auth.hasPermission(AppPermissions.crm)) ...[
+                      _DrawerTile(
+                        icon: Icons.people_alt_outlined,
+                        label: 'Leads',
+                        selected: _selected(AppRoutes.crm),
+                        onTap: () => _closeAndGo(AppRoutes.crm),
+                      ),
+                      _DrawerTile(
+                        icon: Icons.view_list_outlined,
+                        label: 'Lead lists',
+                        selected: _selected(AppRoutes.crmLists),
+                        onTap: () => _closeAndGo(AppRoutes.crmLists),
+                      ),
+                    ],
+                    if (auth.hasPermission(AppPermissions.sales)) ...[
+                      _DrawerTile(
+                        icon: Icons.description_outlined,
+                        label: 'Quotes',
+                        selected: _selected(AppRoutes.sales, sec: 'quotes'),
+                        onTap: () => _closeAndGo(AppRoutes.sales, arguments: const {'initialTab': 0}),
+                      ),
+                      _DrawerTile(
+                        icon: Icons.receipt_long_outlined,
+                        label: 'Invoices',
+                        selected: _selected(AppRoutes.sales, sec: 'invoices'),
+                        onTap: () => _closeAndGo(AppRoutes.sales, arguments: const {'initialTab': 1}),
+                      ),
+                      _DrawerTile(
+                        icon: Icons.shopping_bag_outlined,
+                        label: 'Orders',
+                        selected: _selected(AppRoutes.sales, sec: 'orders'),
+                        onTap: () => _closeAndGo(AppRoutes.sales, arguments: const {'initialTab': 2}),
+                      ),
+                    ],
+                    if (auth.hasPermission(AppPermissions.inventory)) ...[
+                      _DrawerTile(
+                        icon: Icons.inventory_2_outlined,
+                        label: 'Products',
+                        selected: _selected(AppRoutes.inventory, sec: 'products'),
+                        onTap: () => _closeAndGo(AppRoutes.inventory, arguments: const {'initialTab': 0}),
+                      ),
+                      _DrawerTile(
+                        icon: Icons.warehouse_outlined,
+                        label: 'Warehouses',
+                        selected: _selected(AppRoutes.inventory, sec: 'warehouses'),
+                        onTap: () => _closeAndGo(AppRoutes.inventory, arguments: const {'initialTab': 1}),
+                      ),
+                    ],
+                    if (auth.hasPermission(AppPermissions.users)) ...[
+                      _DrawerTile(
+                        icon: Icons.group_outlined,
+                        label: 'Users, roles & permissions',
+                        selected: _selected(AppRoutes.users),
+                        onTap: () => _closeAndGo(AppRoutes.users),
+                      ),
+                    ],
+                    if (auth.hasPermission(AppPermissions.hr)) ...[
+                      _DrawerTile(
+                        icon: Icons.badge_outlined,
+                        label: 'HR',
+                        selected: _selected(AppRoutes.hr),
+                        onTap: () => _closeAndGo(AppRoutes.hr),
+                      ),
+                    ],
                     const Divider(height: 1),
-                    _DrawerTile(
-                      icon: Icons.settings_outlined,
-                      label: 'Settings',
-                      selected: _selected(AppRoutes.settings),
-                      onTap: () => _closeAndGo(AppRoutes.settings),
-                    ),
+                    if (auth.hasPermission(AppPermissions.settings))
+                      _DrawerTile(
+                        icon: Icons.settings_outlined,
+                        label: 'Settings',
+                        selected: _selected(AppRoutes.settings),
+                        onTap: () => _closeAndGo(AppRoutes.settings),
+                      ),
                     const Divider(height: 1),
                     _DrawerSignOutTile(
                       onTap: () {
@@ -103,104 +212,10 @@ class AppNavigationDrawer extends StatelessWidget {
                     ),
                   ],
                 );
-              }
-
-              return ListView(
-                padding: EdgeInsets.zero,
-                children: [
-                  if (auth.hasPermission(AppPermissions.dashboard)) ...[
-                    _DrawerTile(
-                      icon: Icons.home_outlined,
-                      label: 'Home',
-                      selected: _selectedHome(auth),
-                      onTap: () => _closeAndGo(_homeRoute(auth)),
-                    ),
-                    const Divider(height: 1),
-                  ],
-                  if (auth.hasPermission(AppPermissions.crm)) ...[
-                    _DrawerTile(
-                      icon: Icons.people_alt_outlined,
-                      label: 'Leads',
-                      selected: _selected(AppRoutes.crm),
-                      onTap: () => _closeAndGo(AppRoutes.crm),
-                    ),
-                    _DrawerTile(
-                      icon: Icons.view_list_outlined,
-                      label: 'Lead lists',
-                      selected: _selected(AppRoutes.crmLists),
-                      onTap: () => _closeAndGo(AppRoutes.crmLists),
-                    ),
-                  ],
-                  if (auth.hasPermission(AppPermissions.sales)) ...[
-                    _DrawerTile(
-                      icon: Icons.description_outlined,
-                      label: 'Quotes',
-                      selected: _selected(AppRoutes.sales, sec: 'quotes'),
-                      onTap: () => _closeAndGo(AppRoutes.sales, arguments: const {'initialTab': 0}),
-                    ),
-                    _DrawerTile(
-                      icon: Icons.receipt_long_outlined,
-                      label: 'Invoices',
-                      selected: _selected(AppRoutes.sales, sec: 'invoices'),
-                      onTap: () => _closeAndGo(AppRoutes.sales, arguments: const {'initialTab': 1}),
-                    ),
-                    _DrawerTile(
-                      icon: Icons.shopping_bag_outlined,
-                      label: 'Orders',
-                      selected: _selected(AppRoutes.sales, sec: 'orders'),
-                      onTap: () => _closeAndGo(AppRoutes.sales, arguments: const {'initialTab': 2}),
-                    ),
-                  ],
-                  if (auth.hasPermission(AppPermissions.inventory)) ...[
-                    _DrawerTile(
-                      icon: Icons.inventory_2_outlined,
-                      label: 'Products',
-                      selected: _selected(AppRoutes.inventory, sec: 'products'),
-                      onTap: () => _closeAndGo(AppRoutes.inventory, arguments: const {'initialTab': 0}),
-                    ),
-                    _DrawerTile(
-                      icon: Icons.warehouse_outlined,
-                      label: 'Warehouses',
-                      selected: _selected(AppRoutes.inventory, sec: 'warehouses'),
-                      onTap: () => _closeAndGo(AppRoutes.inventory, arguments: const {'initialTab': 1}),
-                    ),
-                  ],
-                  if (auth.hasPermission(AppPermissions.users)) ...[
-                    _DrawerTile(
-                      icon: Icons.group_outlined,
-                      label: 'Users, roles & permissions',
-                      selected: _selected(AppRoutes.users),
-                      onTap: () => _closeAndGo(AppRoutes.users),
-                    ),
-                  ],
-                  if (auth.hasPermission(AppPermissions.hr)) ...[
-                    _DrawerTile(
-                      icon: Icons.badge_outlined,
-                      label: 'HR',
-                      selected: _selected(AppRoutes.hr),
-                      onTap: () => _closeAndGo(AppRoutes.hr),
-                    ),
-                  ],
-                  const Divider(height: 1),
-                  if (auth.hasPermission(AppPermissions.settings))
-                    _DrawerTile(
-                      icon: Icons.settings_outlined,
-                      label: 'Settings',
-                      selected: _selected(AppRoutes.settings),
-                      onTap: () => _closeAndGo(AppRoutes.settings),
-                    ),
-                  const Divider(height: 1),
-                  _DrawerSignOutTile(
-                    onTap: () {
-                      Get.back();
-                      auth.logout();
-                    },
-                  ),
-                ],
-              );
-            }),
-          ),
-        ],
+              }),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -390,8 +405,9 @@ class _DrawerTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = const Color(0xFF185FA5);
-    final fg = selected ? accent : const Color(0xFF37474F);
+    const accent = Color(0xFF5BA3E8);
+    const muted = Color(0xFFB8C9DC);
+    final fg = selected ? accent : muted;
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
       leading: Icon(icon, size: 22, color: fg),
@@ -404,7 +420,7 @@ class _DrawerTile extends StatelessWidget {
         ),
       ),
       selected: selected,
-      selectedTileColor: accent.withValues(alpha: 0.08),
+      selectedTileColor: const Color(0xFF185FA5).withValues(alpha: 0.35),
       onTap: onTap,
     );
   }

@@ -19,9 +19,9 @@ class CrmMobileApp extends StatelessWidget {
     return GetMaterialApp(
       title: 'EZCRM',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
+      theme: AppTheme.darkTheme,
       darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.system,
+      themeMode: ThemeMode.dark,
       initialBinding: BindingsBuilder(() {
         Get.put(AuthController(), permanent: true);
         Get.put(DeepLinkController(), permanent: true);

@@ -17,11 +17,12 @@ class RoleAwareBottomNav extends StatelessWidget {
     final items = ShowcaseRoles.bottomNav(role);
     final activeIndex = ShowcaseRoles.bottomNavIndex(role, currentRoute);
 
+    final tight = items.length > 5;
     return SafeArea(
       top: false,
       child: Container(
         height: 72,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
+        padding: EdgeInsets.symmetric(horizontal: tight ? 4 : 10),
         decoration: BoxDecoration(
           color: Theme.of(context).scaffoldBackgroundColor,
           border: Border(top: BorderSide(color: Theme.of(context).dividerColor, width: 0.5)),
@@ -59,7 +60,7 @@ class RoleAwareBottomNav extends StatelessWidget {
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: labelColor,
                             fontWeight: active ? FontWeight.w800 : FontWeight.w500,
-                            fontSize: 11,
+                            fontSize: tight ? 10 : 11,
                           ),
                     ),
                   ],

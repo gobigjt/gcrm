@@ -12,4 +12,13 @@ class WebAppConfig {
     final base = _origin.trim().replaceAll(RegExp(r'/$'), '');
     return Uri.parse('$base/sales?fromLead=$leadId');
   }
+
+  /// Deep link to a sales document detail on the web app (print / PDF from browser).
+  /// [segment] is `quotes`, `orders`, or `invoices` (matches React `SalesRoutes`).
+  static Uri? salesDetailWebUri({required String segment, required int id}) {
+    if (!isConfigured || id <= 0) return null;
+    final base = _origin.trim().replaceAll(RegExp(r'/$'), '');
+    final s = segment.replaceAll(RegExp(r'^/+|/+$'), '');
+    return Uri.parse('$base/sales/$s/$id');
+  }
 }

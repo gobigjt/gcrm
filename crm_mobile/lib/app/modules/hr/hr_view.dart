@@ -67,7 +67,10 @@ class HrView extends GetView<HrController> {
               Expanded(
                 child: TabBarView(
                   children: [
-                    _EmployeesTab(controller: controller),
+                    _EmployeesTab(
+                      controller: controller,
+                      onMarkAttendanceForUser: (userId) => _openAttendanceSheet(context, presetUserId: userId),
+                    ),
                     _AttendanceTab(controller: controller),
                     _PayrollTab(controller: controller),
                   ],
@@ -80,8 +83,10 @@ class HrView extends GetView<HrController> {
     );
   }
 
-  Future<void> _openAttendanceSheet(BuildContext context) async {
-    final idCtrl = TextEditingController();
+  Future<void> _openAttendanceSheet(BuildContext context, {int? presetUserId}) async {
+    final idCtrl = TextEditingController(
+      text: (presetUserId != null && presetUserId > 0) ? '$presetUserId' : '',
+    );
     final dateCtrl = TextEditingController(text: DateTime.now().toIso8601String().split('T').first);
     final inCtrl = TextEditingController();
     final outCtrl = TextEditingController();
@@ -101,7 +106,14 @@ class HrView extends GetView<HrController> {
           () => Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(controller: idCtrl, decoration: const InputDecoration(labelText: 'Employee ID *')),
+              TextField(
+                controller: idCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'User ID *',
+                  helperText: 'users.id — same user as login; pick from Employees tab or enter manually',
+                ),
+              ),
               const SizedBox(height: 8),
               TextField(
                 controller: dateCtrl,
@@ -133,13 +145,13 @@ class HrView extends GetView<HrController> {
                 onPressed: controller.isSubmitting.value
                     ? null
                     : () async {
-                        final empId = int.tryParse(idCtrl.text.trim());
-                        if (empId == null || dateCtrl.text.trim().isEmpty) {
-                          Get.snackbar('Invalid input', 'Employee ID and date are required');
+                        final uid = int.tryParse(idCtrl.text.trim());
+                        if (uid == null || dateCtrl.text.trim().isEmpty) {
+                          Get.snackbar('Invalid input', 'User ID and date are required');
                           return;
                         }
                         await controller.markAttendance(
-                          employeeId: empId,
+                          userId: uid,
                           date: dateCtrl.text.trim(),
                           status: status.value,
                           checkIn: inCtrl.text.trim(),
@@ -225,8 +237,13 @@ class HrView extends GetView<HrController> {
 }
 
 class _EmployeesTab extends StatelessWidget {
-  const _EmployeesTab({required this.controller});
+  const _EmployeesTab({
+    required this.controller,
+    required this.onMarkAttendanceForUser,
+  });
+
   final HrController controller;
+  final void Function(int userId) onMarkAttendanceForUser;
 
   @override
   Widget build(BuildContext context) {
@@ -243,8 +260,23 @@ class _EmployeesTab extends StatelessWidget {
             return Card(
               child: ListTile(
                 title: Text(e.title),
-                subtitle: Text('${e.designation} • ${e.department}'),
-                trailing: Text(e.employeeCode),
+                subtitle: Text(
+                  '${e.designation} • ${e.department}'
+                  '${e.hasLinkedUser ? '\nUser ID ${e.userId} (attendance)' : '\nNo user linked — cannot mark attendance'}',
+                ),
+                isThreeLine: true,
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(e.employeeCode, style: Theme.of(context).textTheme.labelSmall),
+                    if (e.hasLinkedUser)
+                      IconButton(
+                        tooltip: 'Mark attendance',
+                        icon: const Icon(Icons.fact_check_outlined),
+                        onPressed: () => onMarkAttendanceForUser(e.userId),
+                      ),
+                  ],
+                ),
               ),
             );
           },

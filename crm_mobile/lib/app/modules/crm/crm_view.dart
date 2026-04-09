@@ -73,18 +73,27 @@ class CrmView extends GetView<CrmController> {
                 break;
               }
             }
+            final filterDark = Theme.of(context).brightness == Brightness.dark;
             return Material(
-              color: const Color(0xFFE8F5E9),
+              color: filterDark ? const Color(0xFF0D2818) : const Color(0xFFE8F5E9),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 child: Row(
                   children: [
-                    const Icon(Icons.folder_outlined, size: 18, color: Color(0xFF2E7D32)),
+                    Icon(
+                      Icons.folder_outlined,
+                      size: 18,
+                      color: filterDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32),
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         label,
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF1B5E20)),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                          color: filterDark ? const Color(0xFFC8E6C9) : const Color(0xFF1B5E20),
+                        ),
                       ),
                     ),
                     TextButton(
@@ -499,8 +508,9 @@ class _StagePillChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    const selectedBg = Color(0xFFE6F1FB);
-    const selectedFg = Color(0xFF0C447C);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final selectedBg = isDark ? const Color(0xFF1A3A5C) : const Color(0xFFE6F1FB);
+    final selectedFg = isDark ? const Color(0xFF93C5FD) : const Color(0xFF0C447C);
     const selectedBorder = Color(0xFF185FA5);
     final unselectedBg = scheme.surfaceContainerHighest;
     final unselectedFg = scheme.onSurfaceVariant;

@@ -57,7 +57,6 @@ const NAV_SECTIONS = [
       { to: '/users?tab=users', label: 'Users & Roles', icon: '◈', module: 'users' },
       { to: '/users?tab=permissions', label: 'Permissions', icon: '▦', module: 'users' },
       { to: '/settings', label: 'Settings', icon: '◌', module: 'settings' },
-      { to: '/settings#billing', label: 'Billing', icon: '⌁', module: 'settings' },
       { to: '/settings#superadmin', label: 'Super Admin', icon: '★', module: null, roles: ['Super Admin'] },
     ],
   },

@@ -55,16 +55,16 @@ abstract class AppTheme {
       seedColor: const Color(0xFF185FA5),
       brightness: Brightness.dark,
     );
-    // Layered slate surfaces (EZCRM sales / CRM chrome) — clearer depth than seed-only scheme.
+    // Dark blue surfaces (aligned with nav drawer) — page + cards read as one family.
     final scheme = seeded.copyWith(
-      surface: const Color(0xFF070B12),
-      surfaceContainerLowest: const Color(0xFF090F18),
-      surfaceContainerLow: const Color(0xFF0C131E),
-      surfaceContainer: const Color(0xFF111A2B),
-      surfaceContainerHigh: const Color(0xFF1A2639),
-      surfaceContainerHighest: const Color(0xFF243049),
-      outline: const Color(0xFF3D4F6A),
-      outlineVariant: const Color(0xFF2A3548),
+      surface: const Color(0xFF0A1424),
+      surfaceContainerLowest: const Color(0xFF0C1729),
+      surfaceContainerLow: const Color(0xFF0E1C30),
+      surfaceContainer: const Color(0xFF122038),
+      surfaceContainerHigh: const Color(0xFF182A45),
+      surfaceContainerHighest: const Color(0xFF223556),
+      outline: const Color(0xFF3D5680),
+      outlineVariant: const Color(0xFF2A3D5C),
       onSurface: const Color(0xFFE8EEF5),
       onSurfaceVariant: const Color(0xFF9DB0C4),
     );

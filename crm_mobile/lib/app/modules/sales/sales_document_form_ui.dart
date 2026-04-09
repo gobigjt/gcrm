@@ -46,7 +46,7 @@ InputDecoration salesOutlineField(
 }) {
   final cs = Theme.of(context).colorScheme;
   final dark = Theme.of(context).brightness == Brightness.dark;
-  final fill = dark ? cs.surfaceContainer : Colors.white;
+  final fill = cs.surfaceContainer;
   final hintFg = dark ? cs.onSurfaceVariant.withValues(alpha: 0.92) : const Color(0xFF64748B);
   return InputDecoration(
     hintText: hintText,
@@ -64,11 +64,10 @@ InputDecoration salesOutlineField(
 
 InputDecoration salesCustomerDropdownDecoration(BuildContext context, {required Widget hint}) {
   final cs = Theme.of(context).colorScheme;
-  final dark = Theme.of(context).brightness == Brightness.dark;
   return InputDecoration(
     hint: hint,
     filled: true,
-    fillColor: dark ? cs.surfaceContainer : Colors.white,
+    fillColor: cs.surfaceContainer,
     isDense: true,
     contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
     border: salesFieldBorder(context),

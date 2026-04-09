@@ -2,6 +2,8 @@ abstract class AppRoutes {
   static const splash = '/splash';
   static const login = '/login';
   static const dashboard = '/dashboard';
+  /// Sales Executive — daily check-in / check-out (`/hr/me/attendance/*`).
+  static const attendance = '/attendance';
   static const crm = '/crm';
   static const crmLists = '/crm/lists';
   static const sales = '/sales';

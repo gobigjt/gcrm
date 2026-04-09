@@ -668,13 +668,13 @@ CREATE TABLE IF NOT EXISTS employees (
 
 CREATE TABLE IF NOT EXISTS attendance (
   id            SERIAL PRIMARY KEY,
-  employee_id   INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+  user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   date          DATE NOT NULL,
   check_in      TIME,
   check_out     TIME,
   status        VARCHAR(20) NOT NULL DEFAULT 'present' CHECK (status IN ('present','absent','half_day','leave','holiday')),
   notes         TEXT,
-  UNIQUE(employee_id, date)
+  UNIQUE(user_id, date)
 );
 
 CREATE TABLE IF NOT EXISTS payroll (

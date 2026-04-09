@@ -9,6 +9,8 @@ import '../../shared/widgets/app_error_banner.dart';
 import '../../shared/widgets/app_navigation_drawer.dart';
 import '../../shared/widgets/role_aware_bottom_nav.dart';
 import '../../showcase/showcase_widgets.dart';
+import '../attendance/sales_attendance_controller.dart';
+import '../attendance/sales_executive_attendance_card.dart';
 import '../auth/auth_controller.dart';
 import '../crm/crm_lead_detail_view.dart';
 import 'dashboard_controller.dart';
@@ -116,6 +118,14 @@ class DashboardView extends GetView<DashboardController> {
                       ],
                     ),
                   ),
+                  Obx(() {
+                    if (auth.role.value != AppRoles.salesExecutive) return const SizedBox.shrink();
+                    controller.registerSalesAttendanceIfNeeded();
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 16),
+                      child: SalesExecutiveAttendanceCard(controller: Get.find<SalesAttendanceController>()),
+                    );
+                  }),
                   const SizedBox(height: 20),
                   const ShowcaseSectionTitle("Today’s tasks"),
                   Obx(() {
@@ -256,6 +266,7 @@ class _LeadRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final title = lead.company.isNotEmpty ? lead.company : lead.name;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return InkWell(
       onTap: () async {
         await Get.to(() => CrmLeadDetailView(leadId: lead.id));
@@ -267,10 +278,14 @@ class _LeadRow extends StatelessWidget {
           children: [
             CircleAvatar(
               radius: 14,
-              backgroundColor: const Color(0xFFE6F1FB),
+              backgroundColor: isDark ? const Color(0xFF1A3A5C) : const Color(0xFFE6F1FB),
               child: Text(
                 _initials(title),
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF0C447C)),
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF0C447C),
+                ),
               ),
             ),
             const SizedBox(width: 10),
@@ -304,3 +319,4 @@ class _LeadRow extends StatelessWidget {
     );
   }
 }
+

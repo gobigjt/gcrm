@@ -7,9 +7,10 @@ import 'invoice_form_controller.dart';
 import 'sales_document_form_ui.dart';
 
 class InvoiceFormView extends StatefulWidget {
-  const InvoiceFormView({super.key, this.initialCustomerId});
+  const InvoiceFormView({super.key, this.initialCustomerId, this.invoiceId});
 
   final int? initialCustomerId;
+  final int? invoiceId;
 
   @override
   State<InvoiceFormView> createState() => _InvoiceFormViewState();
@@ -23,7 +24,10 @@ class _InvoiceFormViewState extends State<InvoiceFormView> {
   void initState() {
     super.initState();
     _tag = 'invf_${identityHashCode(this)}';
-    c = Get.put(InvoiceFormController(initialCustomerId: widget.initialCustomerId), tag: _tag);
+    c = Get.put(
+      InvoiceFormController(initialCustomerId: widget.initialCustomerId, invoiceId: widget.invoiceId),
+      tag: _tag,
+    );
   }
 
   @override
@@ -34,7 +38,7 @@ class _InvoiceFormViewState extends State<InvoiceFormView> {
 
   @override
   Widget build(BuildContext context) {
-    const title = 'New Invoice';
+    final title = c.isEdit ? 'Edit invoice' : 'New invoice';
     final pageBg = Theme.of(context).scaffoldBackgroundColor;
 
     return Obx(() {
@@ -182,7 +186,7 @@ class _InvoiceFormViewState extends State<InvoiceFormView> {
                     final isDark = Theme.of(context).brightness == Brightness.dark;
                     return Card(
                       margin: EdgeInsets.zero,
-                      color: isDark ? cs.surfaceContainer : Colors.white,
+                      color: cs.surfaceContainer,
                       elevation: isDark ? 0 : 1,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -240,7 +244,7 @@ class _InvoiceFormViewState extends State<InvoiceFormView> {
                         final isDark = Theme.of(context).brightness == Brightness.dark;
                         return Card(
                           margin: const EdgeInsets.only(bottom: 10),
-                          color: isDark ? cs.surfaceContainer : Colors.white,
+                          color: cs.surfaceContainer,
                           elevation: isDark ? 0 : 1.5,
                           shadowColor: isDark ? Colors.transparent : Colors.black26,
                           shape: RoundedRectangleBorder(
@@ -419,9 +423,7 @@ class _InvoiceFormViewState extends State<InvoiceFormView> {
               child: Material(
                 elevation: Theme.of(context).brightness == Brightness.dark ? 8 : 6,
                 shadowColor: Colors.black38,
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? Theme.of(context).colorScheme.surfaceContainer
-                    : Colors.white,
+                color: Theme.of(context).colorScheme.surfaceContainer,
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
                   child: SizedBox(
@@ -443,9 +445,9 @@ class _InvoiceFormViewState extends State<InvoiceFormView> {
                               width: 22,
                               child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
                             )
-                          : const Text(
-                              'Create invoice',
-                              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                          : Text(
+                              c.isEdit ? 'Save changes' : 'Create invoice',
+                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
                             ),
                     ),
                   ),

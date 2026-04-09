@@ -32,19 +32,22 @@ export async function updateEmployee(id, data) {
   return res.rows[0];
 }
 
-// ─── Attendance ───────────────────────────────────────────
-export async function markAttendance({ employee_id, date, check_in, check_out, status, notes }) {
+// ─── Attendance (user_id → users.id) ──────────────────────
+export async function markAttendance({ user_id, date, check_in, check_out, status, notes }) {
   const res = await db.query(
-    `INSERT INTO attendance (employee_id,date,check_in,check_out,status,notes)
+    `INSERT INTO attendance (user_id,date,check_in,check_out,status,notes)
      VALUES ($1,$2,$3,$4,$5,$6)
-     ON CONFLICT (employee_id,date) DO UPDATE SET check_in=$3,check_out=$4,status=$5,notes=$6
+     ON CONFLICT (user_id,date) DO UPDATE SET check_in=$3,check_out=$4,status=$5,notes=$6
      RETURNING *`,
-    [employee_id, date, check_in, check_out, status||"present", notes]
+    [user_id, date, check_in, check_out, status||"present", notes]
   );
   return res.rows[0];
 }
 export async function getAttendance({ employee_id, from, to }) {
-  const conds=["employee_id=$1"]; const vals=[employee_id]; let i=2;
+  const er = await db.query(`SELECT user_id FROM employees WHERE id=$1`, [employee_id]);
+  if (!er.rows[0]?.user_id) return [];
+  const uid = er.rows[0].user_id;
+  const conds=["user_id=$1"]; const vals=[uid]; let i=2;
   if(from){ conds.push(`date>=$${i++}`); vals.push(from); }
   if(to)  { conds.push(`date<=$${i++}`); vals.push(to); }
   const res = await db.query(
@@ -55,14 +58,17 @@ export async function getAttendance({ employee_id, from, to }) {
 }
 export async function getAttendanceSummary({ from, to }) {
   const res = await db.query(
-    `SELECT e.employee_code,u.name,
+    `SELECT COALESCE(e.employee_code, '—') AS employee_code, u.name,
        COUNT(*) FILTER (WHERE a.status='present') AS present,
        COUNT(*) FILTER (WHERE a.status='absent') AS absent,
        COUNT(*) FILTER (WHERE a.status='half_day') AS half_day,
        COUNT(*) FILTER (WHERE a.status='leave') AS leave
      FROM attendance a
-     JOIN employees e ON e.id=a.employee_id LEFT JOIN users u ON u.id=e.user_id
-     WHERE a.date BETWEEN $1 AND $2 GROUP BY e.id, u.name ORDER BY e.employee_code`,
+     JOIN users u ON u.id = a.user_id
+     LEFT JOIN employees e ON e.user_id = u.id AND e.is_active = TRUE
+     WHERE a.date BETWEEN $1 AND $2
+     GROUP BY u.id, u.name, e.employee_code
+     ORDER BY e.employee_code NULLS LAST, u.name`,
     [from, to]
   );
   return res.rows;

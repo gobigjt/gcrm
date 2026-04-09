@@ -7,10 +7,15 @@ import '../auth/auth_controller.dart';
 import 'sales_line_draft.dart';
 
 class InvoiceFormController extends GetxController {
-  InvoiceFormController({this.initialCustomerId});
+  InvoiceFormController({this.initialCustomerId, this.invoiceId});
 
   /// Pre-select customer (e.g. filtered Sales FAB / CRM handoff).
   final int? initialCustomerId;
+
+  /// When set, load and PATCH this invoice (line items replaced on save).
+  final int? invoiceId;
+
+  bool get isEdit => invoiceId != null && invoiceId! > 0;
 
   final AuthController _auth = Get.find<AuthController>();
 
@@ -59,7 +64,11 @@ class InvoiceFormController extends GetxController {
     errorMessage.value = '';
     try {
       await Future.wait([_loadCustomers(), _loadProducts()]);
-      if (lines.isEmpty) addLine();
+      if (isEdit) {
+        await _loadExistingInvoice();
+      } else if (lines.isEmpty) {
+        addLine();
+      }
     } catch (e) {
       errorMessage.value = userFriendlyError(e);
     } finally {
@@ -90,6 +99,36 @@ class InvoiceFormController extends GetxController {
     } catch (_) {
       products.clear();
     }
+  }
+
+  String _ymdFromApi(dynamic v) {
+    final s = formatIsoDate(v);
+    if (s == '—') return toYmd(DateTime.now());
+    return s.length >= 10 ? s.substring(0, 10) : s;
+  }
+
+  Future<void> _loadExistingInvoice() async {
+    final id = invoiceId!;
+    final res = await _auth.authorizedRequest(method: 'GET', path: '/sales/invoices/$id');
+    final inv = Map<String, dynamic>.from((res as Map)['invoice'] as Map);
+    selectedCustomerId.value = (inv['customer_id'] as num?)?.toInt();
+    invoiceDateCtrl.text = _ymdFromApi(inv['invoice_date']);
+    dueDateCtrl.text = _ymdFromApi(inv['due_date']);
+    notesCtrl.text = (inv['notes'] ?? '').toString();
+    isInterstate.value = parseDynamicNum(inv['igst']) > 0;
+    for (final L in lines) {
+      L.dispose();
+    }
+    lines.clear();
+    final rawItems = inv['items'];
+    if (rawItems is List && rawItems.isNotEmpty) {
+      for (final e in rawItems) {
+        lines.add(SalesLineDraft.fromApiRow(Map<String, dynamic>.from(e as Map)));
+      }
+    } else {
+      addLine();
+    }
+    lines.refresh();
   }
 
   static List<Map<String, dynamic>> _asList(dynamic res) {
@@ -160,7 +199,15 @@ class InvoiceFormController extends GetxController {
         'is_interstate': interstate,
         'items': payloadLines,
       };
-      await _auth.authorizedRequest(method: 'POST', path: '/sales/invoices', body: body);
+      if (isEdit) {
+        await _auth.authorizedRequest(
+          method: 'PATCH',
+          path: '/sales/invoices/${invoiceId!}',
+          body: body,
+        );
+      } else {
+        await _auth.authorizedRequest(method: 'POST', path: '/sales/invoices', body: body);
+      }
       Get.back(result: true);
     } catch (e) {
       Get.snackbar('Save failed', userFriendlyError(e));

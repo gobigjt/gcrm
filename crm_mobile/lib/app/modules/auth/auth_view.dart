@@ -20,7 +20,7 @@ class AuthView extends GetView<AuthController> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? const Color(0xFF1E1E1C) : Colors.white;
+    final bg = isDark ? Theme.of(context).colorScheme.surface : Colors.white;
     final subtitle = isDark ? _subtitleDark : _subtitleLight;
     final fieldFill = isDark ? _fieldFillDark : _fieldFillLight;
     final borderColor = isDark ? _borderDark : _borderLight;

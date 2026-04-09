@@ -8,14 +8,15 @@ import '../../shared/widgets/app_error_banner.dart';
 import '../../shared/widgets/app_navigation_drawer.dart';
 import '../../shared/widgets/role_aware_bottom_nav.dart';
 import '../auth/auth_controller.dart';
-import 'quotation_detail_view.dart';
 import 'sales_controller.dart';
+import 'sales_document_kind.dart';
+import 'sales_document_pdf_service.dart';
+import 'sales_document_detail_view.dart';
 
 /// Dark app bar (matches CRM leads screen) + teal accents (reference Quotes & Invoices).
 class _SalesChrome {
   static const barBg = Color(0xFF263238);
   static const teal = Color(0xFF26A69A);
-  static const pageBg = Color(0xFFF0F2F5);
 }
 
 class SalesView extends GetView<SalesController> {
@@ -32,6 +33,34 @@ class SalesView extends GetView<SalesController> {
     }
     if (controller.filterCustomerId.value != null) return 'No orders for this customer yet';
     return 'No orders yet';
+  }
+
+  Future<void> _downloadListPdf(BuildContext context, SalesDocumentKind kind, int id) async {
+    if (id <= 0) return;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        child: Center(child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary)),
+      ),
+    );
+    try {
+      final auth = Get.find<AuthController>();
+      await SalesDocumentPdfService.downloadById(auth: auth, kind: kind, id: id);
+      if (context.mounted) {
+        Get.snackbar('PDF', 'Ready — check downloads or the share sheet.');
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Get.snackbar('PDF failed', e.toString());
+      }
+    } finally {
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    }
   }
 
   Future<void> _confirmDelete(BuildContext context, int index) async {
@@ -62,7 +91,7 @@ class SalesView extends GetView<SalesController> {
   Widget build(BuildContext context) {
     final auth = Get.find<AuthController>();
     return Scaffold(
-      backgroundColor: _SalesChrome.pageBg,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       drawer: Obx(
         () => AppNavigationDrawer(
           currentRoute: AppRoutes.sales,
@@ -150,21 +179,26 @@ class SalesView extends GetView<SalesController> {
             final id = controller.filterCustomerId.value;
             if (id == null) return const SizedBox.shrink();
             final name = controller.filterCustomerName.value ?? 'Customer #$id';
+            final filterDark = Theme.of(context).brightness == Brightness.dark;
             return Material(
-              color: const Color(0xFFE8F5E9),
+              color: filterDark ? const Color(0xFF0D2818) : const Color(0xFFE8F5E9),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 child: Row(
                   children: [
-                    const Icon(Icons.filter_alt_outlined, size: 18, color: Color(0xFF2E7D32)),
+                    Icon(
+                      Icons.filter_alt_outlined,
+                      size: 18,
+                      color: filterDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32),
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         'Sales for $name',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.w600,
                           fontSize: 13,
-                          color: Color(0xFF1B5E20),
+                          color: filterDark ? const Color(0xFFC8E6C9) : const Color(0xFF1B5E20),
                         ),
                       ),
                     ),
@@ -196,6 +230,13 @@ class SalesView extends GetView<SalesController> {
                   final r = controller.rows[i];
                   final id = (r['id'] as num?)?.toInt() ?? 0;
                   final isQ = controller.isQuotationsTab;
+                  final isInv = controller.isInvoicesTab;
+                  final isOrd = controller.isOrdersTab;
+                  final docKind = isQ
+                      ? SalesDocumentKind.quotation
+                      : isInv
+                          ? SalesDocumentKind.invoice
+                          : SalesDocumentKind.order;
                   return _SalesDocumentCard(
                     title: controller.documentLabel(r),
                     customer: (r['customer_name'] ?? '—').toString(),
@@ -209,7 +250,20 @@ class SalesView extends GetView<SalesController> {
                             );
                             if (ok == true) await controller.load();
                           }
-                        : () => Get.snackbar('Edit', 'Editing is only set up for quotations.'),
+                        : isInv && id > 0
+                            ? () async {
+                                final ok = await Get.toNamed(
+                                  AppRoutes.invoiceForm,
+                                  arguments: {'invoiceId': id},
+                                );
+                                if (ok == true) await controller.load();
+                              }
+                            : isOrd
+                                ? () => Get.snackbar(
+                                      'Sales order',
+                                      'Change status from the document view. Line edits use the web app.',
+                                    )
+                                : () => Get.snackbar('Edit', 'Nothing to edit.'),
                     onCopy: isQ && id > 0
                         ? () async {
                             final ok = await Get.toNamed(
@@ -218,18 +272,15 @@ class SalesView extends GetView<SalesController> {
                             );
                             if (ok == true) await controller.load();
                           }
-                        : () => Get.snackbar('Copy', 'Copy is only set up for quotations.'),
+                        : () => Get.snackbar('Copy', 'Copy is only available for quotations.'),
                     onDelete: () => _confirmDelete(context, i),
-                    onView: isQ && id > 0
+                    onPdf: id > 0 ? () => _downloadListPdf(context, docKind, id) : () {},
+                    onView: id > 0
                         ? () async {
-                            await Get.to(() => QuotationDetailView(quotationId: id));
+                            await Get.to(() => SalesDocumentDetailView(kind: docKind, documentId: id));
                             await controller.load();
                           }
-                        : () => Get.snackbar(
-                            'View',
-                            controller.documentLabel(r),
-                            snackPosition: SnackPosition.BOTTOM,
-                          ),
+                        : () => Get.snackbar('View', 'Invalid document.', snackPosition: SnackPosition.BOTTOM),
                   );
                 },
               );
@@ -363,6 +414,7 @@ class _SalesDocumentCard extends StatelessWidget {
     required this.amountLine,
     required this.onEdit,
     required this.onCopy,
+    required this.onPdf,
     required this.onDelete,
     required this.onView,
   });
@@ -373,20 +425,23 @@ class _SalesDocumentCard extends StatelessWidget {
   final String amountLine;
   final VoidCallback onEdit;
   final VoidCallback onCopy;
+  final VoidCallback onPdf;
   final VoidCallback onDelete;
   final VoidCallback onView;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Material(
-      color: Colors.white,
-      elevation: 1.5,
-      shadowColor: Colors.black26,
+      color: scheme.surfaceContainer,
+      elevation: isDark ? 0 : 1.5,
+      shadowColor: isDark ? Colors.transparent : Colors.black26,
       borderRadius: BorderRadius.circular(10),
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.grey.shade300),
+          border: Border.all(color: isDark ? scheme.outlineVariant : Colors.grey.shade300),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -396,7 +451,7 @@ class _SalesDocumentCard extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.description_outlined, size: 28, color: Colors.grey.shade500),
+                  Icon(Icons.description_outlined, size: 28, color: scheme.onSurfaceVariant),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
@@ -404,10 +459,10 @@ class _SalesDocumentCard extends StatelessWidget {
                       children: [
                         Text(
                           title,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
-                            color: Color(0xFF212121),
+                            color: scheme.onSurface,
                             height: 1.25,
                           ),
                         ),
@@ -417,13 +472,13 @@ class _SalesDocumentCard extends StatelessWidget {
                           children: [
                             Padding(
                               padding: const EdgeInsets.only(top: 1),
-                              child: Icon(Icons.person_outline, size: 15, color: Colors.grey.shade600),
+                              child: Icon(Icons.person_outline, size: 15, color: scheme.onSurfaceVariant),
                             ),
                             const SizedBox(width: 4),
                             Expanded(
                               child: Text(
                                 customer,
-                                style: TextStyle(fontSize: 12, color: Colors.grey.shade600, height: 1.2),
+                                style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant, height: 1.2),
                               ),
                             ),
                           ],
@@ -437,7 +492,7 @@ class _SalesDocumentCard extends StatelessWidget {
                     children: [
                       Text(
                         dateLine,
-                        style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                        style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
                       ),
                       const SizedBox(height: 4),
                       Text(
@@ -453,7 +508,7 @@ class _SalesDocumentCard extends StatelessWidget {
                 ],
               ),
             ),
-            Divider(height: 1, thickness: 1, color: Colors.grey.shade200),
+            Divider(height: 1, thickness: 1, color: scheme.outlineVariant.withValues(alpha: isDark ? 0.7 : 1)),
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: Row(
@@ -461,6 +516,7 @@ class _SalesDocumentCard extends StatelessWidget {
                 children: [
                   _CardIconAction(icon: Icons.edit_outlined, color: const Color(0xFF185FA5), onTap: onEdit),
                   _CardIconAction(icon: Icons.copy_outlined, color: const Color(0xFFEF9F27), onTap: onCopy),
+                  _CardIconAction(icon: Icons.picture_as_pdf_outlined, color: const Color(0xFFC62828), onTap: onPdf),
                   _CardIconAction(icon: Icons.delete_outline, color: const Color(0xFFE53935), onTap: onDelete),
                   _CardIconAction(icon: Icons.visibility_outlined, color: const Color(0xFF1D9E75), onTap: onView),
                 ],

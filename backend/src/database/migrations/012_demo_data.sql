@@ -236,10 +236,10 @@ SELECT u.id, 'DEMO-E002', 'Operations', 'Operations Manager', DATE '2023-01-15',
 FROM users u WHERE u.email = 'demo.manager@example.com'
 ON CONFLICT (employee_code) DO NOTHING;
 
-INSERT INTO attendance (employee_id, date, status, check_in, check_out)
-SELECT e.id, CURRENT_DATE - 1, 'present', '09:15', '18:05'
-FROM employees e WHERE e.employee_code = 'DEMO-E001'
-ON CONFLICT (employee_id, date) DO NOTHING;
+INSERT INTO attendance (user_id, date, status, check_in, check_out)
+SELECT e.user_id, CURRENT_DATE - 1, 'present', '09:15', '18:05'
+FROM employees e WHERE e.employee_code = 'DEMO-E001' AND e.user_id IS NOT NULL
+ON CONFLICT (user_id, date) DO NOTHING;
 
 INSERT INTO payroll (employee_id, month, year, basic, hra, allowances, deductions, pf, gross, net, status)
 SELECT e.id, 3, 2026, 45000, 15000, 5000, 2000, 1800, 63200, 61200, 'draft'

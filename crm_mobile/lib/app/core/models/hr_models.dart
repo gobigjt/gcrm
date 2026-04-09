@@ -12,12 +12,18 @@ num _parseNum(dynamic v) {
 
 class HrEmployeeRow {
   HrEmployeeRow({
+    required this.id,
+    required this.userId,
     required this.userName,
     required this.employeeCode,
     required this.designation,
     required this.department,
   });
 
+  /// `employees.id` (payroll / legacy HR).
+  final int id;
+  /// `users.id` — required for marking attendance (`POST /hr/attendance`).
+  final int userId;
   final String userName;
   final String employeeCode;
   final String designation;
@@ -25,8 +31,12 @@ class HrEmployeeRow {
 
   String get title => userName.isNotEmpty ? userName : employeeCode;
 
+  bool get hasLinkedUser => userId > 0;
+
   factory HrEmployeeRow.fromJson(Map<String, dynamic> json) {
     return HrEmployeeRow(
+      id: _parseId(json['id']),
+      userId: _parseId(json['user_id']),
       userName: (json['user_name'] ?? '').toString(),
       employeeCode: (json['employee_code'] ?? '').toString(),
       designation: (json['designation'] ?? '—').toString(),
