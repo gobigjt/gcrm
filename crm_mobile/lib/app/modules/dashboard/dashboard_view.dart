@@ -9,8 +9,6 @@ import '../../shared/widgets/app_error_banner.dart';
 import '../../shared/widgets/app_navigation_drawer.dart';
 import '../../shared/widgets/role_aware_bottom_nav.dart';
 import '../../showcase/showcase_widgets.dart';
-import '../attendance/sales_attendance_controller.dart';
-import '../attendance/sales_executive_attendance_card.dart';
 import '../auth/auth_controller.dart';
 import '../crm/crm_lead_detail_view.dart';
 import 'dashboard_controller.dart';
@@ -118,14 +116,6 @@ class DashboardView extends GetView<DashboardController> {
                       ],
                     ),
                   ),
-                  Obx(() {
-                    if (auth.role.value != AppRoles.salesExecutive) return const SizedBox.shrink();
-                    controller.registerSalesAttendanceIfNeeded();
-                    return Padding(
-                      padding: const EdgeInsets.only(top: 16),
-                      child: SalesExecutiveAttendanceCard(controller: Get.find<SalesAttendanceController>()),
-                    );
-                  }),
                   const SizedBox(height: 20),
                   const ShowcaseSectionTitle("Today’s tasks"),
                   Obx(() {

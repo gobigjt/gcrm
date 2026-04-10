@@ -769,6 +769,8 @@ export default function CRM() {
   const [fSource,  setFSource]  = useState('');
   const [fPrio,    setFPrio]    = useState('');
   const [fUser,    setFUser]    = useState('');
+  const [fCreatedFrom, setFCreatedFrom] = useState('');
+  const [fCreatedTo, setFCreatedTo] = useState('');
   const [sourceCounts, setSourceCounts] = useState(null);
   const [listPage, setListPage] = useState(1);
   const [listPageSize, setListPageSize] = useState(25);
@@ -787,6 +789,8 @@ export default function CRM() {
     if (fSource) params.source_id   = fSource;
     if (fPrio)   params.priority    = fPrio;
     if (effectiveAssignedTo) params.assigned_to = effectiveAssignedTo;
+    if (fCreatedFrom) params.created_from = fCreatedFrom;
+    if (fCreatedTo) params.created_to = fCreatedTo;
 
     const paginatedList = tab === 'List';
     if (paginatedList) {
@@ -810,7 +814,7 @@ export default function CRM() {
         }
       })
       .catch(() => {});
-  }, [search, fStage, fSource, fPrio, fUser, ownAssignedOnly, user?.id, tab, listPage, listPageSize]);
+  }, [search, fStage, fSource, fPrio, fUser, fCreatedFrom, fCreatedTo, ownAssignedOnly, user?.id, tab, listPage, listPageSize]);
 
   const loadStats = useCallback(() => {
     api.get('/crm/leads/stats').then(r => setStats(r.data)).catch(() => {});
@@ -1056,6 +1060,41 @@ export default function CRM() {
               {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           )}
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto border-t sm:border-t-0 border-slate-100 dark:border-slate-700/50 pt-2 sm:pt-0 mt-1 sm:mt-0">
+            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide w-full sm:w-auto sm:mr-1">
+              Created date
+            </span>
+            <label className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+              From
+              <input
+                type="date"
+                value={fCreatedFrom}
+                max={fCreatedTo || undefined}
+                onChange={(e) => { setFCreatedFrom(e.target.value); setListPage(1); }}
+                className={inputCls + ' py-2 w-[10.5rem] text-xs'}
+              />
+            </label>
+            <span className="text-slate-400 text-xs hidden sm:inline">–</span>
+            <label className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+              To
+              <input
+                type="date"
+                value={fCreatedTo}
+                min={fCreatedFrom || undefined}
+                onChange={(e) => { setFCreatedTo(e.target.value); setListPage(1); }}
+                className={inputCls + ' py-2 w-[10.5rem] text-xs'}
+              />
+            </label>
+            {(fCreatedFrom || fCreatedTo) && (
+              <button
+                type="button"
+                className="text-xs font-medium text-brand-600 dark:text-brand-400 hover:underline py-2"
+                onClick={() => { setFCreatedFrom(''); setFCreatedTo(''); setListPage(1); }}
+              >
+                Clear dates
+              </button>
+            )}
+          </div>
         </div>
       )}
 

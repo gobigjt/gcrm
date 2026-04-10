@@ -43,6 +43,25 @@ export class LeadsService {
     return r === 'sales executive' || r === 'sales manager';
   }
 
+  /** `YYYY-MM-DD` only; returns null if invalid. */
+  private parseYmdFilter(v: unknown): string | null {
+    if (v == null || v === '') return null;
+    const s = String(v).trim().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+    const [y, mo, d] = s.split('-').map(Number);
+    if (!y || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+    const dt = new Date(Date.UTC(y, mo - 1, d));
+    if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return null;
+    return s;
+  }
+
+  private ymdNextDayUtcIso(ymd: string): string {
+    const [y, mo, d] = ymd.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, mo - 1, d));
+    dt.setUTCDate(dt.getUTCDate() + 1);
+    return dt.toISOString();
+  }
+
   /** Shared WHERE for lead list + count (`l` alias). Strips `page` / `page_size` / `limit` from filters. */
   private buildLeadListWhere(
     filters: any,
@@ -52,10 +71,23 @@ export class LeadsService {
     delete f.page;
     delete f.page_size;
     delete f.limit;
+    delete f.created_from;
+    delete f.created_to;
 
     const conds: string[] = [];
     const vals: any[] = [];
     let i = 1;
+
+    const createdFromYmd = this.parseYmdFilter(filters?.created_from);
+    const createdToYmd = this.parseYmdFilter(filters?.created_to);
+    if (createdFromYmd) {
+      conds.push(`l.created_at >= $${i++}::timestamptz`);
+      vals.push(`${createdFromYmd}T00:00:00.000Z`);
+    }
+    if (createdToYmd) {
+      conds.push(`l.created_at < $${i++}::timestamptz`);
+      vals.push(this.ymdNextDayUtcIso(createdToYmd));
+    }
     const uid = Number(currentUser?.id);
     const forceOwn = this.isOwnAssignedScope(currentUser?.role) && Number.isInteger(uid) && uid > 0;
     if (forceOwn) {
