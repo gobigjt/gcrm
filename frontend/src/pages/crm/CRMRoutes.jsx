@@ -1,7 +1,12 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import CRM from './CRM';
 import CRMLeadFormPage from './CRMLeadFormPage';
-import CRMLeadDetailPage from './CRMLeadDetailPage';
+
+function LegacyLeadViewRedirect() {
+  const { id } = useParams();
+  if (!id) return <Navigate to="/crm" replace />;
+  return <Navigate to={`/crm?lead=${encodeURIComponent(id)}`} replace />;
+}
 
 export default function CRMRoutes() {
   return (
@@ -9,7 +14,7 @@ export default function CRMRoutes() {
       <Route index element={<CRM />} />
       <Route path="leads/new" element={<CRMLeadFormPage />} />
       <Route path="leads/:id/edit" element={<CRMLeadFormPage />} />
-      <Route path="leads/:id" element={<CRMLeadDetailPage />} />
+      <Route path="leads/:id" element={<LegacyLeadViewRedirect />} />
       <Route path="*" element={<Navigate to="/crm" replace />} />
     </Routes>
   );

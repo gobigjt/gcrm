@@ -60,6 +60,17 @@ function formatDate(dt) {
   return new Date(dt).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+function formatDateTime(dt) {
+  if (!dt) return '—';
+  return new Date(dt).toLocaleString(undefined, {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function timeAgo(dt) {
   const diff = Date.now() - new Date(dt).getTime();
   const m = Math.floor(diff / 60000);
@@ -104,6 +115,36 @@ function tagsToString(tags) {
   if (!tags) return '';
   if (Array.isArray(tags)) return tags.filter(Boolean).join(', ');
   return String(tags);
+}
+
+function leadCustomFieldsMap(lead) {
+  const raw = lead?.custom_fields;
+  if (!raw) return null;
+  if (typeof raw === 'object') return raw;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function leadValue(lead, keys) {
+  for (const key of keys) {
+    const direct = lead?.[key];
+    if (direct != null && String(direct).trim() !== '') return String(direct).trim();
+    const custom = leadCustomFieldsMap(lead)?.[key];
+    if (custom != null && String(custom).trim() !== '') return String(custom).trim();
+  }
+  return '';
+}
+
+function leadPlatformLabel(lead) {
+  const raw = leadValue(lead, ['platform', 'import_source', 'sheet_source_raw']) || lead?.source || '';
+  const norm = raw.toLowerCase();
+  if (norm === 'google_sheet') return 'Google Sheet';
+  if (norm === 'facebook') return 'Facebook';
+  return raw || '—';
 }
 
 // ─── Lead Form Modal ─────────────────────────────────────────
@@ -856,8 +897,14 @@ export default function CRM() {
     }
     if (openedLeadFromUrl.current === raw) return;
     openedLeadFromUrl.current = raw;
-    navigate(`/crm/leads/${raw}`);
-  }, [searchParams, navigate]);
+    api
+      .get(`/crm/leads/${raw}`)
+      .then((r) => {
+        const row = r.data?.lead || r.data;
+        if (row?.id) setDrawer(row);
+      })
+      .catch(() => {});
+  }, [searchParams]);
 
   const handleCloseDrawer = useCallback(() => {
     setDrawer(null);
@@ -1104,11 +1151,18 @@ export default function CRM() {
           {leads.length === 0 ? (
             <p className="text-center py-12 text-slate-400 dark:text-slate-500 text-sm">No leads found</p>
           ) : (
-            <table className="w-full text-sm min-w-[880px]">
+            <table className="w-full text-sm min-w-[1320px]">
               <thead>
                 <tr className="border-b border-slate-100 dark:border-slate-700/50">
-                  {['Name', 'Phone', 'Company', 'Segment', 'Source', 'Stage', 'Score', 'Priority', 'Assigned', ''].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                  {['Name / Email', 'Date', 'Platform / Google Sheet ID', 'Phone', 'Company', 'City / State', 'Segment', 'Source', 'Stage', 'Score', 'Priority', 'Assigned', 'Actions'].map(h => (
+                    <th
+                      key={h}
+                      className={`px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide whitespace-nowrap ${
+                        h === 'Actions' ? 'sticky right-0 bg-white dark:bg-[#1a1d2e] z-10' : ''
+                      }`}
+                    >
+                      {h}
+                    </th>
                   ))}
                 </tr>
               </thead>
@@ -1119,7 +1173,17 @@ export default function CRM() {
                     <td className="px-4 py-3">
                       <div>
                         <p className="font-semibold text-slate-800 dark:text-slate-100">{leadDisplayTitle(l)}</p>
-                        {l.email && <p className="text-xs text-slate-400 dark:text-slate-500">{l.email}</p>}
+                        <p className="text-xs text-slate-500 dark:text-slate-400">{l.email || '—'}</p>
+                        {l.job_title && <p className="text-xs text-slate-400 dark:text-slate-500">{l.job_title}</p>}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs whitespace-nowrap">{formatDateTime(l.created_at)}</td>
+                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs whitespace-nowrap">
+                      <div>
+                        <p>{leadPlatformLabel(l)}</p>
+                        <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                          {leadValue(l, ['google_sheet_lead_id', 'sheet_lead_id', 'sheet_id']) || '—'}
+                        </p>
                       </div>
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
@@ -1129,13 +1193,19 @@ export default function CRM() {
                       ) : '—'}
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{l.company || '—'}</td>
+                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs whitespace-nowrap">
+                      {[leadValue(l, ['city']), leadValue(l, ['state'])].filter(Boolean).join(', ') || '—'}
+                    </td>
                     <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{l.lead_segment || '—'}</td>
                     <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{l.source || '—'}</td>
                     <td className="px-4 py-3"><StageBadge s={l.stage} /></td>
                     <td className="px-4 py-3 text-xs font-semibold tabular-nums text-slate-600 dark:text-slate-300">{scoreFmt(l.lead_score)}</td>
                     <td className="px-4 py-3"><PriorityBadge p={l.priority} /></td>
                     <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{l.assigned_name || '—'}</td>
-                    <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                    <td
+                      className="px-4 py-3 text-right sticky right-0 bg-white dark:bg-[#1a1d2e]"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <div className="inline-flex items-center justify-end gap-0.5">
                         {l.phone && (
                           <a
