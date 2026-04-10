@@ -52,7 +52,6 @@ class ShowcaseRoles {
           RoleNavItem(route: AppRoutes.attendance, label: 'Check-in', icon: Icons.how_to_reg_outlined),
           RoleNavItem(route: AppRoutes.crm, label: 'Leads', icon: Icons.people_alt_outlined),
           RoleNavItem(route: AppRoutes.sales, label: 'Sales', icon: Icons.receipt_long_outlined),
-          RoleNavItem(route: AppRoutes.inventory, label: 'Stock', icon: Icons.inventory_2_outlined),
           RoleNavItem(route: AppRoutes.settings, label: 'Me', icon: Icons.person_outline_rounded),
         ];
       case ShowcaseRole.companyAdmin:

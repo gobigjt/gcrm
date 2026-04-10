@@ -29,6 +29,8 @@ export class LeadsController {
   @ApiOperation({ summary: 'List leads (optional pagination: pass page>=1 → { data, total, page, page_size })' })
   @ApiQuery({ name: 'page', required: false, type: Number, description: 'If set (>=1), response is paginated object' })
   @ApiQuery({ name: 'page_size', required: false, type: Number, description: 'Page size (default 25, max 100)' })
+  @ApiQuery({ name: 'created_from', required: false, type: String, description: 'Filter created_at from (YYYY-MM-DD, UTC start of day)' })
+  @ApiQuery({ name: 'created_to', required: false, type: String, description: 'Filter created_at through (YYYY-MM-DD, UTC end of day inclusive)' })
   list(@Query() q: any, @CurrentUser() u: any) {
     return this.svc.list(q, u);
   }
