@@ -121,30 +121,18 @@ class SplashView extends GetView<AuthController> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          width: 60,
-          height: 60,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            color: Colors.white.withValues(alpha: 0.15),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
-          ),
-          child: const Center(
-            child: CrmSuiteLogoMark(
-              size: 30,
-              preset: CrmSuiteLogoMarkPreset.splash,
-              primary: Colors.white,
-              dimmedOpacity: 0.5,
-            ),
-          ),
+        const CrmSuiteLogoMark(
+          size: 110,
+          preset: CrmSuiteLogoMarkPreset.splash,
         ),
         const SizedBox(height: 16),
         const Text(
-          'CRM Suite',
+          'EZ CRM',
           style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w500,
+            fontSize: 24,
+            fontWeight: FontWeight.w800,
             color: Colors.white,
+            letterSpacing: -0.3,
           ),
         ),
         const SizedBox(height: 6),

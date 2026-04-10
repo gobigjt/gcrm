@@ -35,16 +35,32 @@ function logoPreviewSrc(logoUrl) {
   if (!logoUrl || typeof logoUrl !== 'string') return '';
   if (/^https?:\/\//i.test(logoUrl)) return logoUrl;
   const p = logoUrl.startsWith('/') ? logoUrl : `/${logoUrl}`;
+  // Prefer backend/API origin when frontend and backend run on different hosts.
+  const apiBase = String(api?.defaults?.baseURL || '').trim();
+  if (/^https?:\/\//i.test(apiBase)) {
+    try {
+      const u = new URL(apiBase);
+      return `${u.origin}${p}`;
+    } catch {
+      /* fall through */
+    }
+  }
   if (typeof window !== 'undefined' && window.location?.origin) {
     return `${window.location.origin}${p}`;
   }
   return p;
 }
 
+function letterIcon(text) {
+  const t = String(text || '').trim();
+  return t ? t.slice(0, 1).toUpperCase() : 'C';
+}
+
 function CompanyTab({ user }) {
   const [form,  setForm]  = useState({});
   const [saved, setSaved] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingFavicon, setUploadingFavicon] = useState(false);
 
   useEffect(() => {
     api.get('/settings/company').then(r => setForm(r.data || {})).catch(() => {});
@@ -88,8 +104,37 @@ function CompanyTab({ user }) {
     }
   };
 
+  const handleFaviconUpload = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploadingFavicon(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const r = await api.post('/settings/company/favicon', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setForm((f) => ({ ...f, ...(r.data || {}) }));
+    } catch {
+      /* toast optional */
+    } finally {
+      setUploadingFavicon(false);
+    }
+  };
+
+  const clearFavicon = async () => {
+    setUploadingFavicon(true);
+    try {
+      await api.patch('/settings/company', { favicon_url: '' });
+      setForm((f) => ({ ...f, favicon_url: '' }));
+    } finally {
+      setUploadingFavicon(false);
+    }
+  };
+
   return (
-    <div className="bg-white dark:bg-[#1a1d2e] rounded-2xl shadow-card border border-slate-200/80 dark:border-slate-700/50 p-6 max-w-xl">
+    <div className="bg-white dark:bg-[#1a1d2e] rounded-2xl shadow-card border border-slate-200/80 dark:border-slate-700/50 p-6 w-full">
       <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100 mb-5">Company Profile</h3>
 
       {saved && (
@@ -98,20 +143,27 @@ function CompanyTab({ user }) {
         </div>
       )}
 
-      <form onSubmit={handleSave} className="space-y-4">
-        {[
-          ['Company Name', 'company_name', 'text'],
-          ['GSTIN',        'gstin',        'text'],
-          ['Phone',        'phone',        'text'],
-          ['Email',        'email',        'email'],
-          ['Currency',     'currency',     'text'],
-        ].map(([label, key, type]) => (
-          <Field key={key} label={label}>
-            <input className={inputCls} type={type} value={form[key] || ''} onChange={set(key)} />
-          </Field>
-        ))}
+      <form onSubmit={handleSave} className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+        <section className="rounded-xl border border-slate-200 dark:border-slate-700/50 p-4 h-full">
+          <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-3">Company Information</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {[
+              ['Company Name', 'company_name', 'text'],
+              ['GSTIN',        'gstin',        'text'],
+              ['Phone',        'phone',        'text'],
+              ['Email',        'email',        'email'],
+              ['Currency',     'currency',     'text'],
+            ].map(([label, key, type]) => (
+              <Field key={key} label={label}>
+                <input className={inputCls} type={type} value={form[key] || ''} onChange={set(key)} />
+              </Field>
+            ))}
+          </div>
+        </section>
 
-        <Field label="Company logo">
+        <section className="rounded-xl border border-slate-200 dark:border-slate-700/50 p-4 h-full">
+          <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-3">Branding</h4>
+          <Field label="Company logo">
           <div className="flex flex-wrap items-start gap-4">
             {form.logo_url ? (
               <img
@@ -145,66 +197,82 @@ function CompanyTab({ user }) {
               </p>
             </div>
           </div>
-        </Field>
-
-        <Field label="Address">
-          <textarea className={inputCls} rows={3} value={form.address || ''} onChange={set('address')} />
-        </Field>
-
-        <div className="pt-2 border-t border-slate-200 dark:border-slate-700/50">
-          <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 mb-3">Bank details (invoice)</p>
-          <div className="space-y-3">
-            <Field label="Bank name">
-              <input className={inputCls} value={form.bank_name || ''} onChange={set('bank_name')} placeholder="e.g. ICICI Bank" />
-            </Field>
-            <Field label="Branch">
-              <input className={inputCls} value={form.bank_branch || ''} onChange={set('bank_branch')} />
-            </Field>
-            <Field label="Account number">
-              <input className={inputCls} value={form.bank_account_number || ''} onChange={set('bank_account_number')} />
-            </Field>
-            <Field label="IFSC">
-              <input className={inputCls} value={form.bank_ifsc || ''} onChange={set('bank_ifsc')} placeholder="e.g. ICIC0000568" />
-            </Field>
+          </Field>
+          <Field label="Favicon">
+          <div className="flex flex-wrap items-start gap-4 mt-3">
+            {form.favicon_url ? (
+              <img
+                src={logoPreviewSrc(form.favicon_url)}
+                alt="Company favicon"
+                className="h-10 w-10 object-contain rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 p-1"
+              />
+            ) : (
+              <div className="h-10 w-10 rounded-md border border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center text-xs font-semibold text-slate-500 dark:text-slate-300">
+                {letterIcon(form.company_name)}
+              </div>
+            )}
+            <div className="flex flex-col gap-2">
+              <label className="btn-wf-secondary text-xs cursor-pointer inline-block text-center">
+                {uploadingFavicon ? 'Uploading…' : 'Upload favicon'}
+                <input
+                  type="file"
+                  accept=".ico,image/x-icon,image/vnd.microsoft.icon,image/png,image/svg+xml,image/jpeg,image/webp"
+                  className="hidden"
+                  disabled={uploadingFavicon}
+                  onChange={handleFaviconUpload}
+                />
+              </label>
+              {form.favicon_url && (
+                <button type="button" className="btn-wf-secondary text-xs" disabled={uploadingFavicon} onClick={clearFavicon}>
+                  Remove favicon
+                </button>
+              )}
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 max-w-[220px]">
+                ICO/PNG/SVG/JPG/WebP, max 1 MB. Used for browser tab icon.
+              </p>
+            </div>
           </div>
-        </div>
+          </Field>
+        </section>
 
-        <Field label="Invoice header (print & PDF)">
-          <textarea
-            className={inputCls}
-            rows={3}
-            value={form.invoice_tagline || ''}
-            onChange={set('invoice_tagline')}
-            placeholder="Optional lines above Tax Invoice (e.g. services / tagline)."
-          />
-        </Field>
-        <Field label="Payment terms (invoice)">
-          <textarea
-            className={inputCls}
-            rows={2}
-            value={form.payment_terms || ''}
-            onChange={set('payment_terms')}
-            placeholder="Shown on Tax Invoice after totals."
-          />
-        </Field>
-        <Field label="Extra bank / cheque notes (invoice)">
-          <textarea
-            className={inputCls}
-            rows={3}
-            value={form.invoice_bank_details || ''}
-            onChange={set('invoice_bank_details')}
-            placeholder="Cheque favour, UPI, or other lines appended after structured bank details."
-          />
-        </Field>
+        <section className="rounded-xl border border-slate-200 dark:border-slate-700/50 p-4 h-full">
+          <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-3">Address & Fiscal</h4>
+          <Field label="Address">
+            <textarea className={inputCls} rows={3} value={form.address || ''} onChange={set('address')} />
+          </Field>
+          <Field label="Fiscal Year Start">
+            <input className={inputCls} type="date" value={form.fiscal_year_start || ''} onChange={set('fiscal_year_start')} />
+          </Field>
+        </section>
 
-        <Field label="Fiscal Year Start">
-          <input className={inputCls} type="date" value={form.fiscal_year_start || ''} onChange={set('fiscal_year_start')} />
-        </Field>
+        <section className="rounded-xl border border-slate-200 dark:border-slate-700/50 p-4 h-full">
+          <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-3">Invoice Terms</h4>
+          <Field label="Invoice header (print & PDF)">
+            <textarea
+              className={inputCls}
+              rows={3}
+              value={form.invoice_tagline || ''}
+              onChange={set('invoice_tagline')}
+              placeholder="Optional lines above Tax Invoice (e.g. services / tagline)."
+            />
+          </Field>
+          <Field label="Terms and conditions">
+            <textarea
+              className={inputCls}
+              rows={2}
+              value={form.payment_terms || ''}
+              onChange={set('payment_terms')}
+              placeholder="Shown on Tax Invoice after totals."
+            />
+          </Field>
+        </section>
 
         {(user?.role === 'Admin' || user?.role === 'Super Admin') && (
-          <button type="submit" className="btn-wf-primary">
-            Save Settings
-          </button>
+          <div className="xl:col-span-2">
+            <button type="submit" className="btn-wf-primary">
+              Save Settings
+            </button>
+          </div>
         )}
       </form>
     </div>
@@ -379,6 +447,7 @@ export default function Settings() {
 
 function LeadPlatformsTab() {
   const [pages,   setPages]   = useState([]);
+  const [sheets,  setSheets]  = useState([]);
   const [sources, setSources] = useState([]);
 
   const [form, setForm] = useState({
@@ -396,9 +465,12 @@ function LeadPlatformsTab() {
 
   const [saving, setSaving] = useState(false);
   const [syncResult, setSyncResult] = useState({ id: null, msg: '', isError: false });
+  const [sheetForm, setSheetForm] = useState({ sheet_url: '', sheet_gid: '', lead_source_id: '', data_start_row: '15' });
+  const [sheetSyncResult, setSheetSyncResult] = useState({ id: null, msg: '', isError: false });
 
   const load = useCallback(() => {
     api.get('/crm/lead-platforms/facebook/pages').then(r => setPages(r.data || [])).catch(() => {});
+    api.get('/crm/lead-platforms/google-sheets').then(r => setSheets(r.data || [])).catch(() => setSheets([]));
     api.get('/crm/leads/sources').then(r => setSources(r.data || [])).catch(() => {});
     api.get('/crm/lead-platforms/facebook/oauth/config').then(r => setFbConfig(r.data || {})).catch(() => setFbConfig({}));
   }, []);
@@ -590,6 +662,71 @@ function LeadPlatformsTab() {
     }
   };
 
+  const setSheet = (k) => (e) => setSheetForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const connectGoogleSheet = async (e) => {
+    e.preventDefault();
+    if (!sheetForm.sheet_url.trim()) return;
+    setSaving(true);
+    setSheetSyncResult({ id: null, msg: '', isError: false });
+    try {
+      const dsr = String(sheetForm.data_start_row ?? '').trim();
+      if (dsr !== '' && !Number.isFinite(Number(dsr))) {
+        setSheetSyncResult({ id: null, msg: 'First data row must be a positive number or empty.', isError: true });
+        return;
+      }
+      await api.post('/crm/lead-platforms/google-sheets', {
+        sheet_url: sheetForm.sheet_url.trim(),
+        sheet_gid: sheetForm.sheet_gid.trim() || null,
+        lead_source_id: sheetForm.lead_source_id ? Number(sheetForm.lead_source_id) : null,
+        data_start_row: dsr === '' ? null : Number(dsr),
+      });
+      setSheetForm((f) => ({ ...f, sheet_url: '', sheet_gid: '' }));
+      load();
+    } catch (e) {
+      setSheetSyncResult({ id: null, msg: errText(e), isError: true });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const syncSheetLeads = async (id) => {
+    if (!confirm('Sync leads from this Google Sheet now?')) return;
+    setSaving(true);
+    setSheetSyncResult({ id: null, msg: '', isError: false });
+    try {
+      const { data } = await api.post(
+        `/crm/lead-platforms/google-sheets/${id}/sync-leads`,
+        {},
+        { timeout: 180_000 },
+      );
+      const st = data?.stats || {};
+      const msg = `${data.importedCount || 0} saved (${st.createdRows ?? 0} new, ${st.updatedRows ?? 0} updated) · ${st.skippedRows || 0} skipped` +
+        ((st.skippedEmptyIdentity || st.skippedDuplicates)
+          ? ` (empty: ${st.skippedEmptyIdentity || 0}, duplicates: ${st.skippedDuplicates || 0})`
+          : '');
+      setSheetSyncResult({ id, msg, isError: false });
+      load();
+    } catch (e) {
+      setSheetSyncResult({ id, msg: errText(e), isError: true });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const disconnectSheet = async (id) => {
+    if (!confirm('Disconnect this Google Sheet?')) return;
+    setSaving(true);
+    try {
+      await api.delete(`/crm/lead-platforms/google-sheets/${id}`);
+      load();
+    } catch (e) {
+      setSheetSyncResult({ id, msg: errText(e), isError: true });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-5">
       <div className="bg-white dark:bg-[#1a1d2e] rounded-2xl shadow-card border border-slate-200/80 dark:border-slate-700/50 p-6 max-w-xl">
@@ -735,6 +872,100 @@ function LeadPlatformsTab() {
             {syncResult.id === p.id && syncResult.msg && (
               <span className={`text-[10px] ${syncResult.isError ? 'text-red-500' : 'text-green-600 dark:text-green-400'}`}>
                 {syncResult.msg}
+              </span>
+            )}
+          </div>,
+        ]))}
+      />
+
+      <div className="bg-white dark:bg-[#1a1d2e] rounded-2xl shadow-card border border-slate-200/80 dark:border-slate-700/50 p-6 max-w-xl">
+        <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100 mb-2">Google Sheets</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+          Default layout (first data row = <strong>15</strong>): column <strong>A</strong> lead id, <strong>J</strong> status (matches CRM stage name),{' '}
+          <strong>K</strong> sales person (matches user name), <strong>L</strong> source (<code className="text-[10px]">fb</code>/<code className="text-[10px]">facebook</code> or{' '}
+          <code className="text-[10px]">ig</code>/<code className="text-[10px]">instagram</code>), <strong>M</strong> contact name, <strong>N</strong> email, <strong>O</strong> phone,{' '}
+          <strong>P</strong> city, <strong>Q</strong> state, <strong>R</strong> zip. Rows above that are ignored. Same lead id + sheet connection updates the CRM lead.
+          {' '}If Google&apos;s CSV has no blank rows above your data, set <em>First data row</em> to <strong>1</strong>.
+          {' '}Clear <em>First data row</em> for simple CSV where row 1 is headers (<strong>name</strong>, <strong>email</strong>, …).
+          {' '}If sync fails with 401/403, share the sheet as <strong>Anyone with the link can view</strong> or publish CSV.
+          {' '}The API server auto-syncs <strong>active</strong> connections every <strong>10 minutes</strong> (set <code className="text-[10px]">GOOGLE_SHEETS_SYNC_DISABLED=true</code> in backend <code className="text-[10px]">.env</code> to turn off).
+        </p>
+        {sheetSyncResult.id == null && sheetSyncResult.msg && (
+          <div className={`mb-4 px-3 py-2 rounded-xl text-xs border ${
+            sheetSyncResult.isError
+              ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300'
+              : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300'
+          }`}>
+            {sheetSyncResult.msg}
+          </div>
+        )}
+        <form onSubmit={connectGoogleSheet} className="space-y-3">
+          <Field label="Google Sheet URL *">
+            <input
+              className={inputCls}
+              value={sheetForm.sheet_url}
+              onChange={setSheet('sheet_url')}
+              placeholder="https://docs.google.com/spreadsheets/d/<id>/edit#gid=0"
+            />
+          </Field>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Field label="GID (optional)">
+              <input className={inputCls} value={sheetForm.sheet_gid} onChange={setSheet('sheet_gid')} placeholder="0" />
+            </Field>
+            <Field label="First data row (1-based)">
+              <input
+                className={inputCls}
+                value={sheetForm.data_start_row}
+                onChange={setSheet('data_start_row')}
+                placeholder="15"
+              />
+            </Field>
+            <Field label="Lead Source (fallback)">
+              <select className={selectCls} value={sheetForm.lead_source_id} onChange={setSheet('lead_source_id')}>
+                <option value="">Default (Facebook Ads)</option>
+                {sources.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </Field>
+          </div>
+          <button type="submit" disabled={saving || !sheetForm.sheet_url.trim()} className="w-full btn-wf-primary py-2 disabled:opacity-60">
+            {saving ? 'Saving…' : 'Connect Google Sheet'}
+          </button>
+        </form>
+      </div>
+
+      <Table
+        cols={['Sheet URL', 'GID', 'Start row', 'Lead Source', 'Status', 'Actions']}
+        empty="No Google Sheets connected"
+        rows={sheets.map((s) => ([
+          s.sheet_url || '—',
+          s.sheet_gid || '0',
+          s.data_start_row != null ? String(s.data_start_row) : '1 = headers',
+          s.lead_source_name || 'Default',
+          s.is_active ? 'Active' : 'Inactive',
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <button
+                key={`ss-${s.id}`}
+                onClick={() => syncSheetLeads(s.id)}
+                disabled={saving}
+                className="px-2.5 py-1 text-xs font-medium rounded-lg transition-all disabled:opacity-50
+                           bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 hover:bg-brand-100"
+              >
+                Sync Leads
+              </button>
+              <button
+                key={`sd-${s.id}`}
+                onClick={() => disconnectSheet(s.id)}
+                disabled={saving}
+                className="px-2.5 py-1 text-xs font-medium rounded-lg transition-all disabled:opacity-50
+                           bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100"
+              >
+                Disconnect
+              </button>
+            </div>
+            {sheetSyncResult.id === s.id && sheetSyncResult.msg && (
+              <span className={`text-[10px] ${sheetSyncResult.isError ? 'text-red-500' : 'text-green-600 dark:text-green-400'}`}>
+                {sheetSyncResult.msg}
               </span>
             )}
           </div>,

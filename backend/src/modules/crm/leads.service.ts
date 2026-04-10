@@ -38,16 +38,52 @@ export class LeadsService {
     }
   }
 
-  async list(filters: any) {
+  private isOwnAssignedScope(role: unknown): boolean {
+    const r = String(role || '').trim().toLowerCase();
+    return r === 'sales executive' || r === 'sales manager';
+  }
+
+  /** Shared WHERE for lead list + count (`l` alias). Strips `page` / `page_size` / `limit` from filters. */
+  private buildLeadListWhere(
+    filters: any,
+    currentUser?: { id?: unknown; role?: unknown },
+  ): { where: string; vals: any[] } {
+    const f = filters && typeof filters === 'object' ? { ...filters } : {};
+    delete f.page;
+    delete f.page_size;
+    delete f.limit;
+
     const conds: string[] = [];
     const vals: any[] = [];
     let i = 1;
-    if (filters.stage_id)    { conds.push(`l.stage_id=$${i++}`);    vals.push(filters.stage_id); }
-    if (filters.source_id)   { conds.push(`l.source_id=$${i++}`);   vals.push(filters.source_id); }
-    if (filters.assigned_to) { conds.push(`l.assigned_to=$${i++}`); vals.push(filters.assigned_to); }
-    if (filters.priority)    { conds.push(`l.priority=$${i++}`);    vals.push(filters.priority); }
-    if (filters.search) {
-      const term = `%${filters.search}%`;
+    const uid = Number(currentUser?.id);
+    const forceOwn = this.isOwnAssignedScope(currentUser?.role) && Number.isInteger(uid) && uid > 0;
+    if (forceOwn) {
+      conds.push(`l.assigned_to=$${i++}`);
+      vals.push(uid);
+    }
+    if (f.stage_id) {
+      conds.push(`l.stage_id=$${i++}`);
+      vals.push(f.stage_id);
+    }
+    if (f.source_id) {
+      conds.push(`l.source_id=$${i++}`);
+      vals.push(f.source_id);
+    }
+    if (!forceOwn && f.assigned_to) {
+      conds.push(`l.assigned_to=$${i++}`);
+      vals.push(f.assigned_to);
+    }
+    if (f.assigned_manager_id) {
+      conds.push(`l.assigned_manager_id=$${i++}`);
+      vals.push(f.assigned_manager_id);
+    }
+    if (f.priority) {
+      conds.push(`l.priority=$${i++}`);
+      vals.push(f.priority);
+    }
+    if (f.search) {
+      const term = `%${f.search}%`;
       conds.push(`(
         l.name ILIKE $${i} OR l.email ILIKE $${i} OR l.company ILIKE $${i} OR l.phone ILIKE $${i}
         OR l.website ILIKE $${i} OR l.address ILIKE $${i} OR l.job_title ILIKE $${i}
@@ -58,28 +94,72 @@ export class LeadsService {
       i++;
     }
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
-    const res = await this.db.query(
-      `SELECT l.*,ls.name AS stage,s.name AS source,u.name AS assigned_name
-       FROM leads l
-       LEFT JOIN lead_stages ls ON ls.id=l.stage_id
-       LEFT JOIN lead_sources s  ON s.id=l.source_id
-       LEFT JOIN users u         ON u.id=l.assigned_to
-       ${where} ORDER BY
-         CASE l.priority WHEN 'hot' THEN 0 WHEN 'warm' THEN 1 ELSE 2 END,
-         l.created_at DESC`,
-      vals,
-    );
-    return res.rows;
+    return { where, vals };
   }
 
-  async get(id: number) {
-    const res = await this.db.query(
-      `SELECT l.*,ls.name AS stage,s.name AS source,u.name AS assigned_name
+  /**
+   * Without `page` query: returns a plain array (backward compatible with mobile).
+   * With `page` (>=1): returns `{ data, total, page, page_size }`.
+   */
+  async list(filters: any, currentUser?: { id?: unknown; role?: unknown }) {
+    const { where, vals } = this.buildLeadListWhere(filters, currentUser);
+    const orderBy = `ORDER BY
+         CASE l.priority WHEN 'hot' THEN 0 WHEN 'warm' THEN 1 ELSE 2 END,
+         l.created_at DESC`;
+    const selectFrom = `SELECT l.*,ls.name AS stage,s.name AS source,u.name AS assigned_name, um.name AS assigned_manager_name
        FROM leads l
        LEFT JOIN lead_stages ls ON ls.id=l.stage_id
        LEFT JOIN lead_sources s  ON s.id=l.source_id
        LEFT JOIN users u         ON u.id=l.assigned_to
-       WHERE l.id=$1`, [id],
+       LEFT JOIN users um        ON um.id=l.assigned_manager_id`;
+
+    const pageRaw = filters?.page;
+    const usePagination =
+      pageRaw !== undefined &&
+      pageRaw !== null &&
+      pageRaw !== '' &&
+      Number.isFinite(Number(pageRaw)) &&
+      Number(pageRaw) >= 1;
+
+    if (!usePagination) {
+      const res = await this.db.query(`${selectFrom} ${where} ${orderBy}`, vals);
+      return res.rows;
+    }
+
+    const page = Math.max(1, Math.floor(Number(pageRaw)));
+    let pageSize = Math.floor(Number(filters?.page_size ?? filters?.limit ?? 25));
+    if (!Number.isFinite(pageSize) || pageSize < 1) pageSize = 25;
+    pageSize = Math.min(100, pageSize);
+    const offset = (page - 1) * pageSize;
+
+    const countRes = await this.db.query(`SELECT COUNT(*)::int AS n FROM leads l ${where}`, vals);
+    const total = Number(countRes.rows[0]?.n ?? 0);
+
+    const limIdx = vals.length + 1;
+    const offIdx = vals.length + 2;
+    const dataRes = await this.db.query(
+      `${selectFrom} ${where} ${orderBy} LIMIT $${limIdx} OFFSET $${offIdx}`,
+      [...vals, pageSize, offset],
+    );
+    return { data: dataRes.rows, total, page, page_size: pageSize };
+  }
+
+  async get(id: number, currentUser?: { id?: unknown; role?: unknown }) {
+    const conds = ['l.id=$1'];
+    const vals: any[] = [id];
+    const uid = Number(currentUser?.id);
+    if (this.isOwnAssignedScope(currentUser?.role) && Number.isInteger(uid) && uid > 0) {
+      conds.push(`l.assigned_to=$2`);
+      vals.push(uid);
+    }
+    const res = await this.db.query(
+      `SELECT l.*,ls.name AS stage,s.name AS source,u.name AS assigned_name, um.name AS assigned_manager_name
+       FROM leads l
+       LEFT JOIN lead_stages ls ON ls.id=l.stage_id
+       LEFT JOIN lead_sources s  ON s.id=l.source_id
+       LEFT JOIN users u         ON u.id=l.assigned_to
+       LEFT JOIN users um        ON um.id=l.assigned_manager_id
+       WHERE ${conds.join(' AND ')}`, vals,
     );
     return res.rows[0] || null;
   }
@@ -88,13 +168,13 @@ export class LeadsService {
     const tags = Array.isArray(data.tags) ? data.tags.map(String) : [];
     const res = await this.db.query(
       `INSERT INTO leads (
-         name,email,phone,company,source_id,stage_id,assigned_to,notes,priority,custom_fields,
+         name,email,phone,company,source_id,stage_id,assigned_to,assigned_manager_id,notes,priority,custom_fields,
          lead_segment,job_title,deal_size,website,address,tags,lead_score
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::text[],$17) RETURNING *`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::text[],$18) RETURNING *`,
       [
         data.name, data.email, data.phone, data.company, data.source_id,
-        data.stage_id, data.assigned_to || null, data.notes,
+        data.stage_id, data.assigned_to || null, data.assigned_manager_id || null, data.notes,
         data.priority || 'warm',
         data.custom_fields ? JSON.stringify(data.custom_fields) : null,
         data.lead_segment ?? null,
@@ -122,7 +202,7 @@ export class LeadsService {
       prevAssignee = cur ? (cur.assigned_to != null ? Number(cur.assigned_to) : null) : null;
     }
     const fields = [
-      'name', 'email', 'phone', 'company', 'source_id', 'stage_id', 'assigned_to', 'notes',
+      'name', 'email', 'phone', 'company', 'source_id', 'stage_id', 'assigned_to', 'assigned_manager_id', 'notes',
       'priority', 'custom_fields', 'is_converted', 'lead_score',
       'lead_segment', 'job_title', 'deal_size', 'website', 'address', 'tags',
     ];
@@ -170,16 +250,19 @@ export class LeadsService {
   async sources() { return (await this.db.query('SELECT * FROM lead_sources ORDER BY name')).rows; }
 
   /** Per-source lead counts + total (for “All lists” mobile UI). */
-  async sourceCounts() {
+  async sourceCounts(currentUser?: { id?: unknown; role?: unknown }) {
+    const uid = Number(currentUser?.id);
+    const forceOwn = this.isOwnAssignedScope(currentUser?.role) && Number.isInteger(uid) && uid > 0;
+    const totalSql = forceOwn ? 'SELECT COUNT(*)::int AS total FROM leads WHERE assigned_to=$1' : 'SELECT COUNT(*)::int AS total FROM leads';
     const [bySource, totalRow] = await Promise.all([
       this.db.query(`
         SELECT s.id, s.name, COUNT(l.id)::int AS lead_count
         FROM lead_sources s
-        LEFT JOIN leads l ON l.source_id = s.id
+        LEFT JOIN leads l ON l.source_id = s.id ${forceOwn ? 'AND l.assigned_to = $1' : ''}
         GROUP BY s.id, s.name
         ORDER BY s.name
-      `),
-      this.db.query(`SELECT COUNT(*)::int AS total FROM leads`),
+      `, forceOwn ? [uid] : []),
+      this.db.query(totalSql, forceOwn ? [uid] : []),
     ]);
     return {
       total: Number(totalRow.rows[0]?.total ?? 0),
@@ -191,11 +274,23 @@ export class LeadsService {
     };
   }
   async assignees() {
-    const res = await this.db.query("SELECT id,name FROM users WHERE is_active=TRUE ORDER BY name");
+    const res = await this.db.query(`
+      SELECT id, name, role
+      FROM users
+      WHERE is_active=TRUE
+        AND LOWER(COALESCE(role, '')) <> 'super admin'
+      ORDER BY
+        CASE WHEN LOWER(COALESCE(role, '')) = 'manager' THEN 0 ELSE 1 END,
+        name
+    `);
     return res.rows;
   }
 
-  async stats() {
+  async stats(currentUser?: { id?: unknown; role?: unknown }) {
+    const uid = Number(currentUser?.id);
+    const forceOwn = this.isOwnAssignedScope(currentUser?.role) && Number.isInteger(uid) && uid > 0;
+    const whereSql = forceOwn ? 'WHERE assigned_to=$1' : '';
+    const joinScopeSql = forceOwn ? 'AND l.assigned_to = $1' : '';
     const [totals, byStage] = await Promise.all([
       this.db.query(`
         SELECT
@@ -205,14 +300,15 @@ export class LeadsService {
           COUNT(*) FILTER (WHERE priority='cold')   AS cold,
           COUNT(*) FILTER (WHERE is_converted=TRUE) AS converted
         FROM leads
-      `),
+        ${whereSql}
+      `, forceOwn ? [uid] : []),
       this.db.query(`
         SELECT ls.id, ls.name, ls.position, COUNT(l.id)::int AS count
           FROM lead_stages ls
-          LEFT JOIN leads l ON l.stage_id = ls.id
+          LEFT JOIN leads l ON l.stage_id = ls.id ${joinScopeSql}
          GROUP BY ls.id, ls.name, ls.position
          ORDER BY ls.position
-      `),
+      `, forceOwn ? [uid] : []),
     ]);
     const t = totals.rows[0];
     return {
@@ -270,11 +366,14 @@ export class LeadsService {
     return row;
   }
 
-  async allFollowups(filters: any) {
+  async allFollowups(filters: any, currentUser?: { id?: unknown; role?: unknown }) {
     const conds = ['f.is_done=FALSE'];
     const vals: any[] = [];
     let i = 1;
-    if (filters.assigned_to) { conds.push(`f.assigned_to=$${i++}`); vals.push(filters.assigned_to); }
+    const uid = Number(currentUser?.id);
+    const forceOwn = this.isOwnAssignedScope(currentUser?.role) && Number.isInteger(uid) && uid > 0;
+    if (forceOwn) { conds.push(`l.assigned_to=$${i++}`); vals.push(uid); }
+    if (!forceOwn && filters.assigned_to) { conds.push(`f.assigned_to=$${i++}`); vals.push(filters.assigned_to); }
     const res = await this.db.query(
       `SELECT
           f.*,

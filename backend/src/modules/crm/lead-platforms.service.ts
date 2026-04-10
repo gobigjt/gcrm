@@ -1,8 +1,10 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 
 @Injectable()
 export class LeadPlatformsService {
+  private readonly log = new Logger(LeadPlatformsService.name);
+
   constructor(private readonly db: DatabaseService) {}
 
   private GRAPH_VERSION = process.env.FACEBOOK_GRAPH_API_VERSION || 'v20.0';
@@ -699,6 +701,708 @@ export class LeadPlatformsService {
     }
 
     return { importedCount };
+  }
+
+  async listGoogleSheets() {
+    return (
+      await this.db.query(
+        `SELECT g.id, g.sheet_url, g.sheet_gid, g.lead_source_id, g.data_start_row, g.is_active, g.created_at, g.updated_at,
+                ls.name AS lead_source_name
+           FROM lead_platform_google_sheets g
+      LEFT JOIN lead_sources ls ON ls.id = g.lead_source_id
+          ORDER BY g.created_at DESC`,
+      )
+    ).rows;
+  }
+
+  async upsertGoogleSheet(dto: {
+    id?: number | null;
+    sheet_url?: string | null;
+    sheet_gid?: string | null;
+    lead_source_id?: number | null;
+    data_start_row?: number | string | null;
+    is_active?: boolean | null;
+  }) {
+    const sheetUrl = String(dto.sheet_url || '').trim();
+    if (!sheetUrl) throw new BadRequestException('sheet_url is required');
+    let leadSourceId = dto.lead_source_id ?? null;
+    if (leadSourceId == null) leadSourceId = await this.defaultLeadSourceId();
+    const gid = String(dto.sheet_gid || '').trim() || null;
+    const active = dto.is_active == null ? true : Boolean(dto.is_active);
+
+    const parseDataStartRow = (v: unknown): number | null => {
+      if (v === null || v === undefined || v === '') return null;
+      const n = Number(v);
+      if (!Number.isFinite(n) || n < 1) {
+        throw new BadRequestException('data_start_row must be a positive integer, or empty for header-row CSV mode');
+      }
+      return Math.floor(n);
+    };
+
+    if (dto.id) {
+      let dataStartRow: number | null | undefined;
+      if (dto.data_start_row !== undefined) {
+        dataStartRow =
+          dto.data_start_row === null || dto.data_start_row === ''
+            ? null
+            : parseDataStartRow(dto.data_start_row);
+      }
+      const params =
+        dataStartRow === undefined
+          ? [dto.id, sheetUrl, gid, leadSourceId, active]
+          : [dto.id, sheetUrl, gid, leadSourceId, active, dataStartRow];
+      const res = await this.db.query(
+        dataStartRow === undefined
+          ? `UPDATE lead_platform_google_sheets
+                SET sheet_url=$2, sheet_gid=$3, lead_source_id=$4, is_active=$5, updated_at=NOW()
+              WHERE id=$1
+          RETURNING id`
+          : `UPDATE lead_platform_google_sheets
+                SET sheet_url=$2, sheet_gid=$3, lead_source_id=$4, is_active=$5, data_start_row=$6, updated_at=NOW()
+              WHERE id=$1
+          RETURNING id`,
+        params,
+      );
+      if (!res.rows[0]) throw new NotFoundException('Google Sheet config not found');
+      return res.rows[0].id;
+    }
+
+    let dataStartRow: number | null = 15;
+    if (dto.data_start_row !== undefined) {
+      if (dto.data_start_row === null || dto.data_start_row === '') dataStartRow = null;
+      else dataStartRow = parseDataStartRow(dto.data_start_row);
+    }
+    return (
+      await this.db.query(
+        `INSERT INTO lead_platform_google_sheets (sheet_url, sheet_gid, lead_source_id, data_start_row, is_active)
+         VALUES ($1,$2,$3,$4,$5)
+      RETURNING id`,
+        [sheetUrl, gid, leadSourceId, dataStartRow, active],
+      )
+    ).rows[0]?.id;
+  }
+
+  async deleteGoogleSheet(id: number) {
+    const res = await this.db.query('DELETE FROM lead_platform_google_sheets WHERE id=$1 RETURNING id', [id]);
+    if (!res.rows[0]) throw new NotFoundException('Google Sheet config not found');
+    return true;
+  }
+
+  private parseGoogleSheetId(url: string): string | null {
+    const m = String(url).match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    return m?.[1] || null;
+  }
+
+  /** Google CSV can be large/slow; avoid hanging the Nest request indefinitely. */
+  private async fetchGoogleSheetCsvText(csvUrl: string, timeoutMs = 90_000): Promise<string> {
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), timeoutMs);
+    try {
+      const res = await fetch(csvUrl, {
+        method: 'GET',
+        headers: { Accept: 'text/csv,text/plain,*/*' },
+        signal: ac.signal,
+      });
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          throw new BadRequestException(
+            'Google denied access to this sheet CSV (401/403). Make sure the sheet/tab is shared as "Anyone with the link can view" or use a published CSV URL (File -> Share -> Publish to web).',
+          );
+        }
+        throw new BadRequestException(`Unable to fetch sheet CSV (${res.status})`);
+      }
+      return await res.text();
+    } catch (e: any) {
+      if (e?.name === 'AbortError' || ac.signal.aborted) {
+        throw new BadRequestException(
+          `Timed out fetching Google Sheet CSV after ${timeoutMs / 1000}s. Try again, use a published CSV link, or reduce sheet size.`,
+        );
+      }
+      throw e;
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
+  private buildGoogleSheetCsvUrl(sheetUrl: string, gid?: string | null): string {
+    const trimmed = String(sheetUrl || '').trim();
+    if (!trimmed) throw new BadRequestException('sheet_url is required');
+    if (/output=csv/i.test(trimmed) || /format=csv/i.test(trimmed) || /tqx=out:csv/i.test(trimmed)) return trimmed;
+    if (/\/pub(\?|$)/i.test(trimmed)) {
+      return trimmed.includes('?') ? `${trimmed}&output=csv` : `${trimmed}?output=csv`;
+    }
+    const id = this.parseGoogleSheetId(trimmed);
+    if (!id) throw new BadRequestException('Invalid Google Sheet URL');
+    const g = String(gid || '').trim() || '0';
+    return `https://docs.google.com/spreadsheets/d/${id}/export?format=csv&gid=${encodeURIComponent(g)}`;
+  }
+
+  private parseCsv(csv: string): string[][] {
+    const rows: string[][] = [];
+    let row: string[] = [];
+    let cell = '';
+    let inQuotes = false;
+    for (let i = 0; i < csv.length; i++) {
+      const ch = csv[i];
+      if (ch === '"') {
+        if (inQuotes && csv[i + 1] === '"') {
+          cell += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (ch === ',' && !inQuotes) {
+        row.push(cell);
+        cell = '';
+      } else if ((ch === '\n' || ch === '\r') && !inQuotes) {
+        if (ch === '\r' && csv[i + 1] === '\n') i++;
+        row.push(cell);
+        rows.push(row);
+        row = [];
+        cell = '';
+      } else {
+        cell += ch;
+      }
+    }
+    if (cell.length || row.length) {
+      row.push(cell);
+      rows.push(row);
+    }
+    return rows;
+  }
+
+  private normHeader(h: string): string {
+    return String(h || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
+  }
+
+  private valByKeys(rec: Record<string, string>, keys: string[]): string | null {
+    for (const k of keys) {
+      const v = rec[k];
+      if (v != null && String(v).trim() !== '') return String(v).trim();
+    }
+    return null;
+  }
+
+  /** Fixed export layout: A=0 … R=17 (lead id, …, contact, email, phone, city, state, zip). */
+  private static readonly GSHEET_COL = {
+    LEAD_ID: 0,
+    STATUS: 9,
+    SALES_PERSON: 10,
+    SOURCE: 11,
+    CONTACT_NAME: 12,
+    EMAIL: 13,
+    PHONE: 14,
+    CITY: 15,
+    STATE: 16,
+    ZIP: 17,
+  } as const;
+
+  private gsCell(row: string[], idx: number): string {
+    return String(row[idx] ?? '').trim();
+  }
+
+  private mergeSheetCustomFields(prev: unknown, patch: Record<string, unknown>): Record<string, unknown> {
+    const base =
+      prev && typeof prev === 'object' && !Array.isArray(prev)
+        ? { ...(prev as Record<string, unknown>) }
+        : {};
+    return { ...base, ...patch };
+  }
+
+  private truncatePhoneDb(v: string | null): string | null {
+    if (!v) return null;
+    const t = v.trim();
+    if (!t) return null;
+    return t.length > 20 ? t.slice(0, 20) : t;
+  }
+
+  private buildCityStateZipLine(city: string, state: string, zip: string): string | null {
+    const parts = [city, state, zip].map((s) => String(s || '').trim()).filter(Boolean);
+    return parts.length ? parts.join(', ') : null;
+  }
+
+  private async resolveStageIdByName(name: string, fallbackId: number | null): Promise<number | null> {
+    const t = name?.trim();
+    if (!t) return fallbackId;
+    const res = await this.db.query(
+      `SELECT id FROM lead_stages WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1`,
+      [t],
+    );
+    return res.rows[0]?.id ?? fallbackId;
+  }
+
+  private async resolveUserIdByName(name: string): Promise<number | null> {
+    const t = name?.trim();
+    if (!t) return null;
+    const res = await this.db.query(
+      `SELECT id FROM users WHERE is_active=TRUE AND LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1`,
+      [t],
+    );
+    return res.rows[0]?.id ?? null;
+  }
+
+  /** L column: fb / facebook → Facebook Ads; ig / instagram → Instagram (or Website fallback). */
+  private async resolveSourceIdFromSheetCell(raw: string, fallbackId: number | null): Promise<number | null> {
+    const t = String(raw || '').trim().toLowerCase();
+    if (!t) return fallbackId;
+    if (t === 'fb' || t.includes('facebook')) {
+      const r = await this.db.query(
+        `SELECT id FROM lead_sources WHERE LOWER(TRIM(name)) IN ('facebook ads','facebook') ORDER BY id LIMIT 1`,
+      );
+      return r.rows[0]?.id ?? fallbackId;
+    }
+    if (t === 'ig' || t.includes('instagram')) {
+      const r = await this.db.query(
+        `SELECT id FROM lead_sources WHERE LOWER(TRIM(name)) = 'instagram' LIMIT 1`,
+      );
+      if (r.rows[0]?.id) return r.rows[0].id;
+      const w = await this.db.query(`SELECT id FROM lead_sources WHERE LOWER(TRIM(name)) = 'website' LIMIT 1`);
+      return w.rows[0]?.id ?? fallbackId;
+    }
+    const exact = await this.db.query(
+      `SELECT id FROM lead_sources WHERE LOWER(TRIM(name)) = $1 LIMIT 1`,
+      [t],
+    );
+    return exact.rows[0]?.id ?? fallbackId;
+  }
+
+  /** In-memory lookups so sheet sync does not run 3+ SQL round-trips per row. */
+  private buildStageLookup(): Promise<Map<string, number>> {
+    return this.db.query(`SELECT id, name FROM lead_stages`).then((res) => {
+      const m = new Map<string, number>();
+      for (const row of res.rows) {
+        const k = String(row.name || '').trim().toLowerCase();
+        if (k) m.set(k, row.id);
+      }
+      return m;
+    });
+  }
+
+  private buildUserLookup(): Promise<Map<string, number>> {
+    return this.db.query(`SELECT id, name FROM users WHERE is_active=TRUE`).then((res) => {
+      const m = new Map<string, number>();
+      for (const row of res.rows) {
+        const k = String(row.name || '').trim().toLowerCase();
+        if (k && !m.has(k)) m.set(k, row.id);
+      }
+      return m;
+    });
+  }
+
+  private buildSourceResolver(fallbackId: number | null): Promise<(raw: string) => number | null> {
+    return this.db.query(`SELECT id, name FROM lead_sources`).then((res) => {
+      const byLower = new Map<string, number>();
+      for (const row of res.rows) {
+        byLower.set(String(row.name || '').trim().toLowerCase(), row.id);
+      }
+      return (raw: string) => {
+        const t = String(raw || '').trim().toLowerCase();
+        if (!t) return fallbackId;
+        if (t === 'fb' || t.includes('facebook')) {
+          return byLower.get('facebook ads') ?? byLower.get('facebook') ?? fallbackId;
+        }
+        if (t === 'ig' || t.includes('instagram')) {
+          return byLower.get('instagram') ?? byLower.get('website') ?? fallbackId;
+        }
+        return byLower.get(t) ?? fallbackId;
+      };
+    });
+  }
+
+  private stageIdFromLookup(stageByLower: Map<string, number>, raw: string, fallback: number | null): number | null {
+    const k = String(raw || '').trim().toLowerCase();
+    if (!k) return fallback;
+    return stageByLower.get(k) ?? fallback;
+  }
+
+  private userIdFromLookup(userByLower: Map<string, number>, raw: string): number | null {
+    const k = String(raw || '').trim().toLowerCase();
+    if (!k) return null;
+    return userByLower.get(k) ?? null;
+  }
+
+  private async syncGoogleSheetLeadsLegacy(
+    cfg: any,
+    rows: string[][],
+  ): Promise<{
+    importedCount: number;
+    createdLeads: number[];
+    stats: Record<string, number>;
+  }> {
+    const headers = rows[0].map((h) => this.normHeader(h));
+    const stageId = await this.leadStageIdOrDefault();
+    const srcId = cfg.lead_source_id ?? (await this.defaultLeadSourceId());
+    const createdLeads: number[] = [];
+    let importedCount = 0;
+    let skippedEmptyIdentity = 0;
+    let skippedDuplicates = 0;
+    let processedRows = 0;
+    const totalRows = Math.max(0, rows.length - 1);
+
+    for (let i = 1; i < rows.length; i++) {
+      processedRows++;
+      const cols = rows[i];
+      const rec: Record<string, string> = {};
+      headers.forEach((h, idx) => {
+        rec[h] = String(cols[idx] || '').trim();
+      });
+
+      const name = this.valByKeys(rec, ['name', 'fullname', 'leadname']) || '';
+      const email = this.valByKeys(rec, ['email', 'emailaddress']);
+      const phone = this.valByKeys(rec, ['phone', 'phonenumber', 'mobile', 'mobilenumber']);
+      const company = this.valByKeys(rec, ['company', 'companyname', 'organization']);
+      const notes = this.valByKeys(rec, ['notes', 'remark', 'remarks', 'comment']);
+      const leadName = name || email || phone || '';
+      if (!leadName) {
+        skippedEmptyIdentity++;
+        continue;
+      }
+
+      const dedupe = await this.db.query(
+        `SELECT id FROM leads
+          WHERE (($1::text IS NOT NULL AND email=$1) OR ($2::text IS NOT NULL AND phone=$2))
+          ORDER BY id DESC
+          LIMIT 1`,
+        [email, phone],
+      );
+      if (dedupe.rows[0]) {
+        skippedDuplicates++;
+        continue;
+      }
+
+      const ins = await this.db.query(
+        `INSERT INTO leads (name,email,phone,company,source_id,stage_id,assigned_to,notes,priority,custom_fields)
+         VALUES ($1,$2,$3,$4,$5,$6,NULL,$7,'warm',$8)
+         RETURNING id`,
+        [
+          leadName,
+          email,
+          phone,
+          company,
+          srcId,
+          stageId,
+          notes || 'Imported from Google Sheet',
+          JSON.stringify({ import_source: 'google_sheet', config_id: cfg.id, row_index: i + 1 }),
+        ],
+      );
+      const id = ins.rows[0]?.id;
+      if (id) {
+        createdLeads.push(id);
+        importedCount++;
+      }
+    }
+
+    const createdRows = importedCount;
+    const skippedRows = Math.max(0, processedRows - createdRows);
+    return {
+      importedCount,
+      createdLeads,
+      stats: {
+        totalRows,
+        processedRows,
+        createdRows,
+        updatedRows: 0,
+        skippedRows,
+        skippedEmptyIdentity,
+        skippedDuplicates,
+      },
+    };
+  }
+
+  private async syncGoogleSheetLeadsFixed(
+    cfg: any,
+    rows: string[][],
+    dataStart1Based: number,
+  ): Promise<{
+    importedCount: number;
+    createdLeads: number[];
+    stats: Record<string, number>;
+  }> {
+    const C = LeadPlatformsService.GSHEET_COL;
+    const startIdx = dataStart1Based - 1;
+    if (rows.length <= startIdx) {
+      return {
+        importedCount: 0,
+        createdLeads: [],
+        stats: {
+          totalRows: 0,
+          processedRows: 0,
+          createdRows: 0,
+          updatedRows: 0,
+          skippedRows: 0,
+          skippedEmptyIdentity: 0,
+          skippedDuplicates: 0,
+        },
+      };
+    }
+
+    const fallbackSourceId = await this.defaultLeadSourceId();
+    const sourceFallback = cfg.lead_source_id ?? fallbackSourceId;
+    const [defaultStageId, stageByLower, userByLower, resolveSource] = await Promise.all([
+      this.leadStageIdOrDefault(),
+      this.buildStageLookup(),
+      this.buildUserLookup(),
+      this.buildSourceResolver(sourceFallback),
+    ]);
+
+    const existingRes = await this.db.query(
+      `SELECT id, custom_fields FROM leads WHERE (custom_fields->>'google_sheet_config_id') = $1`,
+      [String(cfg.id)],
+    );
+    const existingBySheetId = new Map<string, { id: number; custom_fields: unknown }>();
+    for (const row of existingRes.rows) {
+      const cf = row.custom_fields as Record<string, unknown> | null;
+      const lid = cf?.google_sheet_lead_id;
+      if (lid != null && String(lid).trim()) {
+        existingBySheetId.set(String(lid).trim(), { id: row.id, custom_fields: row.custom_fields });
+      }
+    }
+
+    const emailsForDedupe = new Set<string>();
+    const phonesForDedupe = new Set<string>();
+    for (let i = startIdx; i < rows.length; i++) {
+      const r = rows[i];
+      const sheetLeadId = this.gsCell(r, C.LEAD_ID);
+      if (sheetLeadId) continue;
+      const em = this.gsCell(r, C.EMAIL);
+      const ph = this.truncatePhoneDb(this.gsCell(r, C.PHONE) || null);
+      if (em) emailsForDedupe.add(em.trim().toLowerCase());
+      if (ph) phonesForDedupe.add(ph);
+    }
+
+    const existingEmails = new Set<string>();
+    const existingPhones = new Set<string>();
+    if (emailsForDedupe.size) {
+      const er = await this.db.query(
+        `SELECT lower(trim(email)) AS e FROM leads
+          WHERE email IS NOT NULL AND trim(email) <> '' AND lower(trim(email)) = ANY($1::text[])`,
+        [[...emailsForDedupe]],
+      );
+      for (const x of er.rows) {
+        if (x.e) existingEmails.add(String(x.e));
+      }
+    }
+    if (phonesForDedupe.size) {
+      const pr = await this.db.query(`SELECT phone FROM leads WHERE phone = ANY($1::text[])`, [[...phonesForDedupe]]);
+      for (const x of pr.rows) {
+        if (x.phone) existingPhones.add(String(x.phone));
+      }
+    }
+
+    const createdLeads: number[] = [];
+    let importedCount = 0;
+    let updatedCount = 0;
+    let skippedEmptyIdentity = 0;
+    let skippedDuplicates = 0;
+    let processedRows = 0;
+    const totalRows = Math.max(0, rows.length - startIdx);
+
+    for (let i = startIdx; i < rows.length; i++) {
+      processedRows++;
+      const r = rows[i];
+      const sheetLeadId = this.gsCell(r, C.LEAD_ID);
+      const statusRaw = this.gsCell(r, C.STATUS);
+      const salesPersonRaw = this.gsCell(r, C.SALES_PERSON);
+      const sourceRaw = this.gsCell(r, C.SOURCE);
+      const contactName = this.gsCell(r, C.CONTACT_NAME);
+      const email = this.gsCell(r, C.EMAIL) || null;
+      const phoneRaw = this.gsCell(r, C.PHONE);
+      const phone = this.truncatePhoneDb(phoneRaw || null);
+      const city = this.gsCell(r, C.CITY);
+      const state = this.gsCell(r, C.STATE);
+      const zip = this.gsCell(r, C.ZIP);
+      const address = this.buildCityStateZipLine(city, state, zip);
+
+      const leadName = contactName || email || phone || '';
+      if (!leadName) {
+        skippedEmptyIdentity++;
+        continue;
+      }
+
+      const stageId = this.stageIdFromLookup(stageByLower, statusRaw, defaultStageId);
+      const sourceId = resolveSource(sourceRaw) ?? sourceFallback;
+      const assignedTo = this.userIdFromLookup(userByLower, salesPersonRaw);
+
+      const sheetMeta: Record<string, unknown> = {
+        import_source: 'google_sheet',
+        google_sheet_config_id: String(cfg.id),
+        google_sheet_lead_id: sheetLeadId || null,
+        sheet_row_1based: i + 1,
+        sheet_status: statusRaw || null,
+        sheet_sales_person: salesPersonRaw || null,
+        sheet_source_raw: sourceRaw || null,
+        city: city || null,
+        state: state || null,
+        zip: zip || null,
+      };
+
+      const notesLine = 'Imported from Google Sheet';
+
+      if (sheetLeadId) {
+        const row0 = existingBySheetId.get(sheetLeadId);
+        if (row0) {
+          const merged = this.mergeSheetCustomFields(row0.custom_fields, sheetMeta);
+          await this.db.query(
+            `UPDATE leads SET
+               name=$1, email=$2, phone=$3, source_id=$4, stage_id=$5, assigned_to=$6,
+               address=$7, custom_fields=$8::jsonb, updated_at=NOW()
+             WHERE id=$9`,
+            [
+              leadName,
+              email,
+              phone,
+              sourceId,
+              stageId,
+              assignedTo,
+              address,
+              JSON.stringify(merged),
+              row0.id,
+            ],
+          );
+          updatedCount++;
+          importedCount++;
+          continue;
+        }
+      }
+
+      if (sheetLeadId) {
+        const ins = await this.db.query(
+          `INSERT INTO leads (name,email,phone,company,source_id,stage_id,assigned_to,notes,priority,custom_fields,address)
+           VALUES ($1,$2,$3,NULL,$4,$5,$6,$7,'warm',$8::jsonb,$9)
+           RETURNING id`,
+          [
+            leadName,
+            email,
+            phone,
+            sourceId,
+            stageId,
+            assignedTo,
+            notesLine,
+            JSON.stringify(sheetMeta),
+            address,
+          ],
+        );
+        const newId = ins.rows[0]?.id;
+        if (newId) {
+          createdLeads.push(newId);
+          importedCount++;
+          existingBySheetId.set(sheetLeadId, { id: newId, custom_fields: sheetMeta });
+        }
+        continue;
+      }
+
+      const emailKey = email ? email.trim().toLowerCase() : '';
+      const dup =
+        (emailKey && existingEmails.has(emailKey)) || (phone && existingPhones.has(phone));
+      if (dup) {
+        skippedDuplicates++;
+        continue;
+      }
+
+      const ins = await this.db.query(
+        `INSERT INTO leads (name,email,phone,company,source_id,stage_id,assigned_to,notes,priority,custom_fields,address)
+         VALUES ($1,$2,$3,NULL,$4,$5,$6,$7,'warm',$8::jsonb,$9)
+         RETURNING id`,
+        [
+          leadName,
+          email,
+          phone,
+          sourceId,
+          stageId,
+          assignedTo,
+          notesLine,
+          JSON.stringify({ ...sheetMeta, google_sheet_lead_id: null }),
+          address,
+        ],
+      );
+      const newId = ins.rows[0]?.id;
+      if (newId) {
+        createdLeads.push(newId);
+        importedCount++;
+        if (emailKey) existingEmails.add(emailKey);
+        if (phone) existingPhones.add(phone);
+      }
+    }
+
+    const createdRows = createdLeads.length;
+    const skippedRows = skippedEmptyIdentity + skippedDuplicates;
+    return {
+      importedCount,
+      createdLeads,
+      stats: {
+        totalRows,
+        processedRows,
+        createdRows,
+        updatedRows: updatedCount,
+        skippedRows,
+        skippedEmptyIdentity,
+        skippedDuplicates,
+      },
+    };
+  }
+
+  async syncGoogleSheetLeads(configId: number) {
+    const cfgRes = await this.db.query('SELECT * FROM lead_platform_google_sheets WHERE id=$1', [configId]);
+    const cfg = cfgRes.rows[0];
+    if (!cfg) throw new NotFoundException('Google Sheet config not found');
+    if (!cfg.is_active) {
+      return {
+        importedCount: 0,
+        createdLeads: [],
+        stats: {
+          totalRows: 0,
+          processedRows: 0,
+          createdRows: 0,
+          updatedRows: 0,
+          skippedRows: 0,
+          skippedEmptyIdentity: 0,
+          skippedDuplicates: 0,
+        },
+      };
+    }
+
+    const csvUrl = this.buildGoogleSheetCsvUrl(cfg.sheet_url, cfg.sheet_gid);
+    const csvText = await this.fetchGoogleSheetCsvText(csvUrl);
+    const rows = this.parseCsv(csvText);
+    if (rows.length < 2) {
+      return {
+        importedCount: 0,
+        createdLeads: [],
+        stats: {
+          totalRows: 0,
+          processedRows: 0,
+          createdRows: 0,
+          updatedRows: 0,
+          skippedRows: 0,
+          skippedEmptyIdentity: 0,
+          skippedDuplicates: 0,
+        },
+      };
+    }
+
+    const dr = cfg.data_start_row;
+    if (dr != null && Number(dr) >= 1) {
+      return this.syncGoogleSheetLeadsFixed(cfg, rows, Number(dr));
+    }
+    return this.syncGoogleSheetLeadsLegacy(cfg, rows);
+  }
+
+  /** Sync every active connected sheet (sequential). Used by the 10-minute cron. */
+  async syncAllActiveGoogleSheets(): Promise<void> {
+    const res = await this.db.query(
+      `SELECT id FROM lead_platform_google_sheets WHERE is_active = TRUE ORDER BY id ASC`,
+    );
+    for (const row of res.rows) {
+      const id = Number(row.id);
+      try {
+        const r = await this.syncGoogleSheetLeads(id);
+        this.log.log(
+          `Google Sheets auto-sync config=${id}: ${r.importedCount} saved (${r.stats?.createdRows ?? 0} new, ${r.stats?.updatedRows ?? 0} updated)`,
+        );
+      } catch (e: any) {
+        this.log.warn(`Google Sheets auto-sync config=${id} failed: ${e?.message ?? e}`);
+      }
+    }
   }
 }
 

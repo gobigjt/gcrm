@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { DatabaseModule }     from './database/database.module';
 import { AuditModule }        from './modules/audit/audit.module';
 import { RedisModule }        from './redis/redis.module';
@@ -18,6 +19,7 @@ import { NotificationsModule }  from './modules/notifications/notifications.modu
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     DatabaseModule,
     RedisModule,
     AuditModule,

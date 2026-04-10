@@ -75,6 +75,48 @@ export class SettingsController {
     return this.svc.setCompanyLogoFromUpload(file.filename, u.id);
   }
 
+  @Post('company/favicon')
+  @UseGuards(RolesGuard)
+  @Roles('Admin')
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+      required: ['file'],
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (_req, _file, cb) => {
+          const dir = join(process.cwd(), 'uploads', 'company');
+          if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+          cb(null, dir);
+        },
+        filename: (_req, file, cb) => {
+          const ext = extname(file.originalname || '').toLowerCase();
+          const allowed = ['.ico', '.png', '.svg', '.jpg', '.jpeg', '.webp'];
+          const safe = allowed.includes(ext) ? ext : '.ico';
+          cb(null, `favicon-${Date.now()}${safe}`);
+        },
+      }),
+      limits: { fileSize: 1024 * 1024 },
+      fileFilter: (_req, file, cb) => {
+        const ok =
+          /^image\/(x-icon|vnd\.microsoft\.icon|png|svg\+xml|jpeg|webp)$/.test(file.mimetype) ||
+          /\.(ico|png|svg|jpe?g|webp)$/i.test(file.originalname || '');
+        cb(null, ok);
+      },
+    }),
+  )
+  uploadCompanyFavicon(@UploadedFile() file: Express.Multer.File | undefined, @CurrentUser() u: any) {
+    if (!file) {
+      throw new BadRequestException('Upload a favicon file (ICO, PNG, SVG, JPG, or WebP), max 1 MB.');
+    }
+    return this.svc.setCompanyFaviconFromUpload(file.filename, u.id);
+  }
+
   @UseGuards(RolesGuard) @Roles('Admin')
   @Get('permissions')   listPermissions() { return this.svc.listPermissions(); }
 

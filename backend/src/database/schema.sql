@@ -227,6 +227,7 @@ CREATE TABLE IF NOT EXISTS company_settings (
   phone             VARCHAR(20),
   email             VARCHAR(255),
   logo_url          TEXT,
+  favicon_url       TEXT,
   currency          VARCHAR(10) NOT NULL DEFAULT 'INR',
   fiscal_year_start DATE,
   invoice_tagline   TEXT,
@@ -262,6 +263,7 @@ CREATE TABLE IF NOT EXISTS leads (
   source_id       INTEGER REFERENCES lead_sources(id) ON DELETE SET NULL,
   stage_id        INTEGER REFERENCES lead_stages(id) ON DELETE SET NULL,
   assigned_to     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  assigned_manager_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
   custom_fields   JSONB,
   notes           TEXT,
   priority        VARCHAR(10) NOT NULL DEFAULT 'warm'
@@ -331,20 +333,38 @@ CREATE TABLE IF NOT EXISTS warehouses (
   is_active BOOLEAN NOT NULL DEFAULT TRUE
 );
 
+CREATE TABLE IF NOT EXISTS brands (
+  id         SERIAL PRIMARY KEY,
+  name       VARCHAR(120) UNIQUE NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS categories (
+  id         SERIAL PRIMARY KEY,
+  name       VARCHAR(120) UNIQUE NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS products (
   id              SERIAL PRIMARY KEY,
   name            VARCHAR(200) NOT NULL,
+  code            VARCHAR(100),
   sku             VARCHAR(100) UNIQUE,
   hsn_code        VARCHAR(20),
+  category        VARCHAR(120),
+  brand_id        INTEGER REFERENCES brands(id) ON DELETE SET NULL,
   description     TEXT,
   unit            VARCHAR(30) NOT NULL DEFAULT 'pcs',
   purchase_price  NUMERIC(15,2) NOT NULL DEFAULT 0,
   sale_price      NUMERIC(15,2) NOT NULL DEFAULT 0,
+  image_url       TEXT,
   gst_rate        NUMERIC(5,2) NOT NULL DEFAULT 0,
   low_stock_alert INTEGER NOT NULL DEFAULT 0,
   is_active       BOOLEAN NOT NULL DEFAULT TRUE,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS products_code_uq ON products(code) WHERE code IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS stock (
   id            SERIAL PRIMARY KEY,
@@ -729,11 +749,25 @@ CREATE TABLE IF NOT EXISTS lead_form_submissions (
   submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS lead_platform_google_sheets (
+  id             SERIAL PRIMARY KEY,
+  sheet_url      TEXT NOT NULL,
+  sheet_gid      VARCHAR(50),
+  lead_source_id INTEGER REFERENCES lead_sources(id) ON DELETE SET NULL,
+  data_start_row INTEGER,
+  is_active      BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_lead_platform_google_sheets_source
+  ON lead_platform_google_sheets(lead_source_id);
+
 -- ============================================================
 -- SEED DATA
 -- ============================================================
 INSERT INTO lead_sources (name) VALUES
-  ('Website'),('Facebook Ads'),('Google Ads'),('Referral'),('Cold Call'),('LinkedIn'),('Walk-in')
+  ('Website'),('Facebook Ads'),('Google Ads'),('Referral'),('Cold Call'),('LinkedIn'),('Walk-in'),('Instagram')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO lead_stages (name, position) VALUES

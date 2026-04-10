@@ -65,5 +65,36 @@ export class LeadPlatformsController {
       leads: body.leads,
     });
   }
+
+  @Get('google-sheets')
+  @ApiOperation({ summary: 'List connected Google Sheets lead sources' })
+  listGoogleSheets() {
+    return this.svc.listGoogleSheets();
+  }
+
+  @Post('google-sheets')
+  @ApiOperation({ summary: 'Connect (or update) a Google Sheet for lead sync' })
+  upsertGoogleSheet(@Body() body: any) {
+    return this.svc.upsertGoogleSheet({
+      id: body.id,
+      sheet_url: body.sheet_url,
+      sheet_gid: body.sheet_gid,
+      lead_source_id: body.lead_source_id,
+      data_start_row: body.data_start_row,
+      is_active: body.is_active,
+    });
+  }
+
+  @Delete('google-sheets/:id')
+  @ApiOperation({ summary: 'Disconnect a Google Sheet lead source' })
+  deleteGoogleSheet(@Param('id') id: string) {
+    return this.svc.deleteGoogleSheet(Number(id));
+  }
+
+  @Post('google-sheets/:id/sync-leads')
+  @ApiOperation({ summary: 'Import leads from connected Google Sheet into CRM' })
+  syncGoogleSheetLeads(@Param('id') id: string) {
+    return this.svc.syncGoogleSheetLeads(Number(id));
+  }
 }
 

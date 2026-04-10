@@ -42,7 +42,9 @@ class UsersController extends GetxController {
   Future<void> loadRoles() async {
     final res = await _auth.authorizedRequest(method: 'GET', path: '/users/roles');
     roles.assignAll(
-      (res as List).map((e) => RoleOption.fromJson(Map<String, dynamic>.from(e as Map))),
+      (res as List)
+          .map((e) => RoleOption.fromJson(Map<String, dynamic>.from(e as Map)))
+          .where((r) => r.name.toLowerCase() != 'super admin'),
     );
   }
 
