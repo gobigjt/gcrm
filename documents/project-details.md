@@ -1,4 +1,4 @@
-# CRM + ERP Platform (Non-SaaS)
+#   Platform (Non-SaaS)
 
 ## 1. SINGLE-TENANT ARCHITECTURE
 
