@@ -19,6 +19,11 @@ class CrmController extends GetxController {
   final selectedSourceId = RxnInt();
   final searchQuery = ''.obs;
 
+  bool get _ownAssignedOnly {
+    final role = _auth.role.value.trim().toLowerCase();
+    return role == 'sales executive' || role == 'sales manager';
+  }
+
   @override
   void onInit() {
     super.onInit();
@@ -47,7 +52,10 @@ class CrmController extends GetxController {
     isLoading.value = true;
     errorMessage.value = '';
     try {
-      final leadsRes = await _auth.authorizedRequest(method: 'GET', path: '/crm/leads');
+      final scopedPath = _ownAssignedOnly && _auth.userId.value > 0
+          ? '/crm/leads?assigned_to=${_auth.userId.value}'
+          : '/crm/leads';
+      final leadsRes = await _auth.authorizedRequest(method: 'GET', path: scopedPath);
       final stagesRes = await _auth.authorizedRequest(method: 'GET', path: '/crm/leads/stages');
       final sourcesRes = await _auth.authorizedRequest(method: 'GET', path: '/crm/leads/sources');
       leads.assignAll((leadsRes as List).map((e) => CrmLead.fromJson(Map<String, dynamic>.from(e as Map))));
@@ -70,6 +78,9 @@ class CrmController extends GetxController {
       if (selectedSourceId.value != null) query.add('source_id=${selectedSourceId.value}');
       final q = searchQuery.value.trim();
       if (q.isNotEmpty) query.add('search=${Uri.encodeComponent(q)}');
+      if (_ownAssignedOnly && _auth.userId.value > 0) {
+        query.add('assigned_to=${_auth.userId.value}');
+      }
       final path = query.isEmpty ? '/crm/leads' : '/crm/leads?${query.join('&')}';
       final leadsRes = await _auth.authorizedRequest(method: 'GET', path: path);
       leads.assignAll((leadsRes as List).map((e) => CrmLead.fromJson(Map<String, dynamic>.from(e as Map))));

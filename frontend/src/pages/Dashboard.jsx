@@ -152,7 +152,7 @@ export default function Dashboard() {
         </div>
         <div className="bg-white dark:bg-[#13152a] border border-slate-200 dark:border-slate-700/50 rounded-xl p-4">
           <Link
-            to="/inventory?tab=products"
+            to="/inventory/products"
             className="inline-block text-[12px] font-semibold text-slate-800 dark:text-slate-100 mb-2 hover:text-brand-600 dark:hover:text-brand-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 rounded"
           >
             Inventory alerts
@@ -164,7 +164,7 @@ export default function Dashboard() {
           ].map(([item, stock, cls]) => (
             <Link
               key={item}
-              to="/inventory?tab=products"
+              to="/inventory/products"
               className={`${rowLinkCls} justify-between items-center text-[11px] py-1.5 border-b border-slate-200 dark:border-slate-700/40 last:border-b-0 rounded-none no-underline text-inherit`}
             >
               <span className="text-slate-700 dark:text-slate-200 pr-2 truncate min-w-0">{item}</span>

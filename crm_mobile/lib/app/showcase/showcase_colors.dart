@@ -23,4 +23,22 @@ class ShowcaseColors {
   static const purpleMid = Color(0xFF3C3489);
   static const inventory = Color(0xFFD85A30);
   static const neutral = Color(0xFFB4B2A9);
+
+  // ── Dark-mode pill variants ──────────────────────────────────────────────
+  static const darkWonBg = Color(0xFF0B3525);
+  static const darkWonFg = Color(0xFF4ADE80);
+  static const darkQualifiedBg = Color(0xFF3B2806);
+  static const darkQualifiedFg = Color(0xFFFBBF24);
+  static const darkProposalBg = Color(0xFF1E1847);
+  static const darkProposalFg = Color(0xFFA78BFA);
+  static const darkLostBg = Color(0xFF3B0F0F);
+  static const darkLostFg = Color(0xFFF87171);
+  static const darkNewBg = Color(0xFF0A1F42);
+  static const darkNewFg = Color(0xFF60A5FA);
+  static const darkDefaultBg = Color(0xFF1E1847);
+  static const darkDefaultFg = Color(0xFFA78BFA);
+
+  // ── Gradient accent pairs (for KPI cards, top bar, etc.) ─────────────────
+  static const gradientTopStart = Color(0xFF0E1C30);
+  static const gradientTopEnd   = Color(0xFF0A1424);
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import api from '../../api/client';
+import { useAuth } from '../../context/AuthContext';
 import { buildAppCrmLeadUrl, buildWebCrmLeadUrl } from '../../utils/crmLeadLinks';
 import { salesFromLeadPath } from '../../utils/salesFromLeadUrl';
 import Modal from '../../components/Modal';
@@ -108,7 +109,7 @@ function tagsToString(tags) {
 // ─── Lead Form Modal ─────────────────────────────────────────
 
 const EMPTY = {
-  name: '', email: '', phone: '', company: '', source_id: '', stage_id: '', assigned_to: '', priority: 'warm', notes: '',
+  name: '', email: '', phone: '', company: '', source_id: '', stage_id: '', assigned_to: '', assigned_manager_id: '', priority: 'warm', notes: '',
   lead_segment: '', job_title: '', website: '', address: '', tags: '', deal_size: '', lead_score: '',
 };
 
@@ -122,6 +123,7 @@ function leadToForm(row) {
     source_id: row.source_id ?? '',
     stage_id: row.stage_id ?? '',
     assigned_to: row.assigned_to ?? '',
+    assigned_manager_id: row.assigned_manager_id ?? '',
     priority: row.priority || 'warm',
     notes: row.notes || '',
     lead_segment: row.lead_segment || '',
@@ -138,6 +140,7 @@ function LeadModal({ lead, stages, sources, users, onClose, onSaved }) {
   const [form, setForm] = useState(() => leadToForm(lead));
   const [loading, setLoading] = useState(false);
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
+  const assigneeLabel = (u) => (String(u?.role || '').toLowerCase() === 'manager' ? `${u.name} (Manager)` : u.name);
 
   const buildPayload = () => {
     const tagsArr = form.tags
@@ -154,6 +157,7 @@ function LeadModal({ lead, stages, sources, users, onClose, onSaved }) {
       source_id: form.source_id ? Number(form.source_id) : null,
       stage_id: form.stage_id ? Number(form.stage_id) : null,
       assigned_to: form.assigned_to ? Number(form.assigned_to) : null,
+      assigned_manager_id: form.assigned_manager_id ? Number(form.assigned_manager_id) : null,
       priority: form.priority,
       notes: form.notes.trim() || null,
       lead_segment: form.lead_segment.trim() || null,
@@ -234,9 +238,17 @@ function LeadModal({ lead, stages, sources, users, onClose, onSaved }) {
           <Field label="Assigned To">
             <select className={selectCls} value={form.assigned_to} onChange={set('assigned_to')}>
               <option value="">Unassigned</option>
-              {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              {users.map(u => <option key={u.id} value={u.id}>{assigneeLabel(u)}</option>)}
             </select>
           </Field>
+          <Field label="Assign Manager">
+            <select className={selectCls} value={form.assigned_manager_id} onChange={set('assigned_manager_id')}>
+              <option value="">Unassigned</option>
+              {users.map(u => <option key={u.id} value={u.id}>{assigneeLabel(u)}</option>)}
+            </select>
+          </Field>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
           <Field label="Priority">
             <select className={selectCls} value={form.priority} onChange={set('priority')}>
               <option value="hot">🔥 Hot</option>
@@ -260,7 +272,7 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
   const [activities, setActivities] = useState([]);
   const [followups,  setFollowups]  = useState([]);
   const [actForm,    setActForm]    = useState({ type: 'note', description: '' });
-  const [fuForm,     setFuForm]     = useState({ due_date: '', description: '' });
+  const [fuForm,     setFuForm]     = useState({ due_date: '', description: '', assigned_to: '' });
   const [saving,     setSaving]     = useState(false);
   const [detail,     setDetail]     = useState(lead);
   const [editing,    setEditing]    = useState(false);
@@ -295,7 +307,7 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
     setSaving(true);
     try {
       await api.post(`/crm/leads/${lead.id}/followups`, fuForm);
-      setFuForm({ due_date: '', description: '' });
+      setFuForm({ due_date: '', description: '', assigned_to: '' });
       reload();
     } finally { setSaving(false); }
   };
@@ -552,6 +564,12 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
                   <input className={inputCls} placeholder="e.g. Follow up on proposal…"
                     value={fuForm.description} onChange={e => setFuForm(f => ({ ...f, description: e.target.value }))} />
                 </Field>
+                <Field label="Assign To">
+                  <select className={selectCls} value={fuForm.assigned_to} onChange={e => setFuForm(f => ({ ...f, assigned_to: e.target.value }))}>
+                    <option value="">Assign to me</option>
+                    {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                </Field>
                 <div className="flex justify-end">
                   <button type="submit" disabled={saving}
                     className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg transition-colors disabled:opacity-50">
@@ -730,6 +748,8 @@ function stageCountLike(stats, substr) {
 }
 
 export default function CRM() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const openedLeadFromUrl = useRef(null);
   const [leads,    setLeads]    = useState([]);
@@ -750,16 +770,47 @@ export default function CRM() {
   const [fPrio,    setFPrio]    = useState('');
   const [fUser,    setFUser]    = useState('');
   const [sourceCounts, setSourceCounts] = useState(null);
+  const [listPage, setListPage] = useState(1);
+  const [listPageSize, setListPageSize] = useState(25);
+  const [listTotal, setListTotal] = useState(0);
+
+  const roleName = String(user?.role || '').toLowerCase();
+  const ownAssignedOnly = roleName === 'sales executive' || roleName === 'sales manager';
 
   const loadLeads = useCallback(() => {
     const params = {};
+    const uid = Number(user?.id);
+    const effectiveAssignedTo =
+      ownAssignedOnly && Number.isInteger(uid) && uid > 0 ? String(uid) : fUser;
     if (search)  params.search      = search;
     if (fStage)  params.stage_id    = fStage;
     if (fSource) params.source_id   = fSource;
     if (fPrio)   params.priority    = fPrio;
-    if (fUser)   params.assigned_to = fUser;
-    api.get('/crm/leads', { params }).then(r => setLeads(r.data || [])).catch(() => {});
-  }, [search, fStage, fSource, fPrio, fUser]);
+    if (effectiveAssignedTo) params.assigned_to = effectiveAssignedTo;
+
+    const paginatedList = tab === 'List';
+    if (paginatedList) {
+      params.page = listPage;
+      params.page_size = listPageSize;
+    }
+
+    api
+      .get('/crm/leads', { params })
+      .then((r) => {
+        const d = r.data;
+        if (paginatedList && d && typeof d === 'object' && !Array.isArray(d) && Array.isArray(d.data)) {
+          setLeads(d.data);
+          setListTotal(Number(d.total) || 0);
+        } else {
+          const arr = Array.isArray(d) ? d : [];
+          setLeads(arr);
+          if (!paginatedList) {
+            setListTotal(arr.length);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [search, fStage, fSource, fPrio, fUser, ownAssignedOnly, user?.id, tab, listPage, listPageSize]);
 
   const loadStats = useCallback(() => {
     api.get('/crm/leads/stats').then(r => setStats(r.data)).catch(() => {});
@@ -787,7 +838,10 @@ export default function CRM() {
     return () => cancelAnimationFrame(id);
   }, [searchParams]);
 
-  useEffect(() => { loadLeads(); }, [loadLeads]);
+  useEffect(() => {
+    if (tab === 'Follow-ups') return;
+    loadLeads();
+  }, [loadLeads, tab]);
 
   /** Open drawer from `/crm?lead=123` or `?openLead=123` (email / push deep link). */
   useEffect(() => {
@@ -798,14 +852,8 @@ export default function CRM() {
     }
     if (openedLeadFromUrl.current === raw) return;
     openedLeadFromUrl.current = raw;
-    api
-      .get(`/crm/leads/${raw}`)
-      .then((r) => {
-        const row = r.data.lead || r.data;
-        if (row?.id) setDrawer(row);
-      })
-      .catch(() => {});
-  }, [searchParams]);
+    navigate(`/crm/leads/${raw}`);
+  }, [searchParams, navigate]);
 
   const handleCloseDrawer = useCallback(() => {
     setDrawer(null);
@@ -826,13 +874,13 @@ export default function CRM() {
     e.stopPropagation();
     if (!confirm('Delete this lead?')) return;
     await api.delete(`/crm/leads/${id}`);
-    setLeads(prev => prev.filter(l => l.id !== id));
     loadStats();
+    loadLeads();
   };
 
   const openDrawer = (lead) => {
-    // If we have a full lead object, use it. Otherwise fetch by id.
-    setDrawer(lead);
+    if (!lead?.id) return;
+    navigate(`/crm/leads/${lead.id}`);
   };
 
   return (
@@ -842,14 +890,20 @@ export default function CRM() {
         <div>
           <p className="text-[11px] text-slate-500 dark:text-slate-400">Home / CRM / Leads</p>
           <h2 className="text-[16px] font-semibold text-slate-800 dark:text-slate-100 mt-0.5">
-            My leads ({leads.length.toLocaleString('en-IN')})
+            My leads{' '}
+            <span className="tabular-nums">
+              {(tab === 'List' ? listTotal : leads.length).toLocaleString('en-IN')}
+            </span>
+            {tab === 'List' && listTotal > listPageSize ? (
+              <span className="font-normal text-slate-500 dark:text-slate-400"> · page {listPage}</span>
+            ) : null}
           </h2>
           <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Search and filter your pipeline</p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <button
             type="button"
-            onClick={() => setAddModal(true)}
+            onClick={() => navigate('/crm/leads/new')}
             className="btn-wf-primary"
           >
             + New Lead
@@ -897,7 +951,7 @@ export default function CRM() {
         <div className="flex gap-2 overflow-x-auto pb-2 mb-3 -mx-1 px-1 scrollbar-thin">
           <button
             type="button"
-            onClick={() => setFSource('')}
+            onClick={() => { setFSource(''); setListPage(1); }}
             className={`flex-shrink-0 px-3 py-2 rounded-full text-xs font-bold border transition-colors ${
               !fSource
                 ? 'bg-[#E6F1FB] border-[#185FA5] text-[#0C447C]'
@@ -910,7 +964,7 @@ export default function CRM() {
             <button
               key={s.id}
               type="button"
-              onClick={() => setFSource(String(s.id))}
+              onClick={() => { setFSource(String(s.id)); setListPage(1); }}
               className={`flex-shrink-0 px-3 py-2 rounded-full text-xs font-bold border transition-colors ${
                 fSource === String(s.id)
                   ? 'bg-[#E6F1FB] border-[#185FA5] text-[#0C447C]'
@@ -942,7 +996,7 @@ export default function CRM() {
                 <button
                   key={c.key}
                   type="button"
-                  onClick={() => setFStage(c.stageId)}
+                  onClick={() => { setFStage(c.stageId); setListPage(1); }}
                   className={`flex-shrink-0 px-3 py-2 rounded-full text-xs font-bold border transition-colors ${
                     selected
                       ? 'bg-[#E6F1FB] border-[#185FA5] text-[#0C447C]'
@@ -962,27 +1016,46 @@ export default function CRM() {
         <div className="flex flex-wrap gap-2 mb-4">
           <input
             placeholder="Search name, phone, company…"
-            value={search} onChange={e => setSearch(e.target.value)}
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setListPage(1); }}
             className={inputCls + ' flex-1 max-w-100'}
           />
-          <select className={selectCls+'flex-1 max-w-40'} value={fStage} onChange={e => setFStage(e.target.value)}>
+          <select
+            className={selectCls+'flex-1 max-w-40'}
+            value={fStage}
+            onChange={(e) => { setFStage(e.target.value); setListPage(1); }}
+          >
             <option value="">All Stages</option>
             {stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
-          <select className={selectCls+'flex-1 max-w-40'} value={fSource} onChange={e => setFSource(e.target.value)}>
+          <select
+            className={selectCls+'flex-1 max-w-40'}
+            value={fSource}
+            onChange={(e) => { setFSource(e.target.value); setListPage(1); }}
+          >
             <option value="">All Sources</option>
             {sources.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
-          <select className={selectCls+'flex-1 max-w-40'} value={fPrio} onChange={e => setFPrio(e.target.value)}>
+          <select
+            className={selectCls+'flex-1 max-w-40'}
+            value={fPrio}
+            onChange={(e) => { setFPrio(e.target.value); setListPage(1); }}
+          >
             <option value="">All Priority</option>
             <option value="hot">🔥 Hot</option>
             <option value="warm">☀️ Warm</option>
             <option value="cold">❄️ Cold</option>
           </select>
-          <select className={selectCls+'flex-1 max-w-60'} value={fUser} onChange={e => setFUser(e.target.value)}>
-            <option value="">All Reps</option>
-            {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-          </select>
+          {!ownAssignedOnly && (
+            <select
+              className={selectCls+'flex-1 max-w-60'}
+              value={fUser}
+              onChange={(e) => { setFUser(e.target.value); setListPage(1); }}
+            >
+              <option value="">All Reps</option>
+              {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          )}
         </div>
       )}
 
@@ -1050,7 +1123,7 @@ export default function CRM() {
                             <button
                               type="button"
                               className="w-full px-3 py-2 text-sm text-left hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200"
-                              onClick={() => setListEditLead(l)}
+                              onClick={() => navigate(`/crm/leads/${l.id}/edit`)}
                             >
                               Edit lead
                             </button>
@@ -1075,6 +1148,62 @@ export default function CRM() {
                 ))}
               </tbody>
             </table>
+          )}
+          {tab === 'List' && listTotal > 0 && (
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-3 border-t border-slate-100 dark:border-slate-700/50 bg-slate-50/80 dark:bg-slate-900/30">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Showing{' '}
+                <span className="font-semibold text-slate-700 dark:text-slate-200 tabular-nums">
+                  {Math.min((listPage - 1) * listPageSize + 1, listTotal)}
+                </span>
+                –
+                <span className="font-semibold text-slate-700 dark:text-slate-200 tabular-nums">
+                  {Math.min(listPage * listPageSize, listTotal)}
+                </span>
+                {' '}of <span className="tabular-nums">{listTotal.toLocaleString('en-IN')}</span>
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
+                  <span>Per page</span>
+                  <select
+                    className={selectCls + ' py-1.5 text-xs min-w-[4.5rem]'}
+                    value={listPageSize}
+                    onChange={(e) => {
+                      setListPageSize(Number(e.target.value));
+                      setListPage(1);
+                    }}
+                  >
+                    <option value={10}>10</option>
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                  </select>
+                </label>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    disabled={listPage <= 1}
+                    onClick={() => setListPage((p) => Math.max(1, p - 1))}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-600
+                      text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800 disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-xs text-slate-500 dark:text-slate-400 px-2 tabular-nums">
+                    {listPage} / {Math.max(1, Math.ceil(listTotal / listPageSize))}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={listPage * listPageSize >= listTotal}
+                    onClick={() => setListPage((p) => p + 1)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-600
+                      text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800 disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
         </div>
       )}

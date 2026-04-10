@@ -24,7 +24,7 @@ export class SettingsService {
     const existing = await this.getCompanySettings();
     let result: any;
     if (existing) {
-      const fields = ['company_name','gstin','address','phone','email','logo_url','currency','fiscal_year_start','invoice_tagline','payment_terms','invoice_bank_details','bank_name','bank_branch','bank_account_number','bank_ifsc'];
+      const fields = ['company_name','gstin','address','phone','email','logo_url','favicon_url','currency','fiscal_year_start','invoice_tagline','payment_terms','invoice_bank_details','bank_name','bank_branch','bank_account_number','bank_ifsc'];
       const sets: string[] = []; const vals: any[] = []; let i = 1;
       for (const f of fields) { if(data[f]!==undefined){ sets.push(`${f}=$${i++}`); vals.push(data[f]); } }
       sets.push('updated_at=NOW()');
@@ -32,8 +32,8 @@ export class SettingsService {
       result = (await this.db.query(`UPDATE company_settings SET ${sets.join(',')} WHERE id=$${i} RETURNING *`, vals)).rows[0];
     } else {
       result = (await this.db.query(
-        'INSERT INTO company_settings (company_name,gstin,address,phone,email,logo_url,currency,fiscal_year_start,invoice_tagline,payment_terms,invoice_bank_details,bank_name,bank_branch,bank_account_number,bank_ifsc) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *',
-        [data.company_name||'My Company', data.gstin, data.address, data.phone, data.email, data.logo_url, data.currency||'INR', data.fiscal_year_start, data.invoice_tagline, data.payment_terms, data.invoice_bank_details, data.bank_name, data.bank_branch, data.bank_account_number, data.bank_ifsc],
+        'INSERT INTO company_settings (company_name,gstin,address,phone,email,logo_url,favicon_url,currency,fiscal_year_start,invoice_tagline,payment_terms,invoice_bank_details,bank_name,bank_branch,bank_account_number,bank_ifsc) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *',
+        [data.company_name||'My Company', data.gstin, data.address, data.phone, data.email, data.logo_url, data.favicon_url, data.currency||'INR', data.fiscal_year_start, data.invoice_tagline, data.payment_terms, data.invoice_bank_details, data.bank_name, data.bank_branch, data.bank_account_number, data.bank_ifsc],
       )).rows[0];
     }
     await this.cache.del('company:settings');
@@ -55,6 +55,22 @@ export class SettingsService {
     }
     const rel = `/uploads/company/${filename}`;
     return this.upsertCompanySettings({ logo_url: rel }, actorId);
+  }
+
+  /** Save uploaded favicon file path and remove previous file under /uploads/company/. */
+  async setCompanyFaviconFromUpload(filename: string, actorId?: number) {
+    await this.cache.del('company:settings');
+    const prev = (await this.db.query('SELECT favicon_url FROM company_settings LIMIT 1')).rows[0]?.favicon_url as string | undefined;
+    if (prev && prev.startsWith('/uploads/company/')) {
+      const fp = join(process.cwd(), 'uploads', 'company', basename(prev));
+      try {
+        if (existsSync(fp)) unlinkSync(fp);
+      } catch {
+        /* ignore */
+      }
+    }
+    const rel = `/uploads/company/${filename}`;
+    return this.upsertCompanySettings({ favicon_url: rel }, actorId);
   }
 
   async listPermissions() {

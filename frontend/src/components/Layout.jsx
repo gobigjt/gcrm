@@ -1,19 +1,26 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useModules } from '../context/ModuleContext';
 import { useTheme } from '../context/ThemeContext';
 
 const PAGE_META = {
   '/': { title: 'Dashboard', cta: '+ New Lead', ctaTo: '/crm?tab=list' },
-  '/crm': { title: 'CRM', cta: '+ New Lead', ctaTo: '/crm?tab=list' },
+  '/crm': { title: 'CRM', cta: '+ New Lead', ctaTo: '/crm/leads/new' },
   '/sales': { title: 'Sales', cta: '+ Quotation', ctaTo: '/sales/quotes/new' },
   '/sales/quotes': { title: 'Quotes', cta: '+ Quotation', ctaTo: '/sales/quotes/new' },
   '/sales/orders': { title: 'Orders', cta: '+ Order', ctaTo: '/sales/orders/new' },
   '/sales/invoices': { title: 'Invoices', cta: '+ Invoice', ctaTo: '/sales/invoices/new' },
-  '/inventory': { title: 'Inventory', cta: '+ Product', ctaTo: '/inventory?tab=products' },
+  '/inventory': { title: 'Inventory', cta: '+ Product', ctaTo: '/inventory/products/new' },
+  '/inventory/products': { title: 'Products', cta: '+ Product', ctaTo: '/inventory/products/new' },
+  '/inventory/warehouses': { title: 'Warehouses', cta: '+ Product', ctaTo: '/inventory/products/new' },
+  '/inventory/adjustments': { title: 'Stock Adjustment', cta: '+ Product', ctaTo: '/inventory/products/new' },
+  '/inventory/brands': { title: 'Brands', cta: '+ Product', ctaTo: '/inventory/products/new' },
+  '/inventory/categories': { title: 'Categories', cta: '+ Product', ctaTo: '/inventory/products/new' },
   '/hr': { title: 'HR', cta: '+ Employee', ctaTo: '/hr' },
   '/settings': { title: 'Settings', cta: 'Save All', ctaTo: '/settings' },
+  '/profile': { title: 'Profile', cta: 'Open Settings', ctaTo: '/settings' },
   '/users': { title: 'Users & Roles', cta: '+ Invite User', ctaTo: '/users?tab=users' },
 };
 
@@ -43,8 +50,11 @@ const NAV_SECTIONS = [
   {
     label: 'Inventory',
     items: [
-      { to: '/inventory?tab=products', label: 'Products', icon: '◆', module: 'inventory' },
-      { to: '/inventory?tab=warehouses', label: 'Warehouses', icon: '◫', module: 'inventory' },
+      { to: '/inventory/products', label: 'Products', icon: '◆', module: 'inventory' },
+      { to: '/inventory/warehouses', label: 'Warehouses', icon: '◫', module: 'inventory' },
+      { to: '/inventory/adjustments', label: 'Stock Adjustment', icon: '⇅', module: 'inventory' },
+      { to: '/inventory/brands', label: 'Brands', icon: '◍', module: 'inventory' },
+      { to: '/inventory/categories', label: 'Categories', icon: '◌', module: 'inventory' },
     ],
   },
   {
@@ -110,6 +120,25 @@ const roleColors = {
   default:       'bg-slate-100  text-slate-600  dark:bg-slate-700     dark:text-slate-300',
 };
 
+function resolveCompanyAsset(url) {
+  if (!url || typeof url !== 'string') return '';
+  if (/^https?:\/\//i.test(url)) return url;
+  const p = url.startsWith('/') ? url : `/${url}`;
+  const apiBase = String(api?.defaults?.baseURL || '').trim();
+  if (/^https?:\/\//i.test(apiBase)) {
+    try {
+      const u = new URL(apiBase);
+      return `${u.origin}${p}`;
+    } catch {
+      /* fall through */
+    }
+  }
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return `${window.location.origin}${p}`;
+  }
+  return p;
+}
+
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
   const { canAccess } = useModules();
@@ -119,6 +148,25 @@ export default function Layout({ children }) {
   const pathRef = useRef(pathname);
   const [routeBusy, setRouteBusy] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef(null);
+  const [companyBranding, setCompanyBranding] = useState({ logo_url: '', favicon_url: '', company_name: '' });
+
+  useEffect(() => {
+    api.get('/settings/company').then((r) => setCompanyBranding(r.data || {})).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const href = resolveCompanyAsset(companyBranding?.favicon_url);
+    if (!href || typeof document === 'undefined') return;
+    let link = document.querySelector("link[rel*='icon']");
+    if (!link) {
+      link = document.createElement('link');
+      link.setAttribute('rel', 'icon');
+      document.head.appendChild(link);
+    }
+    link.setAttribute('href', href);
+  }, [companyBranding?.favicon_url]);
 
   // Menu click / route change: top bar (BrowserRouter has no useNavigation; pathname is the signal).
   useLayoutEffect(() => {
@@ -127,6 +175,7 @@ export default function Layout({ children }) {
     const t = window.setTimeout(() => {
       setRouteBusy(true);
       setMobileNavOpen(false);
+      setUserMenuOpen(false);
     }, 0);
     return () => window.clearTimeout(t);
   }, [pathname]);
@@ -151,6 +200,17 @@ export default function Layout({ children }) {
     };
   }, [mobileNavOpen]);
 
+  useEffect(() => {
+    const onDown = (e) => {
+      if (!userMenuRef.current) return;
+      if (!userMenuRef.current.contains(e.target)) {
+        setUserMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, []);
+
   const navTransitioning = routeBusy;
 
   const navSections = useMemo(
@@ -166,6 +226,9 @@ export default function Layout({ children }) {
   );
 
   const roleCls = roleColors[user?.role] || roleColors.default;
+  const displayName = (user?.name || user?.email || 'User').toString().trim() || 'User';
+  const logoSrc = resolveCompanyAsset(companyBranding?.logo_url);
+  const brandName = (companyBranding?.company_name || 'EzCRM Pro').toString();
   const pageKey = Object.keys(PAGE_META)
     .filter((p) => p === '/' || pathname.startsWith(p))
     .sort((a, b) => b.length - a.length)[0] || '/';
@@ -209,10 +272,17 @@ export default function Layout({ children }) {
           ${!mobileNavOpen ? 'max-md:pointer-events-none' : ''}
         `}
       >
-        <div className="h-[52px] border-b border-slate-200 dark:border-slate-700/50 px-4 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-7 h-7 rounded-md bg-[#534ab7] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">EZ</div>
-            <div className="text-[14px] font-semibold text-slate-800 dark:text-slate-100 truncate">EzCRM Pro</div>
+        <div className="h-[52px] border-b border-slate-200 dark:border-slate-700/50 px-3 flex items-center gap-2 w-full">
+          <div className="flex items-center min-w-0 w-full justify-center md:justify-start">
+            {logoSrc ? (
+              <img
+                src={logoSrc}
+                alt="Company logo"
+                className="h-12 w-full max-w-[180px] rounded-md object-contain bg-white dark:bg-slate-900 p-0.5"
+              />
+            ) : (
+              <div className="h-12 w-full max-w-[180px] rounded-md bg-[#534ab7] flex items-center justify-center text-white text-xs font-bold">EZ</div>
+            )}
           </div>
           <button
             type="button"
@@ -289,19 +359,52 @@ export default function Layout({ children }) {
             {dark ? '☀️' : '🌙'}
           </button>
           <div className="hidden sm:flex items-center gap-2">
-            <div className="w-7 h-7 rounded-full bg-[#eeedfe] text-[#3c3489] flex items-center justify-center text-xs font-semibold">
-              {user?.name?.[0]?.toUpperCase() || 'U'}
-            </div>
             <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${roleCls}`}>{user?.role}</span>
-            <button
-              onClick={async () => {
-                await logout();
-                navigate('/login');
-              }}
-              className="text-xs text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 px-2 py-1"
-            >
-              Sign out
-            </button>
+            <div className="relative" ref={userMenuRef}>
+              <button
+                type="button"
+                onClick={() => setUserMenuOpen((v) => !v)}
+                className="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-700 px-2 py-1 bg-white dark:bg-slate-800 hover:border-brand-400"
+                aria-haspopup="menu"
+                aria-expanded={userMenuOpen}
+              >
+                <div className="w-7 h-7 rounded-full bg-[#eeedfe] text-[#3c3489] flex items-center justify-center text-xs font-semibold">
+                  {displayName[0]?.toUpperCase() || 'U'}
+                </div>
+                <span className="max-w-[140px] truncate text-xs font-medium text-slate-700 dark:text-slate-200" title={displayName}>
+                  {displayName}
+                </span>
+                <span className="text-[10px] text-slate-400">▾</span>
+              </button>
+              {userMenuOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 mt-2 w-40 rounded-xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-[#13152a] shadow-lg z-20 overflow-hidden"
+                >
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/60"
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      navigate('/profile');
+                    }}
+                  >
+                    Profile
+                  </button>
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-slate-50 dark:hover:bg-slate-800/60"
+                    onClick={async () => {
+                      setUserMenuOpen(false);
+                      await logout();
+                      navigate('/login');
+                    }}
+                  >
+                    Sign out
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 

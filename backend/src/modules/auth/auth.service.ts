@@ -110,4 +110,16 @@ export class AuthService {
     );
     return res.rows[0];
   }
+
+  async changePassword(userId: number, currentPassword: string, newPassword: string) {
+    const res = await this.db.query('SELECT id,password FROM users WHERE id=$1 AND is_active=TRUE', [userId]);
+    const row = res.rows[0];
+    if (!row) throw new UnauthorizedException('User not found');
+    const ok = await bcrypt.compare(currentPassword, row.password);
+    if (!ok) throw new UnauthorizedException('Current password is incorrect');
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await this.db.query('UPDATE users SET password=$2 WHERE id=$1', [userId, hashed]);
+    this.audit.log({ user_id: userId, action: 'change_password', module: 'auth' });
+    return { message: 'Password updated' };
+  }
 }

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { RedisService }    from '../../redis/redis.service';
 
@@ -6,32 +6,147 @@ import { RedisService }    from '../../redis/redis.service';
 export class InventoryService {
   constructor(private readonly db: DatabaseService, private readonly cache: RedisService) {}
 
+  async listBrands() {
+    return (await this.db.query('SELECT * FROM brands ORDER BY name')).rows;
+  }
+
+  async createBrand(d: any) {
+    const name = (d?.name ?? '').toString().trim();
+    if (!name) return null;
+    const res = await this.db.query(
+      `INSERT INTO brands (name) VALUES ($1)
+       ON CONFLICT (name) DO UPDATE SET name=EXCLUDED.name
+       RETURNING *`,
+      [name],
+    );
+    await this.cache.delPattern('products:*');
+    return res.rows[0];
+  }
+
+  async updateBrand(id: number, d: any) {
+    const name = (d?.name ?? '').toString().trim();
+    if (!name) return null;
+    const res = await this.db.query('UPDATE brands SET name=$2 WHERE id=$1 RETURNING *', [id, name]);
+    await this.cache.delPattern('products:*');
+    return res.rows[0];
+  }
+
+  async deleteBrand(id: number) {
+    const used = (await this.db.query('SELECT COUNT(*)::int AS c FROM products WHERE brand_id=$1', [id])).rows[0]?.c ?? 0;
+    if (used > 0) throw new BadRequestException('Brand is used by products and cannot be deleted');
+    const res = await this.db.query('DELETE FROM brands WHERE id=$1 RETURNING *', [id]);
+    await this.cache.delPattern('products:*');
+    return res.rows[0];
+  }
+
+  async listCategories() {
+    return (await this.db.query('SELECT * FROM categories ORDER BY name')).rows;
+  }
+
+  async createCategory(d: any) {
+    const name = (d?.name ?? '').toString().trim();
+    if (!name) return null;
+    const res = await this.db.query(
+      `INSERT INTO categories (name) VALUES ($1)
+       ON CONFLICT (name) DO UPDATE SET name=EXCLUDED.name
+       RETURNING *`,
+      [name],
+    );
+    await this.cache.delPattern('products:*');
+    return res.rows[0];
+  }
+
+  async updateCategory(id: number, d: any) {
+    const old = (await this.db.query('SELECT * FROM categories WHERE id=$1', [id])).rows[0];
+    if (!old) return null;
+    const name = (d?.name ?? '').toString().trim();
+    if (!name) return null;
+    const res = await this.db.transaction(async (client) => {
+      const upd = await client.query('UPDATE categories SET name=$2 WHERE id=$1 RETURNING *', [id, name]);
+      await client.query('UPDATE products SET category=$2 WHERE category=$1', [old.name, name]);
+      return upd.rows[0];
+    });
+    await this.cache.delPattern('products:*');
+    return res;
+  }
+
+  async deleteCategory(id: number) {
+    const cat = (await this.db.query('SELECT * FROM categories WHERE id=$1', [id])).rows[0];
+    if (!cat) return null;
+    const used = (await this.db.query('SELECT COUNT(*)::int AS c FROM products WHERE category=$1', [cat.name])).rows[0]?.c ?? 0;
+    if (used > 0) throw new BadRequestException('Category is used by products and cannot be deleted');
+    const res = await this.db.query('DELETE FROM categories WHERE id=$1 RETURNING *', [id]);
+    await this.cache.delPattern('products:*');
+    return res.rows[0];
+  }
+
   async listProducts(search?: string) {
     const cacheKey = `products:${search||''}`;
     const cached = await this.cache.get<any[]>(cacheKey);
     if (cached) return cached;
     const vals = search ? [`%${search}%`] : [];
-    const where = search ? 'WHERE name ILIKE $1 OR sku ILIKE $1 OR hsn_code ILIKE $1' : '';
-    const rows = (await this.db.query(`SELECT * FROM products ${where} ORDER BY name`, vals)).rows;
+    const where = search ? 'WHERE p.name ILIKE $1 OR p.sku ILIKE $1 OR p.hsn_code ILIKE $1 OR p.code ILIKE $1 OR p.category ILIKE $1' : '';
+    const rows = (await this.db.query(
+      `SELECT p.*,
+          b.name AS brand_name,
+          COALESCE(st.total_stock, 0) AS total_stock
+       FROM products p
+       LEFT JOIN brands b ON b.id = p.brand_id
+       LEFT JOIN (
+         SELECT product_id, SUM(quantity) AS total_stock
+         FROM stock
+         GROUP BY product_id
+       ) st ON st.product_id = p.id
+       ${where}
+       ORDER BY p.name`,
+      vals,
+    )).rows;
     await this.cache.set(cacheKey, rows, 300);
     return rows;
   }
-  async getProduct(id: number) { return (await this.db.query('SELECT * FROM products WHERE id=$1', [id])).rows[0]; }
+  async getProduct(id: number) {
+    return (await this.db.query(
+      `SELECT p.*,
+          b.name AS brand_name,
+          COALESCE(st.total_stock, 0) AS total_stock
+       FROM products p
+       LEFT JOIN brands b ON b.id = p.brand_id
+       LEFT JOIN (
+         SELECT product_id, SUM(quantity) AS total_stock
+         FROM stock
+         GROUP BY product_id
+       ) st ON st.product_id = p.id
+       WHERE p.id=$1`,
+      [id],
+    )).rows[0];
+  }
   async createProduct(d: any) {
     const res = await this.db.query(
-      'INSERT INTO products (name,sku,hsn_code,description,unit,purchase_price,sale_price,gst_rate,low_stock_alert) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
-      [d.name, d.sku, d.hsn_code, d.description, d.unit||'pcs', d.purchase_price||0, d.sale_price||0, d.gst_rate||0, d.low_stock_alert||0],
+      'INSERT INTO products (name,code,sku,hsn_code,category,brand_id,description,unit,purchase_price,sale_price,image_url,gst_rate,low_stock_alert) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
+      [d.name, d.code, d.sku, d.hsn_code, d.category, d.brand_id, d.description, d.unit||'pcs', d.purchase_price||0, d.sale_price||0, d.image_url, d.gst_rate||0, d.low_stock_alert||0],
     );
     await this.cache.delPattern('products:*');
     return res.rows[0];
   }
   async updateProduct(id: number, d: any) {
-    const fields = ['name','sku','hsn_code','description','unit','purchase_price','sale_price','gst_rate','low_stock_alert','is_active'];
+    const fields = ['name','code','sku','hsn_code','category','brand_id','description','unit','purchase_price','sale_price','image_url','gst_rate','low_stock_alert','is_active'];
     const sets: string[] = []; const vals: any[] = []; let i = 1;
     for (const f of fields) { if(d[f]!==undefined){ sets.push(`${f}=$${i++}`); vals.push(d[f]); } }
     if(!sets.length) return null;
     vals.push(id);
     const res = await this.db.query(`UPDATE products SET ${sets.join(',')} WHERE id=$${i} RETURNING *`, vals);
+    await this.cache.delPattern('products:*');
+    return res.rows[0];
+  }
+
+  async deleteProduct(id: number) {
+    const res = await this.db.query('DELETE FROM products WHERE id=$1 RETURNING *', [id]);
+    await this.cache.delPattern('products:*');
+    return res.rows[0];
+  }
+
+  async setProductImage(id: number, imageUrl: string) {
+    const res = await this.db.query('UPDATE products SET image_url=$2 WHERE id=$1 RETURNING *', [id, imageUrl]);
     await this.cache.delPattern('products:*');
     return res.rows[0];
   }

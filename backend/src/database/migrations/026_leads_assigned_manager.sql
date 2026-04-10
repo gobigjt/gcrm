@@ -1,0 +1,3 @@
+ALTER TABLE leads
+  ADD COLUMN IF NOT EXISTS assigned_manager_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+

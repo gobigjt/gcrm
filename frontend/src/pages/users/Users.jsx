@@ -217,6 +217,7 @@ function UsersTab({ allPerms, roles }) {
 
   const [cForm, setCForm] = useState({ name:'', email:'', password:'', role:'Sales Executive' });
   const [eForm, setEForm] = useState({ name:'', email:'', role:'Sales Executive', newPassword:'' });
+  const selectableRoles = roles.filter((r) => String(r?.name || '').toLowerCase() !== 'super admin');
 
   const load = useCallback(() =>
     api.get('/users').then(r => setUsers(r.data || [])).catch(() => {}), []);
@@ -335,7 +336,7 @@ function UsersTab({ allPerms, roles }) {
               </Field>
               <Field label="Role">
                 <select className={selectCls} value={cForm.role} onChange={setC('role')}>
-                  {roles.map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
+                  {selectableRoles.map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
                 </select>
               </Field>
             </div>
@@ -357,7 +358,7 @@ function UsersTab({ allPerms, roles }) {
               </Field>
               <Field label="Role">
                 <select className={selectCls} value={eForm.role} onChange={setE('role')}>
-                  {roles.map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
+                  {selectableRoles.map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
                 </select>
               </Field>
               <Field label="New Password">

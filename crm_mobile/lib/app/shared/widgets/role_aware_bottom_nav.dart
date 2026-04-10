@@ -4,7 +4,7 @@ import 'package:get/get.dart';
 import '../../core/auth/showcase_role.dart';
 import '../../modules/auth/auth_controller.dart';
 
-/// Bottom bar from EZcrmcrm_mobile_showcase_1.html — varies by backend role.
+/// Bottom bar — varies by backend role.
 class RoleAwareBottomNav extends StatelessWidget {
   const RoleAwareBottomNav({super.key, required this.currentRoute});
 
@@ -17,22 +17,54 @@ class RoleAwareBottomNav extends StatelessWidget {
     final items = ShowcaseRoles.bottomNav(role);
     final activeIndex = ShowcaseRoles.bottomNavIndex(role, currentRoute);
 
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final tight = items.length > 5;
+
+    // Theme-aware accent colors
+    final activeIconColor = isDark ? scheme.primary : const Color(0xFF185FA5);
+    final activeLabelColor = isDark ? scheme.primary : const Color(0xFF0C447C);
+    final activeBg = isDark
+        ? scheme.primary.withValues(alpha: 0.15)
+        : const Color(0xFFE6F1FB);
+    final inactiveColor = isDark
+        ? scheme.onSurfaceVariant.withValues(alpha: 0.7)
+        : Theme.of(context).hintColor;
+
     return SafeArea(
       top: false,
       child: Container(
         height: 72,
         padding: EdgeInsets.symmetric(horizontal: tight ? 4 : 10),
         decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          border: Border(top: BorderSide(color: Theme.of(context).dividerColor, width: 0.5)),
+          color: isDark ? scheme.surface : Colors.white,
+          border: Border(
+            top: BorderSide(
+              color: isDark
+                  ? scheme.outlineVariant.withValues(alpha: 0.35)
+                  : scheme.outlineVariant.withValues(alpha: 0.6),
+              width: 0.8,
+            ),
+          ),
+          boxShadow: isDark
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.25),
+                    blurRadius: 12,
+                    offset: const Offset(0, -3),
+                  ),
+                ]
+              : [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 8,
+                    offset: const Offset(0, -2),
+                  ),
+                ],
         ),
         child: Row(
           children: List.generate(items.length, (idx) {
             final active = idx == activeIndex;
-            const accent = Color(0xFF0C447C);
-            final labelColor = active ? accent : Theme.of(context).hintColor;
-            final iconColor = active ? accent : Theme.of(context).hintColor;
             return Expanded(
               child: InkWell(
                 borderRadius: BorderRadius.circular(16),
@@ -40,26 +72,30 @@ class RoleAwareBottomNav extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
                       decoration: BoxDecoration(
-                        color: active ? const Color(0xFFE6F1FB) : Colors.transparent,
+                        color: active ? activeBg : Colors.transparent,
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Icon(
                         items[idx].icon,
                         size: 22,
-                        color: iconColor,
+                        color: active ? activeIconColor : inactiveColor,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 3),
                     Text(
                       items[idx].label,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: labelColor,
-                            fontWeight: active ? FontWeight.w800 : FontWeight.w500,
+                            color: active ? activeLabelColor : inactiveColor,
+                            fontWeight: active
+                                ? FontWeight.w800
+                                : FontWeight.w500,
                             fontSize: tight ? 10 : 11,
                           ),
                     ),

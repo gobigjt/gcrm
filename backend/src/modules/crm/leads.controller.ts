@@ -13,38 +13,73 @@ import { LeadsService }  from './leads.service';
 export class LeadsController {
   constructor(private readonly svc: LeadsService) {}
 
+  private async assertLeadAccess(id: number, u: any) {
+    const lead = await this.svc.get(id, u);
+    if (!lead) throw new NotFoundException();
+  }
+
   @Get('stages')    stages()    { return this.svc.stages(); }
   @Get('sources')   sources()   { return this.svc.sources(); }
-  @Get('source-counts') sourceCounts() { return this.svc.sourceCounts(); }
+  @Get('source-counts') sourceCounts(@CurrentUser() u: any) { return this.svc.sourceCounts(u); }
   @Get('assignees') assignees() { return this.svc.assignees(); }
-  @Get('stats')     stats()     { return this.svc.stats(); }
-  @Get('followups') allFollowups(@Query() q: any) { return this.svc.allFollowups(q); }
+  @Get('stats')     stats(@CurrentUser() u: any)     { return this.svc.stats(u); }
+  @Get('followups') allFollowups(@Query() q: any, @CurrentUser() u: any) { return this.svc.allFollowups(q, u); }
 
-  @Get()   list(@Query() q: any)       { return this.svc.list(q); }
+  @Get()
+  @ApiOperation({ summary: 'List leads (optional pagination: pass page>=1 → { data, total, page, page_size })' })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: 'If set (>=1), response is paginated object' })
+  @ApiQuery({ name: 'page_size', required: false, type: Number, description: 'Page size (default 25, max 100)' })
+  list(@Query() q: any, @CurrentUser() u: any) {
+    return this.svc.list(q, u);
+  }
   @Post()  create(@Body() b: any)      { return this.svc.create(b); }
 
   @Get(':id')
-  async show(@Param('id') id: string) {
-    const lead = await this.svc.get(Number(id));
+  async show(@Param('id') id: string, @CurrentUser() u: any) {
+    const lead = await this.svc.get(Number(id), u);
     if (!lead) throw new NotFoundException();
     return { lead };
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() b: any) { return this.svc.update(Number(id), b); }
+  async update(@Param('id') id: string, @Body() b: any, @CurrentUser() u: any) {
+    const leadId = Number(id);
+    await this.assertLeadAccess(leadId, u);
+    return this.svc.update(leadId, b);
+  }
 
   @UseGuards(RolesGuard) @Roles('Admin','Manager')
   @Delete(':id')
-  remove(@Param('id') id: string) { return this.svc.remove(Number(id)); }
-
-  @Get(':id/activities')  activities(@Param('id') id: string)  { return this.svc.activities(Number(id)); }
-  @Post(':id/activities') addActivity(@Param('id') id: string, @Body() b: any, @CurrentUser() u: any) {
-    return this.svc.addActivity(Number(id), u.id, b.type, b.description);
+  async remove(@Param('id') id: string, @CurrentUser() u: any) {
+    const leadId = Number(id);
+    await this.assertLeadAccess(leadId, u);
+    return this.svc.remove(leadId);
   }
 
-  @Get(':id/followups')  followups(@Param('id') id: string) { return this.svc.followups(Number(id)); }
-  @Post(':id/followups') addFollowup(@Param('id') id: string, @Body() b: any, @CurrentUser() u: any) {
-    return this.svc.addFollowup(Number(id), { ...b, assigned_to: b.assigned_to || u.id });
+  @Get(':id/activities')
+  async activities(@Param('id') id: string, @CurrentUser() u: any)  {
+    const leadId = Number(id);
+    await this.assertLeadAccess(leadId, u);
+    return this.svc.activities(leadId);
+  }
+  @Post(':id/activities')
+  async addActivity(@Param('id') id: string, @Body() b: any, @CurrentUser() u: any) {
+    const leadId = Number(id);
+    await this.assertLeadAccess(leadId, u);
+    return this.svc.addActivity(leadId, u.id, b.type, b.description);
+  }
+
+  @Get(':id/followups')
+  async followups(@Param('id') id: string, @CurrentUser() u: any) {
+    const leadId = Number(id);
+    await this.assertLeadAccess(leadId, u);
+    return this.svc.followups(leadId);
+  }
+  @Post(':id/followups')
+  async addFollowup(@Param('id') id: string, @Body() b: any, @CurrentUser() u: any) {
+    const leadId = Number(id);
+    await this.assertLeadAccess(leadId, u);
+    return this.svc.addFollowup(leadId, { ...b, assigned_to: b.assigned_to || u.id });
   }
 
   @Patch(':id/followups/:fid/done')

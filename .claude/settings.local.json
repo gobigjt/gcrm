@@ -8,7 +8,9 @@
       "WebFetch(domain:www.helloleads.io)",
       "Bash(find /c/dev/herd-projects/crm/backend/src -name \"*.ts\" -type f -exec grep -l \"webhook\\\\|Webhook\" {} \\\\;)",
       "Bash(git log:*)",
-      "Bash(grep -E \"\\\\.sql$\")"
+      "Bash(grep -E \"\\\\.sql$\")",
+      "Bash(flutter pub:*)",
+      "Bash(dart run:*)"
     ]
   }
 }

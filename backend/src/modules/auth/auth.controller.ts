@@ -3,6 +3,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation, ApiBody, ApiResponse } from '@nes
 import { AuthService }  from './auth.service';
 import { LoginDto }     from './dto/login.dto';
 import { RegisterDto }  from './dto/register.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser }  from '../../common/decorators/current-user.decorator';
 
@@ -43,4 +44,12 @@ export class AuthController {
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Get current authenticated user' })
   me(@CurrentUser() user: any) { return this.auth.me(user.id); }
+
+  @Post('change-password')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Change current user password' })
+  changePassword(@CurrentUser() user: any, @Body() dto: ChangePasswordDto) {
+    return this.auth.changePassword(user.id, dto.current_password, dto.new_password);
+  }
 }
