@@ -8,6 +8,21 @@ import { SALES_FROM_LEAD_PARAM } from '../../utils/salesFromLeadUrl';
 import Modal from '../../components/Modal';
 import { Field, inputCls, selectCls, FormActions } from '../../components/FormField';
 
+// ─── Constants ───────────────────────────────────────────────
+
+const INDIAN_STATES = [
+  'Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Goa','Gujarat',
+  'Haryana','Himachal Pradesh','Jharkhand','Karnataka','Kerala','Madhya Pradesh',
+  'Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Punjab',
+  'Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh',
+  'Uttarakhand','West Bengal',
+];
+const PAYMENT_TERMS_OPTIONS = [
+  'Net 15 Days','Net 30 Days','Net 45 Days','Net 60 Days',
+  'Due on Receipt','Cash on Delivery','Advance Payment',
+];
+const PAYMENT_METHOD_OPTIONS = ['Cash','Card','UPI','Bank Transfer','Cheque','Other'];
+
 // ─── Helpers ─────────────────────────────────────────────────
 
 const fmt  = n  => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -62,6 +77,32 @@ const StatCard = ({ icon, label, value, sub }) => (
     </div>
   </div>
 );
+
+// ─── Page Header & Section Card ──────────────────────────────
+
+function PageHeader({ title, subtitle, onBack }) {
+  return (
+    <div className="flex items-center gap-3 mb-6">
+      <button type="button" onClick={onBack}
+        className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+        ← Back
+      </button>
+      <div>
+        <h2 className="text-[16px] font-semibold text-slate-800 dark:text-slate-100">{title}</h2>
+        {subtitle && <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{subtitle}</p>}
+      </div>
+    </div>
+  );
+}
+
+function SectionCard({ title, children }) {
+  return (
+    <div className="bg-white dark:bg-[#13152a] rounded-2xl border border-slate-200 dark:border-slate-700/50 p-5 space-y-4">
+      {title && <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 border-b border-slate-100 dark:border-slate-700/50 pb-3">{title}</h3>}
+      {children}
+    </div>
+  );
+}
 
 // ─── Filter Bar ───────────────────────────────────────────────
 
@@ -274,12 +315,23 @@ function SettingsDropdown({ options }) {
 
 const EMPTY_LINE = { product_id: '', description: '', quantity: 1, unit_price: 0, discount: 0, gst_rate: 0 };
 
-function calcLine(l) {
-  const base     = Number(l.quantity) * Number(l.unit_price);
-  const lineDisc = Number(l.discount || 0);
-  const taxable  = base - lineDisc;
-  const gst      = taxable * Number(l.gst_rate) / 100;
-  return { ...l, base, taxable, gst, total: taxable + gst };
+function calcLine(l, taxType = 'exclusive') {
+  const base   = Math.max(1, parseInt(l.quantity, 10) || 1) * Number(l.unit_price);
+  const preTax = base - Number(l.discount || 0);
+  const rate   = Number(l.gst_rate) / 100;
+
+  if (taxType === 'no_tax') {
+    return { ...l, base, taxable: preTax, gst: 0, total: preTax };
+  }
+  if (taxType === 'inclusive') {
+    // unit_price already includes GST — back-calculate the tax portion
+    const taxable = rate > 0 ? preTax / (1 + rate) : preTax;
+    const gst     = preTax - taxable;
+    return { ...l, base, taxable, gst, total: preTax };
+  }
+  // exclusive (default): GST added on top
+  const gst = preTax * rate;
+  return { ...l, base, taxable: preTax, gst, total: preTax + gst };
 }
 
 function calcTotals(lines, interstate, discAmt = 0, shippingAmt = 0, roundOff = 0) {
@@ -292,9 +344,9 @@ function calcTotals(lines, interstate, discAmt = 0, shippingAmt = 0, roundOff = 
   return { subtotal, cgst, sgst, igst, grandTotal };
 }
 
-function TotalSummary({ lines, interstate, discountAmount = 0, shippingAmount = 0, roundOff = 0 }) {
+function TotalSummary({ lines, interstate, taxType = 'exclusive', discountAmount = 0, shippingAmount = 0, roundOff = 0 }) {
   const { subtotal, cgst, sgst, igst, grandTotal } = calcTotals(
-    lines.map(calcLine), interstate, discountAmount, shippingAmount, roundOff,
+    lines.map(l => calcLine(l, taxType)), interstate, discountAmount, shippingAmount, roundOff,
   );
   const disc = Number(discountAmount || 0);
   const ship = Number(shippingAmount || 0);
@@ -318,8 +370,8 @@ function TotalSummary({ lines, interstate, discountAmount = 0, shippingAmount = 
   );
 }
 
-function LineItems({ items, onChange, products, interstate = false, showDiscount = false }) {
-  const lines = items.map(calcLine);
+function LineItems({ items, onChange, products, interstate = false, taxType = 'exclusive', showDiscount = false }) {
+  const lines = items.map(l => calcLine(l, taxType));
   const { subtotal, cgst, sgst, igst, grandTotal } = calcTotals(lines, interstate);
 
   const update = (i, key, val) => {
@@ -368,21 +420,21 @@ function LineItems({ items, onChange, products, interstate = false, showDiscount
                     value={l.description} onChange={e => update(i, 'description', e.target.value)} />
                 </td>
                 <td className={td}>
-                  <input type="number" min="0.01" step="0.01" className={inputCls + ' w-16'} value={l.quantity}
-                    onChange={e => update(i, 'quantity', e.target.value)} />
+                  <input type="number" min="1" step="1" className={inputCls + ' w-16'} value={l.quantity}
+                    onChange={e => update(i, 'quantity', Math.max(1, parseInt(e.target.value, 10) || 1))} />
                 </td>
                 <td className={td}>
-                  <input type="number" min="0" step="0.01" className={inputCls + ' w-24'} value={l.unit_price}
+                  <input type="number" min="0" step="1" className={inputCls + ' w-24'} value={l.unit_price}
                     onChange={e => update(i, 'unit_price', e.target.value)} />
                 </td>
                 {showDiscount && (
                   <td className={td}>
-                    <input type="number" min="0" step="0.01" className={inputCls + ' w-20'} value={l.discount||0}
+                    <input type="number" min="0" step="1" className={inputCls + ' w-20'} value={l.discount||0}
                       onChange={e => update(i, 'discount', e.target.value)} />
                   </td>
                 )}
                 <td className={td}>
-                  <input type="number" min="0" max="28" step="0.5" className={inputCls + ' w-14'} value={l.gst_rate}
+                  <input type="number" min="0" max="28" step="1" className={inputCls + ' w-14'} value={l.gst_rate}
                     onChange={e => update(i, 'gst_rate', e.target.value)} />
                 </td>
                 <td className={td + ' text-right text-slate-600 dark:text-slate-300 font-mono text-xs'}>{fmt(l.taxable)}</td>
@@ -489,6 +541,9 @@ function CustomerModal({ customer, crmLeadPrefill, onClose, onSaved }) {
 
 // ─── Document Modal (Quotation / Order / Invoice) ─────────────
 
+const SALES_ORDER_STATUS_LIST = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
+const SALES_ORDER_STATUS_SET = new Set(SALES_ORDER_STATUS_LIST);
+
 function DocumentModal({ type, customers, products, initialCustomerId = '', existingId = null, onClose, onSaved, fullPage = false }) {
   const { user } = useAuth();
   const isQuote   = type === 'quotation';
@@ -500,7 +555,13 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
 
   const [form, setForm] = useState({
     customer_id: initialCustomerId || '', valid_until: '', order_date: '', invoice_date: '', due_date: '',
-    notes: '', is_interstate: false, status: 'draft', created_by: '',
+    notes: '', is_interstate: false,
+    status: type === 'order' ? 'pending' : type === 'invoice' ? 'unpaid' : 'draft',
+    created_by: '',
+    // invoice-specific
+    reference_no: '', gst_type: 'intra_state', tax_type: 'exclusive',
+    state_of_supply: '', discount_amount: 0, shipping_amount: 0,
+    extra_discount: 0, round_off: 0, payment_terms: '', payment_method: '',
   });
   const [items, setItems]       = useState([{ ...EMPTY_LINE }]);
   const [loading, setLoading]   = useState(false);
@@ -561,6 +622,17 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
           status: q.status || (isOrder ? 'pending' : isInvoice ? 'unpaid' : 'draft'),
           is_interstate: Number(q.igst || 0) > 0,
           created_by: q.created_by != null ? String(q.created_by) : String(user?.id || ''),
+          // invoice-specific fields
+          reference_no: q.reference_no || '',
+          gst_type: Number(q.igst || 0) > 0 ? 'inter_state' : 'intra_state',
+          tax_type: q.tax_type || 'exclusive',
+          state_of_supply: q.state_of_supply || '',
+          discount_amount: q.discount_amount || 0,
+          shipping_amount: q.shipping_amount || 0,
+          extra_discount: q.extra_discount || 0,
+          round_off: q.round_off || 0,
+          payment_terms: q.payment_terms || '',
+          payment_method: q.payment_method || '',
         }));
         setItems(
           q.items?.length
@@ -569,6 +641,7 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
               description: it.description || it.product_name || '',
               quantity: it.quantity,
               unit_price: it.unit_price,
+              discount: it.discount || 0,
               gst_rate: it.gst_rate,
             }))
             : [{ ...EMPTY_LINE }],
@@ -589,6 +662,20 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
     };
   }, [isQuote, isInvoice, isOrder, existingId, user?.id]);
 
+  // Sync GST% on all lines when tax type changes
+  useEffect(() => {
+    if (form.tax_type === 'no_tax') {
+      setItems(prev => prev.map(l => ({ ...l, gst_rate: 0 })));
+    } else {
+      // Restore GST rate from the selected product for each line
+      setItems(prev => prev.map(l => {
+        if (!l.product_id) return l;
+        const p = products.find(p => String(p.id) === String(l.product_id));
+        return p ? { ...l, gst_rate: Number(p.gst_rate) } : l;
+      }));
+    }
+  }, [form.tax_type]);
+
   const handleItems = (newItems, _newTotals) => {
     setItems(newItems);
   };
@@ -596,15 +683,18 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
   const handleSubmit = async (e) => {
     e.preventDefault(); setLoading(true);
     try {
-      const lines = items.map(calcLine).map(l => ({
+      const interstate = form.gst_type === 'inter_state';
+      const taxType = form.tax_type || 'exclusive';
+      const lines = items.map(l => calcLine(l, taxType)).map(l => ({
         product_id:  l.product_id || null,
         description: l.description,
         quantity:    Number(l.quantity),
         unit_price:  Number(l.unit_price),
+        discount:    Number(l.discount || 0),
         gst_rate:    Number(l.gst_rate),
-        cgst:        form.is_interstate ? 0 : l.gst / 2,
-        sgst:        form.is_interstate ? 0 : l.gst / 2,
-        igst:        form.is_interstate ? l.gst : 0,
+        cgst:        interstate ? 0 : l.gst / 2,
+        sgst:        interstate ? 0 : l.gst / 2,
+        igst:        interstate ? l.gst : 0,
         total:       l.total,
       }));
       const createdByNum = form.created_by ? Number(form.created_by) : undefined;
@@ -614,6 +704,9 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
           valid_until: form.valid_until || null,
           notes: form.notes || null,
           status: form.status || 'draft',
+          gst_type: form.gst_type,
+          tax_type: form.tax_type,
+          is_interstate: interstate,
           created_by: createdByNum,
           items: lines,
         });
@@ -622,25 +715,83 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
           customer_id: Number(form.customer_id),
           invoice_date: form.invoice_date || null,
           due_date: form.due_date || null,
+          reference_no: form.reference_no || null,
+          state_of_supply: form.state_of_supply || null,
+          gst_type: form.gst_type,
+          tax_type: form.tax_type,
+          discount_amount: Number(form.discount_amount || 0),
+          shipping_amount: Number(form.shipping_amount || 0),
+          extra_discount: Number(form.extra_discount || 0),
+          round_off: Number(form.round_off || 0),
+          payment_terms: form.payment_terms || null,
+          payment_method: form.payment_method || null,
           notes: form.notes || null,
           status: form.status || 'unpaid',
-          is_interstate: form.is_interstate,
+          is_interstate: interstate,
           created_by: createdByNum,
           items: lines,
         });
       } else if (isEditOrder) {
+        const orderStatus = SALES_ORDER_STATUS_SET.has(form.status) ? form.status : 'pending';
         await api.patch(`/sales/orders/${existingId}`, {
           customer_id: Number(form.customer_id),
           order_date: form.order_date || null,
           due_date: form.due_date || null,
           notes: form.notes || null,
-          status: form.status || 'pending',
+          status: orderStatus,
+          gst_type: form.gst_type,
+          tax_type: form.tax_type,
+          is_interstate: interstate,
+          created_by: createdByNum,
+          items: lines,
+        });
+      } else if (isInvoice) {
+        await api.post('/sales/invoices', {
+          customer_id: Number(form.customer_id),
+          invoice_date: form.invoice_date || null,
+          due_date: form.due_date || null,
+          reference_no: form.reference_no || null,
+          state_of_supply: form.state_of_supply || null,
+          gst_type: form.gst_type,
+          tax_type: form.tax_type,
+          discount_amount: Number(form.discount_amount || 0),
+          shipping_amount: Number(form.shipping_amount || 0),
+          extra_discount: Number(form.extra_discount || 0),
+          round_off: Number(form.round_off || 0),
+          payment_terms: form.payment_terms || null,
+          payment_method: form.payment_method || null,
+          notes: form.notes || null,
+          status: 'unpaid',
+          is_interstate: interstate,
+          created_by: createdByNum,
+          items: lines,
+        });
+      } else if (isQuote) {
+        await api.post('/sales/quotations', {
+          customer_id: Number(form.customer_id),
+          valid_until: form.valid_until || null,
+          notes: form.notes || null,
+          status: form.status || 'draft',
+          gst_type: form.gst_type,
+          tax_type: form.tax_type,
+          is_interstate: interstate,
           created_by: createdByNum,
           items: lines,
         });
       } else {
-        const endpoint = isQuote ? '/sales/quotations' : isOrder ? '/sales/orders' : '/sales/invoices';
-        await api.post(endpoint, { ...form, created_by: createdByNum, items: lines });
+        const orderStatus = SALES_ORDER_STATUS_SET.has(form.status) ? form.status : 'pending';
+        await api.post('/sales/orders', {
+          customer_id: Number(form.customer_id),
+          order_date: form.order_date || null,
+          due_date: form.due_date || null,
+          notes: form.notes || null,
+          status: orderStatus,
+          gst_type: form.gst_type,
+          tax_type: form.tax_type,
+          is_interstate: interstate,
+          created_by: createdByNum,
+          items: lines,
+        });
       }
       onSaved();
     } finally { setLoading(false); }
@@ -677,118 +828,256 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
     );
   }
 
-  const body = (
+  // ── Invoice-specific full-page form ──────────────────────────
+  if (isInvoice) {
+    const interstate = form.gst_type === 'inter_state';
+    const submitLabel = isEditInvoice ? 'Save Invoice' : 'Generate Invoice';
+    const invoiceForm = (
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {loadErr && (
+          <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{loadErr}</p>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <SectionCard title="Bill To">
+            <Field label="Customer *">
+              <select className={selectCls} value={form.customer_id} onChange={set('customer_id')} required>
+                <option value="">Select customer…</option>
+                {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </Field>
+            {user?.id && (
+              <Field label="Sales Executive *">
+                <select className={selectCls} value={form.created_by} onChange={set('created_by')} required
+                  disabled={!canPickOtherExecutive && executiveOptions.length <= 1}>
+                  {executiveOptions.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+                {!canPickOtherExecutive && (
+                  <p className="text-[10px] text-slate-400 mt-1">Only managers and admins can assign a different executive.</p>
+                )}
+              </Field>
+            )}
+          </SectionCard>
+
+          <SectionCard title="Invoice Properties">
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Reference No."><input className={inputCls} value={form.reference_no} onChange={set('reference_no')} /></Field>
+              <Field label="Invoice Date"><input type="date" className={inputCls} value={form.invoice_date} onChange={set('invoice_date')} /></Field>
+              <Field label="Due Date"><input type="date" className={inputCls} value={form.due_date} onChange={set('due_date')} /></Field>
+              <Field label="State of Supply">
+                <select className={selectCls} value={form.state_of_supply} onChange={set('state_of_supply')}>
+                  <option value="">Select state…</option>
+                  {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </Field>
+            </div>
+            {isEditInvoice && (
+              <Field label="Status">
+                <select className={selectCls} value={form.status} onChange={set('status')}>
+                  {['draft','unpaid','partial','paid','cancelled'].map(s => (
+                    <option key={s} value={s}>{s.charAt(0).toUpperCase()+s.slice(1)}</option>
+                  ))}
+                </select>
+              </Field>
+            )}
+            <div>
+              <p className="text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wide">GST Type</p>
+              <div className="flex gap-3">
+                {[['intra_state','Intra State (CGST+SGST)'],['inter_state','Inter State (IGST)']].map(([v,l]) => (
+                  <label key={v} className={`flex items-center gap-2 cursor-pointer px-4 py-2.5 rounded-xl border-2 transition-all text-sm font-medium ${form.gst_type === v ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-300' : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600'}`}>
+                    <input type="radio" name="gst_type" value={v} checked={form.gst_type === v} onChange={set('gst_type')} className="accent-brand-600 w-4 h-4" />{l}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wide">Tax</p>
+              <div className="flex gap-3">
+                {[['exclusive','Tax Exclusive'],['inclusive','Tax Inclusive'],['no_tax','No Tax']].map(([v,l]) => (
+                  <label key={v} className={`flex items-center gap-2 cursor-pointer px-4 py-2.5 rounded-xl border-2 transition-all text-sm font-medium ${form.tax_type === v ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-300' : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600'}`}>
+                    <input type="radio" name="tax_type" value={v} checked={form.tax_type === v} onChange={set('tax_type')} className="accent-brand-600 w-4 h-4" />{l}
+                  </label>
+                ))}
+              </div>
+            </div>
+          </SectionCard>
+        </div>
+
+        <SectionCard title="Items">
+          <LineItems items={items} onChange={handleItems} products={products} interstate={interstate} taxType={form.tax_type} showDiscount />
+        </SectionCard>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <SectionCard title="Extra Charges">
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Discount (₹)"><input type="number" min="0" step="0.01" className={inputCls} value={form.discount_amount} onChange={set('discount_amount')} /></Field>
+              <Field label="Shipping (₹)"><input type="number" min="0" step="0.01" className={inputCls} value={form.shipping_amount} onChange={set('shipping_amount')} /></Field>
+              <Field label="Extra Discount (₹)"><input type="number" min="0" step="0.01" className={inputCls} value={form.extra_discount} onChange={set('extra_discount')} /></Field>
+              <Field label="Round Off (₹)"><input type="number" step="0.01" className={inputCls} value={form.round_off} onChange={set('round_off')} /></Field>
+            </div>
+          </SectionCard>
+          <SectionCard title="Payment">
+            <Field label="Payment Terms">
+              <select className={selectCls} value={form.payment_terms} onChange={set('payment_terms')}>
+                <option value="">Select terms…</option>
+                {PAYMENT_TERMS_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </Field>
+            <Field label="Payment Method">
+              <select className={selectCls} value={form.payment_method} onChange={set('payment_method')}>
+                <option value="">Select method…</option>
+                {PAYMENT_METHOD_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </Field>
+          </SectionCard>
+        </div>
+
+        <SectionCard>
+          <Field label="Invoice Note"><textarea className={inputCls+' h-16 resize-none'} value={form.notes} onChange={set('notes')} /></Field>
+          <TotalSummary lines={items} interstate={interstate} taxType={form.tax_type}
+            discountAmount={form.discount_amount} shippingAmount={form.shipping_amount}
+            roundOff={form.round_off} />
+        </SectionCard>
+
+        <div className="flex gap-3">
+          <button type="submit" disabled={loading} className="btn-wf-primary">{loading ? 'Saving…' : submitLabel}</button>
+          <button type="button" onClick={onClose} className="btn-wf-secondary">Cancel</button>
+        </div>
+      </form>
+    );
+
+    if (fullPage) {
+      return (
+        <div className="w-full min-w-0 px-1">
+          <PageHeader
+            title={isEditInvoice ? 'Edit Invoice' : 'Create Sale Invoice'}
+            subtitle={isEditInvoice ? '' : 'New invoice for customer'}
+            onBack={onClose}
+          />
+          {invoiceForm}
+        </div>
+      );
+    }
+    return (
+      <Modal title={isEditInvoice ? 'Edit Invoice' : 'Create Sale Invoice'} onClose={onClose}>
+        {invoiceForm}
+      </Modal>
+    );
+  }
+
+  // ── Quote / Order full-page form ─────────────────────────────
+  const quoteOrderForm = (
     <form onSubmit={handleSubmit} className="space-y-4">
       {loadErr && (
         <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{loadErr}</p>
       )}
-      {user?.id ? (
-        <div className="grid grid-cols-2 gap-3 items-start">
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <SectionCard title="Bill To">
           <Field label="Customer *">
             <select className={selectCls} value={form.customer_id} onChange={set('customer_id')} required>
               <option value="">Select customer…</option>
               {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </Field>
-          <Field label="Sales executive *">
-            <select
-              className={selectCls}
-              value={form.created_by}
-              onChange={set('created_by')}
-              required
-              disabled={!canPickOtherExecutive && executiveOptions.length <= 1}
-            >
-              {executiveOptions.map((u) => (
-                <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
-            </select>
-            {!canPickOtherExecutive && (
-              <p className="text-[10px] text-slate-400 mt-1">Only managers and admins can assign a different executive.</p>
-            )}
-          </Field>
-        </div>
-      ) : (
-        <Field label="Customer *">
-          <select className={selectCls} value={form.customer_id} onChange={set('customer_id')} required>
-            <option value="">Select customer…</option>
-            {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </Field>
-      )}
+          {user?.id && (
+            <Field label="Sales Executive *">
+              <select className={selectCls} value={form.created_by} onChange={set('created_by')} required
+                disabled={!canPickOtherExecutive && executiveOptions.length <= 1}>
+                {executiveOptions.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+              {!canPickOtherExecutive && (
+                <p className="text-[10px] text-slate-400 mt-1">Only managers and admins can assign a different executive.</p>
+              )}
+            </Field>
+          )}
+        </SectionCard>
 
-      <div className="grid grid-cols-2 gap-3">
-        {isQuote && isEditQuote && (
-          <Field label="Status">
-            <select className={selectCls} value={form.status} onChange={set('status')}>
-              {['draft', 'sent', 'accepted', 'rejected'].map((s) => (
-                <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+        <SectionCard title={isQuote ? 'Quotation Properties' : 'Order Properties'}>
+          <div className="grid grid-cols-2 gap-3">
+            {isQuote && <Field label="Valid Until"><input type="date" className={inputCls} value={form.valid_until} onChange={set('valid_until')} /></Field>}
+            {isOrder && (
+              <>
+                <Field label="Order Date"><input type="date" className={inputCls} value={form.order_date} onChange={set('order_date')} /></Field>
+                <Field label="Due Date"><input type="date" className={inputCls} value={form.due_date} onChange={set('due_date')} /></Field>
+              </>
+            )}
+            {isQuote && isEditQuote && (
+              <Field label="Status">
+                <select className={selectCls} value={form.status} onChange={set('status')}>
+                  {['draft', 'sent', 'accepted', 'rejected'].map(s => (
+                    <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+                  ))}
+                </select>
+              </Field>
+            )}
+            {isOrder && isEditOrder && (
+              <Field label="Status">
+                <select className={selectCls} value={form.status} onChange={set('status')}>
+                  {['pending', 'processing', 'shipped', 'delivered', 'cancelled'].map(s => (
+                    <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+                  ))}
+                </select>
+              </Field>
+            )}
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wide">GST Type</p>
+            <div className="flex gap-3">
+              {[['intra_state','Intra State (CGST+SGST)'],['inter_state','Inter State (IGST)']].map(([v,l]) => (
+                <label key={v} className={`flex items-center gap-2 cursor-pointer px-4 py-2.5 rounded-xl border-2 transition-all text-sm font-medium ${form.gst_type === v ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-300' : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600'}`}>
+                  <input type="radio" name="gst_type" value={v} checked={form.gst_type === v} onChange={set('gst_type')} className="accent-brand-600 w-4 h-4" />{l}
+                </label>
               ))}
-            </select>
-          </Field>
-        )}
-        {isOrder && isEditOrder && (
-          <Field label="Status">
-            <select className={selectCls} value={form.status} onChange={set('status')}>
-              {['pending', 'processing', 'shipped', 'delivered', 'cancelled'].map((s) => (
-                <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wide">Tax</p>
+            <div className="flex gap-3">
+              {[['exclusive','Tax Exclusive'],['inclusive','Tax Inclusive'],['no_tax','No Tax']].map(([v,l]) => (
+                <label key={v} className={`flex items-center gap-2 cursor-pointer px-4 py-2.5 rounded-xl border-2 transition-all text-sm font-medium ${form.tax_type === v ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-300' : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600'}`}>
+                  <input type="radio" name="tax_type" value={v} checked={form.tax_type === v} onChange={set('tax_type')} className="accent-brand-600 w-4 h-4" />{l}
+                </label>
               ))}
-            </select>
-          </Field>
-        )}
-        {isQuote && <Field label="Valid Until"><input type="date" className={inputCls} value={form.valid_until} onChange={set('valid_until')} /></Field>}
-        {isOrder && (
-          <>
-            <Field label="Order Date"><input type="date" className={inputCls} value={form.order_date} onChange={set('order_date')} /></Field>
-            <Field label="Due Date"><input type="date" className={inputCls} value={form.due_date} onChange={set('due_date')} /></Field>
-          </>
-        )}
-        {isInvoice && (
-          <>
-            <Field label="Invoice Date"><input type="date" className={inputCls} value={form.invoice_date} onChange={set('invoice_date')} /></Field>
-            <Field label="Due Date"><input type="date" className={inputCls} value={form.due_date} onChange={set('due_date')} /></Field>
-          </>
-        )}
+            </div>
+          </div>
+        </SectionCard>
       </div>
 
-      {isInvoice && (
-        <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 cursor-pointer">
-          <input type="checkbox" checked={form.is_interstate}
-            onChange={e => setForm(f => ({ ...f, is_interstate: e.target.checked }))} />
-          Interstate supply (IGST instead of CGST+SGST)
-        </label>
-      )}
+      <SectionCard title="Items">
+        <LineItems items={items} onChange={handleItems} products={products} interstate={form.gst_type === 'inter_state'} taxType={form.tax_type} showDiscount />
+      </SectionCard>
 
-      <LineItems items={items} onChange={handleItems} products={products} interstate={form.is_interstate} />
+      <SectionCard>
+        <Field label={isQuote ? 'Quotation Note' : 'Order Note'}><textarea className={inputCls+' h-16 resize-none'} value={form.notes} onChange={set('notes')} /></Field>
+        <TotalSummary lines={items} interstate={form.gst_type === 'inter_state'} taxType={form.tax_type} />
+      </SectionCard>
 
-      <Field label="Notes"><textarea className={inputCls+' h-16 resize-none'} value={form.notes} onChange={set('notes')} /></Field>
-      <FormActions
-        onCancel={onClose}
-        submitLabel={
-          isEditQuote ? 'Save Quotation'
-            : isEditInvoice ? 'Save Invoice'
-              : isEditOrder ? 'Save Order'
-                : `Create ${title.replace('New ', '')}`
-        }
-        loading={loading}
-      />
+      <div className="flex gap-3">
+        <button type="submit" disabled={loading} className="btn-wf-primary">
+          {loading ? 'Saving…' : isEditQuote ? 'Save Quotation' : isEditOrder ? 'Save Order' : `Create ${title.replace('New ', '')}`}
+        </button>
+        <button type="button" onClick={onClose} className="btn-wf-secondary">Cancel</button>
+      </div>
     </form>
   );
 
   if (fullPage) {
     return (
-      <div className="w-full min-w-0 bg-white dark:bg-[#13152a] rounded-2xl border border-slate-200/80 dark:border-slate-700/50 shadow-card p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">{title}</h3>
-          <button type="button" className="btn-wf-secondary" onClick={onClose}>Back</button>
-        </div>
-        {body}
+      <div className="w-full min-w-0 px-1">
+        <PageHeader
+          title={title}
+          subtitle={isQuote ? (isEditQuote ? '' : 'New quotation for customer') : (isEditOrder ? '' : 'New sales order for customer')}
+          onBack={onClose}
+        />
+        {quoteOrderForm}
       </div>
     );
   }
 
   return (
     <Modal title={title} onClose={onClose}>
-      {body}
+      {quoteOrderForm}
     </Modal>
   );
 }
@@ -1191,7 +1480,7 @@ const LIST_COLS = {
     { label: 'Customer', get: r => r.customer_name },
     { label: 'Status',   get: r => r.status },
     { label: 'Date',     get: r => fmtD(r.created_at) },
-    { label: 'Created By', get: r => r.created_by_name || '' },
+    { label: 'Sales executive', get: r => r.created_by_name || '' },
     { label: 'Amount',   get: r => fmt(r.total_amount) },
   ],
   Orders:   [
@@ -1199,12 +1488,13 @@ const LIST_COLS = {
     { label: 'Customer', get: r => r.customer_name },
     { label: 'Status',   get: r => r.status },
     { label: 'Date',     get: r => fmtD(r.order_date || r.created_at) },
-    { label: 'Created By', get: r => r.created_by_name || '' },
+    { label: 'Sales executive', get: r => r.created_by_name || '' },
     { label: 'Amount',   get: r => fmt(r.total_amount) },
   ],
   Invoices: [
     { label: 'Invoice #', get: r => r.invoice_number },
     { label: 'Customer', get: r => r.customer_name },
+    { label: 'Sales executive', get: r => r.created_by_name || '' },
     { label: 'GSTIN', get: r => r.customer_gstin || '' },
     { label: 'Before Tax', get: r => fmt(r.subtotal) },
     { label: 'SGST', get: r => fmt(r.sgst) },
@@ -1258,7 +1548,7 @@ export function SalesListPage({ segment }) {
   }, [tab, filters]);
 
   const cols = LIST_COLS[tab] || [];
-  const search = useSearch(data, ['invoice_number','quotation_number','order_number','customer_name','customer_gstin']);
+  const search = useSearch(data, ['invoice_number','quotation_number','order_number','customer_name','customer_gstin','created_by_name']);
   const pager  = usePagination(search.filtered);
 
   useEffect(() => {
@@ -1434,29 +1724,6 @@ export function SalesListPage({ segment }) {
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-100/80 dark:bg-slate-800/60 rounded-xl w-fit mb-6">
-        {[
-          { tabKey: 'Invoices', label: 'Invoices', path: '/sales/invoices' },
-          { tabKey: '_payments', label: 'Payment In', path: '/sales/payments' },
-          { tabKey: 'Quotes', label: 'Quotes', path: '/sales/quotes' },
-          { tabKey: 'Orders', label: 'Orders', path: '/sales/orders' },
-        ].map(({ tabKey, label, path }) => (
-          <Link
-            key={path}
-            to={{ pathname: path, search: location.search }}
-            className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-all duration-150 whitespace-nowrap ${
-              tabKey === '_payments'
-                ? 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-                : tab === tabKey
-                  ? 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-400 shadow-card font-semibold'
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-            }`}
-          >
-            {label}
-          </Link>
-        ))}
-      </div>
-
       {/* Filters + Toolbar */}
       <FilterBar
         customers={customers}
@@ -1487,7 +1754,7 @@ export function SalesListPage({ segment }) {
           <p className="text-center py-12 text-slate-400 dark:text-slate-500 text-sm">No records found</p>
         ) : tab === 'Invoices' ? (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[960px]">
+            <table className="w-full text-sm min-w-[1040px]">
               <thead><tr className="border-b border-slate-100 dark:border-slate-700/50">
                 <th className="px-3 py-3 w-8">
                   <input type="checkbox"
@@ -1495,7 +1762,7 @@ export function SalesListPage({ segment }) {
                     onChange={e => setSelected(e.target.checked ? pager.slice.map(r => r.id) : [])}
                   />
                 </th>
-                {['Invoice #','Customer','GSTIN','Before Tax','SGST','CGST','Grand Total','Balance','Status','Date',''].map(h => (
+                {['Invoice #','Customer','Sales executive','GSTIN','Before Tax','SGST','CGST','Grand Total','Balance','Status','Date',''].map(h => (
                   <th key={h} className="px-3 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">{h}</th>
                 ))}
               </tr></thead>
@@ -1516,6 +1783,7 @@ export function SalesListPage({ segment }) {
                         <Link to={viewTo} className="hover:underline" onClick={(e) => { e.stopPropagation(); docLinkClick(e, r); }}>{r.invoice_number}</Link>
                       </td>
                       <td className="px-3 py-3 font-medium text-slate-800 dark:text-slate-100">{r.customer_name}</td>
+                      <td className="px-3 py-3 text-xs text-slate-500 dark:text-slate-400">{r.created_by_name || '—'}</td>
                       <td className="px-3 py-3 text-xs text-slate-500">{r.customer_gstin || '—'}</td>
                       <td className="px-3 py-3 font-mono text-xs">{fmt(r.subtotal)}</td>
                       <td className="px-3 py-3 font-mono text-xs">{fmt(r.sgst)}</td>
@@ -1551,7 +1819,7 @@ export function SalesListPage({ segment }) {
                   onChange={e => setSelected(e.target.checked ? pager.slice.map(r => r.id) : [])}
                 />
               </th>
-              {['Number','Customer','Status','Date','Created By','Amount',''].map(h => (
+              {['Number','Customer','Status','Date','Sales executive','Amount',''].map(h => (
                 <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">{h}</th>
               ))}
             </tr></thead>
@@ -1743,7 +2011,6 @@ export function SalesCustomersPage() {
 // ─── Payment In (invoice receipts ledger) ─────────────────────
 
 export function SalesPaymentsPage() {
-  const location = useLocation();
   const [payments, setPayments] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [salesExecutives, setSalesExecutives] = useState([]);
@@ -1767,7 +2034,7 @@ export function SalesPaymentsPage() {
     load();
   }, [load]);
 
-  const search = useSearch(payments, ['invoice_number', 'customer_name', 'reference']);
+  const search = useSearch(payments, ['invoice_number', 'customer_name', 'reference', 'created_by_name']);
   const pager = usePagination(search.filtered);
   const cols = [
     { label: 'Date', get: (p) => fmtD(p.payment_date) },
@@ -1776,7 +2043,7 @@ export function SalesPaymentsPage() {
     { label: 'Customer', get: (p) => p.customer_name },
     { label: 'Paid', get: (p) => fmt(p.amount) },
     { label: 'Method', get: (p) => p.method?.replace('_', ' ') || '' },
-    { label: 'Created By', get: (p) => p.created_by_name || '' },
+    { label: 'Sales executive', get: (p) => p.created_by_name || '' },
   ];
 
   return (
@@ -1786,27 +2053,6 @@ export function SalesPaymentsPage() {
           <h2 className="text-[16px] font-semibold text-slate-800 dark:text-slate-100">Payment In</h2>
           <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">All recorded invoice payments</p>
         </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-100/80 dark:bg-slate-800/60 rounded-xl w-fit mb-6">
-        {[
-          { path: '/sales/invoices', label: 'Invoices', activeMatch: (p) => p.startsWith('/sales/invoices') },
-          { path: '/sales/payments', label: 'Payment In', activeMatch: (p) => p.startsWith('/sales/payments') },
-          { path: '/sales/quotes', label: 'Quotes', activeMatch: (p) => p.startsWith('/sales/quotes') },
-          { path: '/sales/orders', label: 'Orders', activeMatch: (p) => p.startsWith('/sales/orders') },
-        ].map(({ path, label, activeMatch }) => (
-          <Link
-            key={path}
-            to={{ pathname: path, search: location.search }}
-            className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-all duration-150 whitespace-nowrap ${
-              activeMatch(location.pathname)
-                ? 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-400 shadow-card font-semibold'
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-            }`}
-          >
-            {label}
-          </Link>
-        ))}
       </div>
 
       <FilterBar
@@ -1834,7 +2080,7 @@ export function SalesPaymentsPage() {
             <table className="w-full text-sm min-w-[720px]">
               <thead>
                 <tr className="border-b border-slate-100 dark:border-slate-700/50">
-                  {['Date', 'Reference No.', 'Invoice #', 'Customer', 'Paid', 'Method', 'Created By'].map((h) => (
+                  {['Date', 'Reference No.', 'Invoice #', 'Customer', 'Paid', 'Method', 'Sales executive'].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
                       {h}
                     </th>
@@ -1906,11 +2152,12 @@ export function SalesReturnsPage() {
   const [filters,   setFilters]   = useState({});
   const [selected,  setSelected]  = useState([]);
 
-  const search = useSearch(returns, ['return_number','customer_name','reference_no']);
+  const search = useSearch(returns, ['return_number','customer_name','reference_no','created_by_name']);
   const pager  = usePagination(search.filtered);
   const cols = [
     { label: 'Number',   get: r => r.return_number },
     { label: 'Customer', get: r => r.customer_name },
+    { label: 'Sales executive', get: r => r.created_by_name || '' },
     { label: 'Date',     get: r => fmtD(r.return_date || r.created_at) },
     { label: 'Amount',   get: r => fmt(r.total_amount) },
     { label: 'Status',   get: r => r.status || '' },
@@ -1992,7 +2239,7 @@ export function SalesReturnsPage() {
         {pager.slice.length === 0 ? (
           <p className="text-center py-12 text-slate-400 dark:text-slate-500 text-sm">No returns found</p>
         ) : (
-          <table className="w-full text-sm min-w-[560px]">
+          <table className="w-full text-sm min-w-[640px]">
             <thead><tr className="border-b border-slate-100 dark:border-slate-700/50">
               <th className="px-3 py-3 w-8">
                 <input type="checkbox"
@@ -2000,7 +2247,7 @@ export function SalesReturnsPage() {
                   onChange={e => setSelected(e.target.checked ? pager.slice.map(r => r.id) : [])}
                 />
               </th>
-              {['Number','Customer','Date','Amount','Status',''].map(h => (
+              {['Number','Customer','Sales executive','Date','Amount','Status',''].map(h => (
                 <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">{h}</th>
               ))}
             </tr></thead>
@@ -2015,6 +2262,7 @@ export function SalesReturnsPage() {
                   </td>
                   <td className="px-4 py-3 font-mono text-xs font-semibold text-brand-600 dark:text-brand-400">{r.return_number || `RET-${r.id}`}</td>
                   <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-100">{r.customer_name}</td>
+                  <td className="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">{r.created_by_name || '—'}</td>
                   <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{fmtD(r.return_date || r.created_at)}</td>
                   <td className="px-4 py-3 font-semibold font-mono text-slate-800 dark:text-slate-100">{fmt(r.total_amount)}</td>
                   <td className="px-4 py-3"><StatusBadge s={r.status || 'pending'} /></td>
