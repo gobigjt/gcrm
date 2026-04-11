@@ -2,6 +2,16 @@ import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { RedisService }    from '../../redis/redis.service';
 
+/** Must match sales_orders_status_check in DB (001_initial_schema.sql). */
+const SALES_ORDER_STATUSES = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'] as const;
+
+function normalizeOrderStatus(status: unknown): string {
+  const s = String(status ?? 'pending')
+    .trim()
+    .toLowerCase();
+  return (SALES_ORDER_STATUSES as readonly string[]).includes(s) ? s : 'pending';
+}
+
 @Injectable()
 export class SalesService {
   constructor(private readonly db: DatabaseService, private readonly cache: RedisService) {}
@@ -169,15 +179,25 @@ export class SalesService {
   }
   async createQuotation(data: any, items: any[]) {
     return this.db.transaction(async (client) => {
-      const total = items.reduce((s, i) => s + Number(i.total), 0);
+      const subtotal = items.reduce((s, i) => s + Number(i.total), 0);
+      const cgst = items.reduce((s, i) => s + Number(i.cgst || 0), 0);
+      const sgst = items.reduce((s, i) => s + Number(i.sgst || 0), 0);
+      const igst = items.reduce((s, i) => s + Number(i.igst || 0), 0);
+      const total = subtotal + cgst + sgst + igst;
       const qn = `QUOT-${Date.now()}`;
       const qr = await client.query(
-        'INSERT INTO quotations (quotation_number,customer_id,proposal_id,status,valid_until,notes,total_amount,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
-        [qn, data.customer_id, data.proposal_id, data.status||'draft', data.valid_until, data.notes, total, data.created_by],
+        `INSERT INTO quotations
+          (quotation_number,customer_id,proposal_id,status,valid_until,notes,
+           gst_type,tax_type,is_interstate,subtotal,cgst,sgst,igst,total_amount,created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+        [qn, data.customer_id, data.proposal_id, data.status||'draft', data.valid_until, data.notes,
+         data.gst_type||'intra_state', data.tax_type||'exclusive', data.is_interstate||false,
+         subtotal, cgst, sgst, igst, total, data.created_by],
       );
       for (const it of items)
-        await client.query('INSERT INTO quotation_items (quotation_id,product_id,description,quantity,unit_price,gst_rate,total) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-          [qr.rows[0].id, it.product_id, it.description, it.quantity, it.unit_price, it.gst_rate||0, it.total]);
+        await client.query(
+          'INSERT INTO quotation_items (quotation_id,product_id,description,quantity,unit_price,discount,gst_rate,cgst,sgst,igst,total) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
+          [qr.rows[0].id, it.product_id||null, it.description, it.quantity, it.unit_price, it.discount||0, it.gst_rate||0, it.cgst||0, it.sgst||0, it.igst||0, it.total]);
       return qr.rows[0];
     });
   }
@@ -241,71 +261,66 @@ export class SalesService {
   }
   async createOrder(data: any, items: any[]) {
     return this.db.transaction(async (client) => {
-      const total = items.reduce((s, i) => s + Number(i.total), 0);
+      const subtotal = items.reduce((s, i) => s + Number(i.total), 0);
+      const cgst = items.reduce((s, i) => s + Number(i.cgst || 0), 0);
+      const sgst = items.reduce((s, i) => s + Number(i.sgst || 0), 0);
+      const igst = items.reduce((s, i) => s + Number(i.igst || 0), 0);
+      const total = subtotal + cgst + sgst + igst;
       const on = `ORD-${Date.now()}`;
       const or = await client.query(
-        'INSERT INTO sales_orders (order_number,customer_id,quotation_id,status,order_date,notes,total_amount,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
-        [on, data.customer_id, data.quotation_id, data.status||'pending', data.order_date||new Date().toISOString().split('T')[0], data.notes, total, data.created_by],
+        `INSERT INTO sales_orders
+          (order_number,customer_id,quotation_id,status,order_date,due_date,notes,
+           gst_type,tax_type,is_interstate,subtotal,cgst,sgst,igst,total_amount,created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+        [on, data.customer_id, data.quotation_id||null, normalizeOrderStatus(data.status),
+         data.order_date||new Date().toISOString().split('T')[0], data.due_date||null, data.notes,
+         data.gst_type||'intra_state', data.tax_type||'exclusive', data.is_interstate||false,
+         subtotal, cgst, sgst, igst, total, data.created_by],
       );
       for (const it of items)
-        await client.query('INSERT INTO sales_order_items (order_id,product_id,description,quantity,unit_price,gst_rate,total) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-          [or.rows[0].id, it.product_id, it.description, it.quantity, it.unit_price, it.gst_rate||0, it.total]);
+        await client.query(
+          'INSERT INTO sales_order_items (order_id,product_id,description,quantity,unit_price,discount,gst_rate,cgst,sgst,igst,total) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
+          [or.rows[0].id, it.product_id||null, it.description, it.quantity, it.unit_price, it.discount||0, it.gst_rate||0, it.cgst||0, it.sgst||0, it.igst||0, it.total]);
       return or.rows[0];
     });
   }
   async patchOrder(id: number, b: any) {
     if (typeof b === 'string') {
-      return (await this.db.query('UPDATE sales_orders SET status=$1 WHERE id=$2 RETURNING *', [b, id])).rows[0];
+      const st = normalizeOrderStatus(b);
+      return (await this.db.query('UPDATE sales_orders SET status=$1 WHERE id=$2 RETURNING *', [st, id])).rows[0];
     }
     if (b?.items !== undefined && Array.isArray(b.items)) {
       return this.db.transaction(async (client) => {
         const ex = await client.query('SELECT id FROM sales_orders WHERE id=$1', [id]);
         if (!ex.rows[0]) return null;
         await client.query('DELETE FROM sales_order_items WHERE order_id=$1', [id]);
-        let sum = 0;
+        let subtotal = 0, cgst = 0, sgst = 0, igst = 0;
         for (const it of b.items) {
           const lineTotal = Number(it.total ?? 0);
-          sum += lineTotal;
+          subtotal += lineTotal;
+          cgst += Number(it.cgst || 0);
+          sgst += Number(it.sgst || 0);
+          igst += Number(it.igst || 0);
           await client.query(
-            'INSERT INTO sales_order_items (order_id,product_id,description,quantity,unit_price,gst_rate,total) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-            [
-              id,
-              it.product_id ?? null,
-              String(it.description ?? ''),
-              Number(it.quantity),
-              Number(it.unit_price),
-              Number(it.gst_rate ?? 0),
-              lineTotal,
-            ],
+            'INSERT INTO sales_order_items (order_id,product_id,description,quantity,unit_price,discount,gst_rate,cgst,sgst,igst,total) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
+            [id, it.product_id ?? null, String(it.description ?? ''), Number(it.quantity),
+             Number(it.unit_price), Number(it.discount || 0), Number(it.gst_rate ?? 0),
+             Number(it.cgst || 0), Number(it.sgst || 0), Number(it.igst || 0), lineTotal],
           );
         }
-        const sets = ['total_amount = $1'];
-        const vals: any[] = [sum];
-        let n = 2;
-        if (b.customer_id !== undefined) {
-          sets.push(`customer_id=$${n++}`);
-          vals.push(b.customer_id);
-        }
-        if (b.order_date !== undefined) {
-          sets.push(`order_date=$${n++}`);
-          vals.push(b.order_date);
-        }
-        if (b.due_date !== undefined) {
-          sets.push(`due_date=$${n++}`);
-          vals.push(b.due_date);
-        }
-        if (b.notes !== undefined) {
-          sets.push(`notes=$${n++}`);
-          vals.push(b.notes);
-        }
-        if (b.status !== undefined) {
-          sets.push(`status=$${n++}`);
-          vals.push(b.status);
-        }
-        if (b.created_by !== undefined) {
-          sets.push(`created_by=$${n++}`);
-          vals.push(b.created_by);
-        }
+        const total = subtotal + cgst + sgst + igst;
+        const sets = ['subtotal=$1','cgst=$2','sgst=$3','igst=$4','total_amount=$5'];
+        const vals: any[] = [subtotal, cgst, sgst, igst, total];
+        let n = 6;
+        if (b.customer_id !== undefined)  { sets.push(`customer_id=$${n++}`);   vals.push(b.customer_id); }
+        if (b.order_date !== undefined)   { sets.push(`order_date=$${n++}`);    vals.push(b.order_date); }
+        if (b.due_date !== undefined)     { sets.push(`due_date=$${n++}`);      vals.push(b.due_date); }
+        if (b.notes !== undefined)        { sets.push(`notes=$${n++}`);         vals.push(b.notes); }
+        if (b.status !== undefined)       { sets.push(`status=$${n++}`);        vals.push(normalizeOrderStatus(b.status)); }
+        if (b.gst_type !== undefined)     { sets.push(`gst_type=$${n++}`);      vals.push(b.gst_type); }
+        if (b.tax_type !== undefined)     { sets.push(`tax_type=$${n++}`);      vals.push(b.tax_type); }
+        if (b.is_interstate !== undefined){ sets.push(`is_interstate=$${n++}`); vals.push(b.is_interstate); }
+        if (b.created_by !== undefined)   { sets.push(`created_by=$${n++}`);    vals.push(b.created_by); }
         vals.push(id);
         await client.query(`UPDATE sales_orders SET ${sets.join(', ')} WHERE id=$${n}`, vals);
         return this.getOrder(id);
@@ -316,7 +331,7 @@ export class SalesService {
     let n = 1;
     if (b?.status !== undefined) {
       sets.push(`status=$${n++}`);
-      vals.push(b.status);
+      vals.push(normalizeOrderStatus(b.status));
     }
     if (b?.notes !== undefined) {
       sets.push(`notes=$${n++}`);
@@ -644,48 +659,34 @@ export class SalesService {
         const ex = await client.query('SELECT id FROM quotations WHERE id=$1', [id]);
         if (!ex.rows[0]) return null;
         await client.query('DELETE FROM quotation_items WHERE quotation_id=$1', [id]);
-        let sum = 0;
+        let subtotal = 0, cgst = 0, sgst = 0, igst = 0;
         for (const it of b.items) {
           const lineTotal = Number(it.total ?? 0);
-          sum += lineTotal;
+          subtotal += lineTotal;
+          cgst += Number(it.cgst || 0);
+          sgst += Number(it.sgst || 0);
+          igst += Number(it.igst || 0);
           await client.query(
-            'INSERT INTO quotation_items (quotation_id,product_id,description,quantity,unit_price,gst_rate,total) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-            [
-              id,
-              it.product_id ?? null,
-              String(it.description ?? ''),
-              Number(it.quantity),
-              Number(it.unit_price),
-              Number(it.gst_rate ?? 0),
-              lineTotal,
-            ],
+            'INSERT INTO quotation_items (quotation_id,product_id,description,quantity,unit_price,discount,gst_rate,cgst,sgst,igst,total) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
+            [id, it.product_id ?? null, String(it.description ?? ''), Number(it.quantity),
+             Number(it.unit_price), Number(it.discount || 0), Number(it.gst_rate ?? 0),
+             Number(it.cgst || 0), Number(it.sgst || 0), Number(it.igst || 0), lineTotal],
           );
         }
-        const sets = ['total_amount = $1'];
-        const vals: any[] = [sum];
-        let n = 2;
-        if (b.customer_id !== undefined) {
-          sets.push(`customer_id = $${n++}`);
-          vals.push(b.customer_id);
-        }
-        if (b.valid_until !== undefined) {
-          sets.push(`valid_until = $${n++}`);
-          vals.push(b.valid_until);
-        }
-        if (b.notes !== undefined) {
-          sets.push(`notes = $${n++}`);
-          vals.push(b.notes);
-        }
-        if (b.status !== undefined) {
-          sets.push(`status = $${n++}`);
-          vals.push(b.status);
-        }
-        if (b.created_by !== undefined) {
-          sets.push(`created_by = $${n++}`);
-          vals.push(b.created_by);
-        }
+        const total = subtotal + cgst + sgst + igst;
+        const sets = ['subtotal=$1','cgst=$2','sgst=$3','igst=$4','total_amount=$5'];
+        const vals: any[] = [subtotal, cgst, sgst, igst, total];
+        let n = 6;
+        if (b.customer_id !== undefined) { sets.push(`customer_id=$${n++}`); vals.push(b.customer_id); }
+        if (b.valid_until !== undefined)  { sets.push(`valid_until=$${n++}`); vals.push(b.valid_until); }
+        if (b.notes !== undefined)        { sets.push(`notes=$${n++}`);       vals.push(b.notes); }
+        if (b.status !== undefined)       { sets.push(`status=$${n++}`);      vals.push(b.status); }
+        if (b.gst_type !== undefined)     { sets.push(`gst_type=$${n++}`);    vals.push(b.gst_type); }
+        if (b.tax_type !== undefined)     { sets.push(`tax_type=$${n++}`);    vals.push(b.tax_type); }
+        if (b.is_interstate !== undefined){ sets.push(`is_interstate=$${n++}`); vals.push(b.is_interstate); }
+        if (b.created_by !== undefined)   { sets.push(`created_by=$${n++}`);  vals.push(b.created_by); }
         vals.push(id);
-        await client.query(`UPDATE quotations SET ${sets.join(', ')} WHERE id = $${n}`, vals);
+        await client.query(`UPDATE quotations SET ${sets.join(', ')} WHERE id=$${n}`, vals);
         return this.getQuotation(id);
       });
     }

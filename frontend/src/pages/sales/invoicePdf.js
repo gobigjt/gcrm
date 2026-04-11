@@ -122,48 +122,9 @@ function isInterstate(doc) {
   return Number(doc.igst || 0) > 0;
 }
 
-/** Col1 = CGST or IGST cell, Col2 = SGST or — */
-function lineTaxCells(it, interstate) {
-  const rate = Number(it.gst_rate || 0);
-  if (interstate) {
-    const ig = Number(it.igst || 0);
-    return {
-      tax1: ig > 0 ? `${asMoney(it.igst)} (${rate}%)` : '—',
-      tax2: '—',
-    };
-  }
-  const half = rate / 2;
-  return {
-    tax1: Number(it.cgst) > 0 ? `${asMoney(it.cgst)} (${half}%)` : '—',
-    tax2: Number(it.sgst) > 0 ? `${asMoney(it.sgst)} (${half}%)` : '—',
-  };
-}
-
 function lineGstAmount(it) {
   const base = Number(it.quantity ?? 0) * Number(it.unit_price ?? 0);
   return Math.max(0, Number(it.total ?? 0) - base);
-}
-
-/** @param {'invoice'|'quotation'|'order'} kind */
-function lineTaxCellsForKind(it, interstate, kind) {
-  const hasLineSplit =
-    kind === 'invoice' &&
-    (Number(it.cgst) > 0 || Number(it.sgst) > 0 || Number(it.igst) > 0);
-  if (hasLineSplit) return lineTaxCells(it, interstate);
-  const rate = Number(it.gst_rate || 0);
-  const gstAmt = lineGstAmount(it);
-  if (interstate) {
-    return {
-      tax1: gstAmt > 0 ? `${asMoney(gstAmt)} (${rate}%)` : '—',
-      tax2: '—',
-    };
-  }
-  const half = gstAmt / 2;
-  const halfRate = rate / 2;
-  return {
-    tax1: half > 0 ? `${asMoney(half)} (${halfRate}%)` : '—',
-    tax2: half > 0 ? `${asMoney(half)} (${halfRate}%)` : '—',
-  };
 }
 
 /** @param {'invoice'|'quotation'|'order'} kind */
@@ -171,13 +132,6 @@ export function getSalesDocumentNumber(doc, kind) {
   if (kind === 'quotation') return doc.quotation_number || `QT-${doc.id}`;
   if (kind === 'order') return doc.order_number || `SO-${doc.id}`;
   return doc.invoice_number || `INV-${doc.id}`;
-}
-
-/** @param {'invoice'|'quotation'|'order'} kind */
-function documentTitleForKind(kind) {
-  if (kind === 'quotation') return 'Quotation';
-  if (kind === 'order') return 'Sales Order';
-  return 'Tax Invoice';
 }
 
 /** @param {'invoice'|'quotation'|'order'} kind */
@@ -224,6 +178,34 @@ function documentDateLabel(kind) {
   if (kind === 'quotation') return 'Estimate Date';
   if (kind === 'order') return 'Order Date';
   return 'Invoice Date';
+}
+
+/** Billing / delivery box body (same content as print HTML). */
+function customerAddressBlockText(doc) {
+  const name = doc.customer_name || '—';
+  const addr = (doc.customer_address || '').trim();
+  const gst = doc.customer_gstin ? `GSTIN: ${doc.customer_gstin}` : '';
+  return [name, addr, gst].filter(Boolean).join('\n');
+}
+
+function pdfPageHeight(pdf) {
+  const ps = pdf.internal.pageSize;
+  if (typeof ps.getHeight === 'function') return ps.getHeight();
+  return ps.height || 842;
+}
+
+function addPdfPageFooters(pdf, pageW) {
+  const n = pdf.getNumberOfPages();
+  const h = pdfPageHeight(pdf);
+  for (let i = 1; i <= n; i += 1) {
+    pdf.setPage(i);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(8);
+    pdf.setTextColor(110, 110, 110);
+    pdf.text(`-- ${i} of ${n} --`, pageW / 2, h - 26, { align: 'center' });
+  }
+  pdf.setPage(n);
+  pdf.setTextColor(0, 0, 0);
 }
 
 function statusLabel(doc) {
@@ -280,187 +262,265 @@ function hsnSummaryRows(doc, kind) {
   return [...byHsn.values()];
 }
 
-/** @param {'invoice'|'quotation'|'order'} kind */
-function rightMetaHtml(doc, kind, docNo) {
-  if (kind === 'invoice') {
-    return `
-      <div class="meta-row"><strong>SRN</strong> ${doc.id}</div>
-      <div class="meta-row"><strong>Invoice Date</strong> ${fmtInvoiceDate(doc.invoice_date || doc.created_at)}</div>
-      <div class="meta-row"><strong>Invoice No.</strong> ${escapeHtml(docNo)}</div>`;
-  }
-  if (kind === 'quotation') {
-    const mid = doc.valid_until
-      ? `<strong>Valid Until</strong> ${fmtInvoiceDate(doc.valid_until)}`
-      : `<strong>Quote Date</strong> ${fmtInvoiceDate(doc.created_at)}`;
-    return `
-      <div class="meta-row"><strong>SRN</strong> ${doc.id}</div>
-      <div class="meta-row">${mid}</div>
-      <div class="meta-row"><strong>Quotation No.</strong> ${escapeHtml(docNo)}</div>`;
-  }
-  return `
-    <div class="meta-row"><strong>SRN</strong> ${doc.id}</div>
-    <div class="meta-row"><strong>Order Date</strong> ${fmtInvoiceDate(doc.order_date || doc.created_at)}</div>
-    <div class="meta-row"><strong>Order No.</strong> ${escapeHtml(docNo)}</div>`;
-}
-
-/** @param {'invoice'|'quotation'|'order'} kind */
-function rightMetaPdfLines(doc, kind, docNo) {
-  if (kind === 'invoice') {
-    return [
-      `SRN ${doc.id}`,
-      `Invoice Date ${fmtInvoiceDate(doc.invoice_date || doc.created_at)}`,
-      `Invoice No. ${docNo}`,
-    ];
-  }
-  if (kind === 'quotation') {
-    const mid = doc.valid_until
-      ? `Valid Until ${fmtInvoiceDate(doc.valid_until)}`
-      : `Quote Date ${fmtInvoiceDate(doc.created_at)}`;
-    return [`SRN ${doc.id}`, mid, `Quotation No. ${docNo}`];
-  }
-  return [
-    `SRN ${doc.id}`,
-    `Order Date ${fmtInvoiceDate(doc.order_date || doc.created_at)}`,
-    `Order No. ${docNo}`,
-  ];
-}
-
 /**
  * @param {object} doc Invoice / quotation / order with items (and payments for invoices)
  * @param {object} company Company settings row
  * @param {string|null} [logoDataUrl] Inline data URL for logo (print loads instantly; avoids racing print())
  * @param {'invoice'|'quotation'|'order'} [kind]
+ * @param {object} [opts]
+ * @param {boolean} [opts.includeSheetFooter] Default true (print). Set false when PDF footers are added separately.
+ * @param {boolean} [opts.rasterLayout] Narrow fixed-width body for html2canvas (matches A4-ish print width).
  */
-export function buildSalesDocumentHtml(doc, company, logoDataUrl = null, kind = 'invoice') {
+export function buildSalesDocumentHtml(doc, company, logoDataUrl = null, kind = 'invoice', opts = {}) {
+  const includeSheetFooter = opts.includeSheetFooter !== false;
+  const rasterLayout = Boolean(opts.rasterLayout);
   const docNo = getSalesDocumentNumber(doc, kind);
   const t = totalsForSalesDocument(doc, kind);
+  const interstate = isInterstateForDoc(doc, kind);
   const title = kind === 'quotation' ? 'Estimate' : kind === 'order' ? 'Sales Order' : 'Tax Invoice';
+
   const rawLogo = (company.logo_url || '').trim();
   const useLogo = Boolean(rawLogo && !/^javascript:/i.test(rawLogo));
   const logoSrc = useLogo && logoDataUrl && String(logoDataUrl).startsWith('data:')
     ? logoDataUrl
-    : useLogo
-      ? resolvePublicUrl(rawLogo)
-      : '';
-  const rowsHtml = (doc.items || []).map((it, idx) => `
+    : useLogo ? resolvePublicUrl(rawLogo) : '';
+
+  // ── HSN / tax summary rows (used later in itemRowsHtml / taxItemRowsHtml) ──
+  const taxSummaryRows = hsnSummaryRows(doc, kind);
+  const taxColCount    = interstate ? 3 : 4;
+
+  // ── Meta fields ───────────────────────────────────────────────
+  const docDate   = fmtInvoiceDate(doc.invoice_date || doc.order_date || doc.created_at);
+  const dueOrValid = doc.due_date ? fmtInvoiceDate(doc.due_date)
+    : doc.valid_until ? fmtInvoiceDate(doc.valid_until) : null;
+
+  const metaLeft = [
+    [`${documentNoLabel(kind)}`, escapeHtml(docNo)],
+    [documentDateLabel(kind), docDate],
+    ...(dueOrValid ? [[kind === 'quotation' ? 'Valid Until' : 'Due Date', dueOrValid]] : []),
+    ['Sales Executive', escapeHtml(doc.created_by_name || '—')],
+  ];
+  const metaRight = [
+    ...(doc.state_of_supply ? [['Place of Supply', escapeHtml(doc.state_of_supply)]] : []),
+    ...(doc.reference_no    ? [['Reference No',    escapeHtml(doc.reference_no)]]    : []),
+    ['Status', `<strong>${escapeHtml(statusLabel(doc))}</strong>`],
+  ];
+  // metaLeft and metaRight are rendered directly as separate column tables in the template
+
+  // ── Totals ────────────────────────────────────────────────────
+  const totalTax = (t.cgst || 0) + (t.sgst || 0) + (t.igst || 0);
+  const subTotal  = t.subtotal != null ? t.subtotal : t.total - totalTax;
+  const terms     = [doc.notes || '', company.payment_terms || ''].filter(Boolean).join('\n');
+
+  // shared border shorthand helpers (inline only — no global CSS collapse conflicts)
+  const SB = 'border:1px solid #444';   // solid all sides
+  const BR = 'border-right:1px solid #444';
+  const BT = 'border-top:1px solid #444';
+  const BD = 'border-bottom:1px solid #ddd';
+
+  // items rows — each cell gets right border except last column
+  const itemRowsHtml = (doc.items || []).map((it, idx) => `
     <tr>
-      <td>${idx + 1}</td>
-      <td>${escapeHtml(it.description || it.product_name || '—')}</td>
-      <td>${escapeHtml(it.product_hsn_code || it.hsn_code || '—')}</td>
-      <td style="text-align:right">${Number(it.quantity ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 3 })}</td>
-      <td style="text-align:right">₹ ${asMoney(it.unit_price)}</td>
-      <td style="text-align:right">₹ ${asMoney(it.total)}</td>
-    </tr>
-  `).join('');
-  const taxRows = hsnSummaryRows(doc, kind).map((r) => `
-    <tr>
-      <td>${escapeHtml(r.hsn)}</td>
-      <td style="text-align:right">₹ ${asMoney(r.taxable)}</td>
-      <td style="text-align:right">${r.igst > 0 ? `(${r.rate}%) ₹ ${asMoney(r.igst)}` : `(${r.rate / 2}%) ₹ ${asMoney(r.cgst)}`}</td>
-      <td style="text-align:right">${r.igst > 0 ? '—' : `(${r.rate / 2}%) ₹ ${asMoney(r.sgst)}`}</td>
-    </tr>
-  `).join('');
-  const terms = [company.payment_terms || '', doc.notes || ''].filter(Boolean).join('\n');
+      <td style="padding:5px 4px 10px;text-align:center;vertical-align:middle;${BR};${BT};width:28px">${idx + 1}</td>
+      <td style="padding:5px 8px 10px;vertical-align:middle;${BR};${BT}"><strong>${escapeHtml(it.description || it.product_name || '—')}</strong></td>
+      <td style="padding:5px 4px 10px;text-align:center;vertical-align:middle;${BR};${BT};width:72px">${escapeHtml(it.product_hsn_code || it.hsn_code || '—')}</td>
+      <td style="padding:5px 4px 10px;text-align:center;vertical-align:middle;${BR};${BT};width:55px">${Number(it.quantity ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })} Nos</td>
+      <td style="padding:5px 8px 10px;text-align:right;vertical-align:middle;${BR};${BT};width:85px;white-space:nowrap">&#8377; ${asMoney(it.unit_price)}</td>
+      <td style="padding:5px 8px 10px;text-align:right;vertical-align:middle;${BT};width:90px;white-space:nowrap">&#8377; ${asMoney(it.total)}</td>
+    </tr>`).join('') || `<tr><td colspan="6" style="padding:10px;text-align:center;color:#888;${BT}">No line items</td></tr>`;
+
+  // tax rows
+  const taxItemRowsHtml = taxSummaryRows.map((r) => interstate
+    ? `<tr>
+        <td style="padding:5px 8px 10px;vertical-align:middle;${BR};${BT}">${escapeHtml(r.hsn)}</td>
+        <td style="padding:5px 8px 10px;text-align:right;vertical-align:middle;${BR};${BT};white-space:nowrap">&#8377; ${asMoney(r.taxable)}</td>
+        <td style="padding:5px 8px 10px;text-align:right;vertical-align:middle;${BT};white-space:nowrap">(${r.rate}%) &#8377; ${asMoney(r.igst)}</td>
+       </tr>`
+    : `<tr>
+        <td style="padding:5px 8px 10px;vertical-align:middle;${BR};${BT}">${escapeHtml(r.hsn)}</td>
+        <td style="padding:5px 8px 10px;text-align:right;vertical-align:middle;${BR};${BT};white-space:nowrap">&#8377; ${asMoney(r.taxable)}</td>
+        <td style="padding:5px 8px 10px;text-align:right;vertical-align:middle;${BR};${BT};white-space:nowrap">(${r.rate / 2}%) &#8377; ${asMoney(r.cgst)}</td>
+        <td style="padding:5px 8px 10px;text-align:right;vertical-align:middle;${BT};white-space:nowrap">(${r.rate / 2}%) &#8377; ${asMoney(r.sgst)}</td>
+       </tr>`
+  ).join('') || `<tr><td colspan="${taxColCount}" style="padding:6px;text-align:center;color:#888;${BT}">—</td></tr>`;
+
   return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8"/>
   <title>${escapeHtml(docNo)} - ${escapeHtml(title)}</title>
   <style>
-    @page { size: A4; margin: 12mm; }
-    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; }
-    .co { font-size: 11px; line-height: 1.35; margin-bottom: 8px; }
-    .title { text-align: center; font-size: 19px; font-weight: 700; margin: 8px 0 10px; letter-spacing: 0.08em; }
-    .logo { width: 64px; height: 64px; object-fit: contain; }
-    .meta { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
-    .meta td { padding: 2px 0; vertical-align: top; }
-    .addr-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 8px 0; }
-    .addr { border: 1px solid #333; padding: 8px; min-height: 92px; }
-    table.tbl { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 10px; }
-    table.tbl th, table.tbl td { border: 1px solid #333; padding: 6px 5px; vertical-align: top; }
-    table.tbl th { background: #f0f0f0; font-weight: 700; }
-    .totals { margin-top: 10px; margin-left: auto; width: 320px; font-size: 11px; }
-    .totals .r { display: flex; justify-content: space-between; padding: 2px 0; }
-    .totals .grand { border-top: 1px solid #333; margin-top: 4px; padding-top: 6px; font-weight: 700; }
-    .words { margin-top: 8px; font-size: 10px; }
-    .terms {
-      margin-top: 12px;
-      white-space: pre-wrap;
-      font-size: 10px;
-      line-height: 1.45;
-      width: 100%;
-      display: block;
-      box-sizing: border-box;
-      clear: both;
-    }
+    @page { size:A4; margin:12mm; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { font-family:Arial,Helvetica,sans-serif; font-size:11px; color:#111; background:#fff; }
+    ${rasterLayout ? 'body{max-width:794px;margin:0 auto;padding:6px 10px 32px;}' : ''}
+    strong { font-weight:700; }
+    .wrap { border:1px solid #444; width:100%; }
+    .sec  { border-top:1px solid #444; width:100%; }
+    .sheet-footer { margin-top:12px; text-align:center; font-size:9px; color:#666; }
   </style>
 </head>
 <body>
-  <div style="display:flex;justify-content:space-between;align-items:flex-start">
-    <div class="co">
-      <strong>${escapeHtml(company.company_name || 'Company')}</strong><br/>
-      ${escapeHtml(company.address || '').replace(/\n/g, '<br/>')}<br/>
-      ${company.gstin ? `GSTIN: ${escapeHtml(company.gstin)}` : ''}
-    </div>
-    ${logoSrc ? `<img src="${escapeHtml(logoSrc)}" alt="" class="logo" />` : ''}
-  </div>
-  <div class="title">${escapeHtml(title)}</div>
+<div class="wrap">
 
-  <table class="meta">
-    <tr><td><strong>${documentNoLabel(kind)}</strong> : ${escapeHtml(docNo)}</td><td><strong>${documentDateLabel(kind)}</strong> : ${fmtInvoiceDate(doc.invoice_date || doc.order_date || doc.created_at)}</td></tr>
-    <tr><td><strong>Status</strong> : ${escapeHtml(statusLabel(doc))}</td><td>${doc.valid_until ? `<strong>Valid Until</strong> : ${fmtInvoiceDate(doc.valid_until)}` : ''}</td></tr>
+  <!-- ① HEADER: logo left · company right -->
+  <table width="100%" style="border-collapse:collapse">
+    <tr>
+      <td style="padding:10px 12px;vertical-align:middle;width:110px">
+        ${logoSrc ? `<img src="${escapeHtml(logoSrc)}" alt="" style="max-width:100px;max-height:80px;object-fit:contain;display:block"/>` : ''}
+      </td>
+      <td style="padding:10px 14px;vertical-align:top;text-align:right;border-left:1px solid #444">
+        <div style="font-size:20px;font-weight:700;letter-spacing:0.02em;line-height:1.2">${escapeHtml(company.company_name || 'Company')}</div>
+        <div style="font-size:10px;color:#333;line-height:1.6;margin-top:4px">
+          ${escapeHtml(company.address || '').replace(/\n/g, ', ')}
+          ${company.gstin ? `<br/>GSTIN: ${escapeHtml(company.gstin)}` : ''}
+        </div>
+      </td>
+    </tr>
   </table>
 
-  <div class="addr-wrap">
-    <div class="addr">
-      <strong>Billing Address</strong><br/>
-      <strong>${escapeHtml(doc.customer_name || '—')}</strong><br/>
-      ${escapeHtml(doc.customer_address || '').replace(/\n/g, '<br/>')}<br/>
-      ${doc.customer_gstin ? `GSTIN: ${escapeHtml(doc.customer_gstin)}` : ''}
-    </div>
-    <div class="addr">
-      <strong>Delivery Address</strong><br/>
-      <strong>${escapeHtml(doc.customer_name || '—')}</strong><br/>
-      ${escapeHtml(doc.customer_address || '').replace(/\n/g, '<br/>')}<br/>
-      ${doc.customer_gstin ? `GSTIN: ${escapeHtml(doc.customer_gstin)}` : ''}
-    </div>
+  <!-- ① b DOCUMENT TITLE -->
+  <div class="sec" style="text-align:center;padding:6px 12px;font-size:14px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase">
+    ${kind === 'quotation' ? 'Quotation' : kind === 'order' ? 'Sales Order' : totalTax > 0 ? 'Tax Invoice' : 'Invoice'}
   </div>
 
-  <table class="tbl">
+  <!-- ② META INFO -->
+  <table width="100%" style="border-collapse:collapse" class="sec">
+    <tr>
+      <td style="padding:8px 12px;width:50%;vertical-align:top">
+        <table width="100%" style="border-collapse:collapse">
+          <tbody>
+            ${metaLeft.map(([k,v]) => `<tr>
+              <td style="padding:2px 0;white-space:nowrap;width:120px"><strong>${k}</strong></td>
+              <td style="padding:2px 0">: ${v}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </td>
+      <td style="padding:8px 12px;width:50%;vertical-align:top;border-left:1px solid #444">
+        <table width="100%" style="border-collapse:collapse">
+          <tbody>
+            ${metaRight.map(([k,v]) => `<tr>
+              <td style="padding:2px 0;white-space:nowrap;width:110px"><strong>${k}</strong></td>
+              <td style="padding:2px 0">: ${v}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </td>
+    </tr>
+  </table>
+
+  <!-- ③ BILLING / DELIVERY ADDRESSES -->
+  <table width="100%" style="border-collapse:collapse" class="sec">
+    <tr>
+      <td style="width:50%;vertical-align:top;padding:0;border-right:1px solid #444">
+        <div style="background:#eaeaea;font-weight:700;padding:4px 10px;border-bottom:1px solid #ccc;font-size:11px">Billing Address</div>
+        <div style="padding:7px 10px;font-size:11px;line-height:1.6">
+          <strong>${escapeHtml(doc.customer_name || '—')}</strong><br/>
+          ${escapeHtml(doc.customer_address || '').replace(/\n/g, '<br/>')}
+          ${doc.customer_gstin ? `<br/>GSTIN : ${escapeHtml(doc.customer_gstin)}` : ''}
+        </div>
+      </td>
+      <td style="width:50%;vertical-align:top;padding:0">
+        <div style="background:#eaeaea;font-weight:700;padding:4px 10px;border-bottom:1px solid #ccc;font-size:11px">Delivery Address</div>
+        <div style="padding:7px 10px;font-size:11px;line-height:1.6">
+          <strong>${escapeHtml(doc.customer_name || '—')}</strong><br/>
+          ${escapeHtml(doc.customer_address || '').replace(/\n/g, '<br/>')}
+          ${doc.customer_gstin ? `<br/>GSTIN : ${escapeHtml(doc.customer_gstin)}` : ''}
+        </div>
+      </td>
+    </tr>
+  </table>
+
+  <!-- ④ LINE ITEMS -->
+  <table width="100%" style="border-collapse:collapse;font-size:10px" class="sec">
     <thead>
-      <tr>
-        <th style="width:34px">#</th>
-        <th>Item & Description</th>
-        <th>HSN Code</th>
-        <th>Qty</th>
-        <th>Rate</th>
-        <th>Amount</th>
+      <tr style="background:#eaeaea">
+        <th style="padding:5px 4px 10px;text-align:center;vertical-align:middle;${BR};width:28px">#</th>
+        <th style="padding:5px 8px 10px;text-align:left;vertical-align:middle;${BR}">Item&amp;Description</th>
+        <th style="padding:5px 4px 10px;text-align:center;vertical-align:middle;${BR};width:72px">HSN Code</th>
+        <th style="padding:5px 4px 10px;text-align:center;vertical-align:middle;${BR};width:55px">Qty</th>
+        <th style="padding:5px 8px 10px;text-align:right;vertical-align:middle;${BR};width:85px">Rate</th>
+        <th style="padding:5px 8px 10px;text-align:right;vertical-align:middle;width:90px">Amount</th>
       </tr>
     </thead>
-    <tbody>${rowsHtml || '<tr><td colspan="6">No line items</td></tr>'}</tbody>
+    <tbody>${itemRowsHtml}</tbody>
   </table>
 
-  <table class="tbl" style="margin-top:10px">
-    <thead><tr><th>HSN/SAC</th><th>Taxable Amount</th><th>CGST/IGST</th><th>SGST</th></tr></thead>
-    <tbody>${taxRows || '<tr><td colspan="4">—</td></tr>'}</tbody>
+  <!-- ⑤ HSN / TAX SUMMARY -->
+  <table width="100%" style="border-collapse:collapse;font-size:10px" class="sec">
+    <thead>
+      <tr style="background:#eaeaea">
+        ${interstate
+          ? `<th style="padding:5px 8px 10px;text-align:left;vertical-align:middle;${BR};width:100px">HSN/SAC</th>
+             <th style="padding:5px 8px 10px;text-align:right;vertical-align:middle;${BR}">Taxable Amount</th>
+             <th style="padding:5px 8px 10px;text-align:right;vertical-align:middle">IGST</th>`
+          : `<th style="padding:5px 8px 10px;text-align:left;vertical-align:middle;${BR};width:100px">HSN/SAC</th>
+             <th style="padding:5px 8px 10px;text-align:right;vertical-align:middle;${BR}">Taxable Amount</th>
+             <th style="padding:5px 8px 10px;text-align:right;vertical-align:middle;${BR};width:130px">CGST</th>
+             <th style="padding:5px 8px 10px;text-align:right;vertical-align:middle;width:130px">SGST</th>`}
+      </tr>
+    </thead>
+    <tbody>${taxItemRowsHtml}</tbody>
   </table>
 
-  <div class="words"><strong>Total in Words</strong><br/>${escapeHtml(amountInWordsINR(t.total))}</div>
-  <div class="totals">
-    <div class="r"><span>Sub Total</span><span>₹ ${asMoney(t.subtotal != null ? t.subtotal : t.total)}</span></div>
-    <div class="r"><span>Total Tax Charges</span><span>₹ ${asMoney((t.cgst || 0) + (t.sgst || 0) + (t.igst || 0))}</span></div>
-    <div class="r grand"><span>Total</span><span>₹ ${asMoney(t.total)}</span></div>
-  </div>
-  <div class="terms">
+  <!-- ⑥ TOTAL IN WORDS + TOTALS -->
+  <table width="100%" style="border-collapse:collapse" class="sec">
+    <tr>
+      <td style="padding:8px 12px;vertical-align:top;border-right:1px solid #444">
+        <div style="font-weight:700;margin-bottom:5px;font-size:11px">Total in Words</div>
+        <div style="font-size:11px"><strong>${escapeHtml(amountInWordsINR(t.total))}</strong></div>
+      </td>
+      <td style="vertical-align:top;padding:0;width:260px">
+        <table width="100%" style="border-collapse:collapse;font-size:11px">
+          <tr>
+            <td style="padding:5px 12px 10px;${BD}">Sub Total</td>
+            <td style="padding:5px 12px 10px;text-align:right;${BD};white-space:nowrap">&#8377; ${asMoney(subTotal)}</td>
+          </tr>
+          ${t.cgst > 0 ? `<tr>
+            <td style="padding:5px 12px;${BD}">CGST</td>
+            <td style="padding:5px 12px;text-align:right;${BD};white-space:nowrap">&#8377; ${asMoney(t.cgst)}</td>
+          </tr>` : ''}
+          ${t.sgst > 0 ? `<tr>
+            <td style="padding:5px 12px;${BD}">SGST</td>
+            <td style="padding:5px 12px;text-align:right;${BD};white-space:nowrap">&#8377; ${asMoney(t.sgst)}</td>
+          </tr>` : ''}
+          ${t.igst > 0 ? `<tr>
+            <td style="padding:5px 12px;${BD}">IGST</td>
+            <td style="padding:5px 12px;text-align:right;${BD};white-space:nowrap">&#8377; ${asMoney(t.igst)}</td>
+          </tr>` : ''}
+          ${totalTax > 0 ? `<tr>
+            <td style="padding:5px 12px 10px;${BD}">Total Tax Charges</td>
+            <td style="padding:5px 12px 10px;text-align:right;${BD};white-space:nowrap">&#8377; ${asMoney(totalTax)}</td>
+          </tr>` : ''}
+          <tr>
+            <td style="padding:6px 12px;font-weight:700;border-top:2px solid #444"><strong>Total</strong></td>
+            <td style="padding:6px 12px;text-align:right;font-weight:700;border-top:2px solid #444;white-space:nowrap"><strong>&#8377; ${asMoney(t.total)}</strong></td>
+          </tr>
+          ${t.balance != null ? `<tr>
+            <td style="padding:5px 12px 10px;color:#c00;border-top:1px solid #ddd">Balance Due</td>
+            <td style="padding:5px 12px 10px;text-align:right;color:#c00;border-top:1px solid #ddd;white-space:nowrap">&#8377; ${asMoney(t.balance)}</td>
+          </tr>` : ''}
+        </table>
+      </td>
+    </tr>
+  </table>
+
+  <!-- ⑦ TERMS & CONDITIONS -->
+  ${terms ? `
+  <div class="sec" style="padding:8px 12px;font-size:10px;line-height:1.6">
     <strong>Terms And Conditions:</strong><br/>
-    ${escapeHtml(terms || '—')}
-  </div>
+    <span style="white-space:pre-wrap">${escapeHtml(terms)}</span>
+  </div>` : ''}
+
+</div>
+${includeSheetFooter ? '<div class="sheet-footer">-- 1 of 1 --</div>' : ''}
 </body>
 </html>`;
 }
 
-export function buildTaxInvoiceHtml(doc, company, logoDataUrl = null) {
-  return buildSalesDocumentHtml(doc, company, logoDataUrl, 'invoice');
+export function buildTaxInvoiceHtml(doc, company, logoDataUrl = null, opts = {}) {
+  return buildSalesDocumentHtml(doc, company, logoDataUrl, 'invoice', opts);
 }
 
 export async function openSalesDocumentPrintWindow(doc, company, kind = 'invoice') {
@@ -480,47 +540,186 @@ export async function openTaxInvoicePrintWindow(doc, company) {
   return openSalesDocumentPrintWindow(doc, company, 'invoice');
 }
 
-export async function downloadSalesDocumentPdf(doc, company, kind = 'invoice') {
-  const docNo = getSalesDocumentNumber(doc, kind);
+/**
+ * Rasterize the same HTML as print → PDF (layout, ₹, tables match the browser).
+ * @param {string} docNo
+ */
+async function rasterSalesDocumentToPdf(doc, company, kind, docNo) {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    throw new Error('Raster PDF requires a browser DOM');
+  }
+  const logoDataUrl = await fetchImageAsDataUrlForPdf(company.logo_url);
+  const html = buildSalesDocumentHtml(doc, company, logoDataUrl, kind, {
+    includeSheetFooter: false,
+    rasterLayout: true,
+  });
+
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('aria-hidden', 'true');
+  Object.assign(iframe.style, {
+    position: 'fixed',
+    left: '-14000px',
+    top: '0',
+    width: '820px',
+    height: '4800px',
+    border: '0',
+    visibility: 'hidden',
+  });
+  document.body.appendChild(iframe);
+  const win = iframe.contentWindow;
+  const idoc = win.document;
+  idoc.open();
+  idoc.write(html);
+  idoc.close();
+
+  await waitForPrintImages(win);
+  const body = idoc.body;
+  body.style.background = '#ffffff';
+
+  const targetH = Math.min(16000, Math.max(480, body.scrollHeight) + 64);
+  iframe.style.height = `${targetH}px`;
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+  const { default: html2canvas } = await import('html2canvas');
+  const canvas = await html2canvas(body, {
+    scale: 2,
+    useCORS: true,
+    allowTaint: true,
+    logging: false,
+    backgroundColor: '#ffffff',
+    scrollX: 0,
+    scrollY: 0,
+    windowWidth: body.scrollWidth,
+    windowHeight: body.scrollHeight,
+  });
+
+  document.body.removeChild(iframe);
+
+  if (!canvas.width || !canvas.height) throw new Error('Empty invoice canvas');
+
+  const pdf = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'portrait' });
+  const pageW = pdf.internal.pageSize.getWidth();
+  const pageH = pdfPageHeight(pdf);
+  const margin = 36;
+  const footerBand = 28;
+  const pageInnerH = pageH - 2 * margin - footerBand;
+  const destW = pageW - 2 * margin;
+  const R = destW / canvas.width;
+  const destH = canvas.height * R;
+
+  let offsetY = 0;
+  let pageIdx = 0;
+  while (offsetY < destH - 0.5) {
+    const sliceH = Math.min(pageInnerH, destH - offsetY);
+    const sy = offsetY / R;
+    const sh = Math.min(sliceH / R, canvas.height - sy);
+    const sliceCanvas = document.createElement('canvas');
+    sliceCanvas.width = canvas.width;
+    sliceCanvas.height = Math.max(1, Math.ceil(sh));
+    const ctx = sliceCanvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas unsupported');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+    ctx.drawImage(canvas, 0, sy, canvas.width, sh, 0, 0, sliceCanvas.width, sliceCanvas.height);
+    const dataUrl = sliceCanvas.toDataURL('image/jpeg', 0.9);
+    const drawH = sliceCanvas.height * R;
+    if (drawH < 0.5) break;
+
+    if (pageIdx > 0) pdf.addPage();
+    pdf.addImage(dataUrl, 'JPEG', margin, margin, destW, drawH);
+
+    offsetY += drawH;
+    pageIdx += 1;
+  }
+
+  const n = pdf.getNumberOfPages();
+  for (let i = 1; i <= n; i += 1) {
+    pdf.setPage(i);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(8);
+    pdf.setTextColor(110, 110, 110);
+    pdf.text(`-- ${i} of ${n} --`, pageW / 2, pageH - 20, { align: 'center' });
+  }
+  pdf.setTextColor(0, 0, 0);
+  pdf.save(`${docNo}.pdf`);
+}
+
+/** Vector fallback (no html2canvas) — Helvetica, limited ₹ shaping. */
+async function downloadSalesDocumentPdfVector(doc, company, kind, docNo) {
   const title = kind === 'quotation' ? 'Estimate' : kind === 'order' ? 'Sales Order' : 'Tax Invoice';
-  const left = 36;
+  const left = 34;
   const pageW = 595;
   const rightX = pageW - left;
+  const tableWidth = pageW - 2 * left;
   const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
   const t = totalsForSalesDocument(doc, kind);
+  const pageH = pdfPageHeight(pdf);
+  const bottomSafe = 42;
 
-  let y = 38;
+  let y = 36;
   const logoData = await fetchImageAsDataUrlForPdf(company.logo_url);
   if (logoData) {
     const fmt = pdfFormatFromDataUrl(logoData);
-    try { pdf.addImage(logoData, fmt, rightX - 64, y - 6, 64, 64); } catch {}
+    try {
+      pdf.addImage(logoData, fmt, rightX - 64, y - 4, 64, 64);
+    } catch {
+      /* optional logo */
+    }
   }
 
   pdf.setFont('helvetica', 'bold');
   pdf.setFontSize(11);
   pdf.text(company.company_name || 'Company', left, y);
   pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(9);
-  const coLines = pdf.splitTextToSize(company.address || '', 300);
+  pdf.setFontSize(10);
+  const coLines = pdf.splitTextToSize((company.address || '').trim(), 300);
   pdf.text(coLines, left, y + 12);
-  y += 12 + coLines.length * 10 + 6;
-  if (company.gstin) pdf.text(`GSTIN: ${company.gstin}`, left, y);
-  y += 18;
+  y += 12 + coLines.length * 11 + 4;
+  if (company.gstin) {
+    pdf.text(`GSTIN: ${company.gstin}`, left, y);
+    y += 14;
+  } else {
+    y += 6;
+  }
 
   pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(17);
+  pdf.setFontSize(19);
   pdf.text(title, pageW / 2, y, { align: 'center' });
-  y += 18;
+  y += 22;
 
-  pdf.setFontSize(9);
+  pdf.setFontSize(10);
   pdf.setFont('helvetica', 'normal');
   pdf.text(`${documentNoLabel(kind)} : ${docNo}`, left, y);
   pdf.text(`${documentDateLabel(kind)} : ${fmtInvoiceDate(doc.invoice_date || doc.order_date || doc.created_at)}`, rightX, y, { align: 'right' });
-  y += 12;
+  y += 13;
   pdf.text(`Status : ${statusLabel(doc)}`, left, y);
   if (doc.valid_until) pdf.text(`Valid Until : ${fmtInvoiceDate(doc.valid_until)}`, rightX, y, { align: 'right' });
-  y += 10;
+  y += 14;
 
+  const addrBody = customerAddressBlockText(doc);
+  autoTable(pdf, {
+    startY: y,
+    body: [
+      [{ content: 'Billing Address', styles: { fontStyle: 'bold', fontSize: 10 } }],
+      [{ content: addrBody, styles: { fontSize: 10 } }],
+      [{ content: 'Delivery Address', styles: { fontStyle: 'bold', fontSize: 10 } }],
+      [{ content: addrBody, styles: { fontSize: 10 } }],
+    ],
+    theme: 'grid',
+    styles: { fontSize: 10, cellPadding: 6, valign: 'top', lineColor: [17, 17, 17], lineWidth: 0.5 },
+    columnStyles: { 0: { cellWidth: tableWidth } },
+    margin: { left, right: left, bottom: bottomSafe },
+  });
+  y = (pdf.lastAutoTable?.finalY || y) + 10;
+
+  const colW = {
+    0: 28,
+    1: tableWidth - 28 - 54 - 52 - 86 - 86,
+    2: 54,
+    3: 52,
+    4: 86,
+    5: 86,
+  };
   autoTable(pdf, {
     startY: y,
     head: [['#', 'Item & Description', 'HSN Code', 'Qty', 'Rate', 'Amount']],
@@ -533,10 +732,17 @@ export async function downloadSalesDocumentPdf(doc, company, kind = 'invoice') {
       `₹ ${asMoney(it.total)}`,
     ]),
     theme: 'grid',
-    styles: { fontSize: 8, cellPadding: 4 },
-    headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
-    columnStyles: { 0: { cellWidth: 24 }, 1: { cellWidth: 210 }, 2: { cellWidth: 60 }, 3: { halign: 'right', cellWidth: 48 }, 4: { halign: 'right', cellWidth: 80 }, 5: { halign: 'right', cellWidth: 80 } },
-    margin: { left, right: left },
+    styles: { fontSize: 10, cellPadding: 5, lineColor: [51, 51, 51], lineWidth: 0.5 },
+    headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', fontSize: 10 },
+    columnStyles: {
+      0: { cellWidth: colW[0], halign: 'center' },
+      1: { cellWidth: colW[1] },
+      2: { cellWidth: colW[2] },
+      3: { halign: 'right', cellWidth: colW[3] },
+      4: { halign: 'right', cellWidth: colW[4] },
+      5: { halign: 'right', cellWidth: colW[5] },
+    },
+    margin: { left, right: left, bottom: bottomSafe },
   });
   y = (pdf.lastAutoTable?.finalY || y) + 10;
 
@@ -550,44 +756,80 @@ export async function downloadSalesDocumentPdf(doc, company, kind = 'invoice') {
       r.igst > 0 ? '—' : `(${r.rate / 2}%) ₹ ${asMoney(r.sgst)}`,
     ]),
     theme: 'grid',
-    styles: { fontSize: 8, cellPadding: 4 },
-    headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
-    margin: { left, right: left },
+    styles: { fontSize: 10, cellPadding: 5, lineColor: [51, 51, 51], lineWidth: 0.5 },
+    headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', fontSize: 10 },
+    columnStyles: {
+      0: { cellWidth: tableWidth * 0.18 },
+      1: { halign: 'right', cellWidth: tableWidth * 0.28 },
+      2: { halign: 'right', cellWidth: tableWidth * 0.27 },
+      3: { halign: 'right', cellWidth: tableWidth * 0.27 },
+    },
+    margin: { left, right: left, bottom: bottomSafe },
   });
   y = (pdf.lastAutoTable?.finalY || y) + 12;
 
   pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(9);
-  pdf.text('Total in Words', left, y);
-  y += 11;
-  pdf.setFont('helvetica', 'normal');
-  pdf.text(pdf.splitTextToSize(amountInWordsINR(t.total), pageW - 2 * left), left, y);
-  y += 22;
-
   pdf.setFontSize(10);
-  pdf.text(`Sub Total: ₹ ${asMoney(t.subtotal != null ? t.subtotal : t.total)}`, rightX, y, { align: 'right' });
+  pdf.text('Total in Words', left, y);
   y += 12;
-  pdf.text(`Total Tax Charges: ₹ ${asMoney((t.cgst || 0) + (t.sgst || 0) + (t.igst || 0))}`, rightX, y, { align: 'right' });
-  y += 12;
-  pdf.setFont('helvetica', 'bold');
-  pdf.text(`Total: ₹ ${asMoney(t.total)}`, rightX, y, { align: 'right' });
   pdf.setFont('helvetica', 'normal');
-  y += 18;
-
-  const terms = [company.payment_terms || '', doc.notes || ''].filter(Boolean).join('\n');
-  if (terms) {
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('Terms And Conditions:', left, y);
-    y += 11;
-    pdf.setFont('helvetica', 'normal');
-    const lines = pdf.splitTextToSize(terms, pageW - 2 * left);
-    if (y + lines.length * 10 > 800) {
+  const wordLines = pdf.splitTextToSize(amountInWordsINR(t.total), tableWidth);
+  const lineH = 11;
+  for (let li = 0; li < wordLines.length; li += 1) {
+    if (y + lineH > pageH - bottomSafe) {
       pdf.addPage();
       y = 40;
     }
-    pdf.text(lines, left, y);
+    pdf.text(wordLines[li], left, y);
+    y += lineH;
   }
+  y += 6;
+
+  pdf.setFontSize(11);
+  pdf.text(`Sub Total: ₹ ${asMoney(t.subtotal != null ? t.subtotal : t.total)}`, rightX, y, { align: 'right' });
+  y += 13;
+  pdf.text(`Total Tax Charges: ₹ ${asMoney((t.cgst || 0) + (t.sgst || 0) + (t.igst || 0))}`, rightX, y, { align: 'right' });
+  y += 13;
+  pdf.setFont('helvetica', 'bold');
+  pdf.text(`Total: ₹ ${asMoney(t.total)}`, rightX, y, { align: 'right' });
+  pdf.setFont('helvetica', 'normal');
+  y += 20;
+
+  const terms = [company.payment_terms || '', doc.notes || ''].filter(Boolean).join('\n');
+  if (terms) {
+    if (y + 24 > pageH - bottomSafe) {
+      pdf.addPage();
+      y = 40;
+    }
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(10);
+    pdf.text('Terms And Conditions:', left, y);
+    y += 12;
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(10);
+    const lines = pdf.splitTextToSize(terms, tableWidth);
+    for (let li = 0; li < lines.length; li += 1) {
+      if (y + lineH > pageH - bottomSafe) {
+        pdf.addPage();
+        y = 40;
+      }
+      pdf.text(lines[li], left, y);
+      y += lineH;
+    }
+  }
+
+  addPdfPageFooters(pdf, pageW);
   pdf.save(`${docNo}.pdf`);
+}
+
+export async function downloadSalesDocumentPdf(doc, company, kind = 'invoice') {
+  const docNo = getSalesDocumentNumber(doc, kind);
+  try {
+    await rasterSalesDocumentToPdf(doc, company, kind, docNo);
+  } catch (e) {
+    console.warn('Sales PDF (HTML raster) failed, using vector fallback:', e);
+    await downloadSalesDocumentPdfVector(doc, company, kind, docNo);
+  }
 }
 
 export async function downloadTaxInvoicePdf(doc, company) {
