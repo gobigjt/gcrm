@@ -132,7 +132,8 @@ export class SettingsController {
     return this.svc.updateModuleSettings(module, body, u.id);
   }
 
-  @Get('dashboard')     getDashboardStats() { return this.svc.getDashboardStats(); }
+  @Get('dashboard')        getDashboardStats()  { return this.svc.getDashboardStats(); }
+  @Get('dashboard/charts') getDashboardCharts() { return this.svc.getDashboardCharts(); }
 
   @UseGuards(RolesGuard) @Roles('Super Admin')
   @Get('platform/summary')

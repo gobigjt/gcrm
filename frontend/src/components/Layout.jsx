@@ -8,10 +8,14 @@ import { useTheme } from '../context/ThemeContext';
 const PAGE_META = {
   '/': { title: 'Dashboard', cta: '+ New Lead', ctaTo: '/crm?tab=list' },
   '/crm': { title: 'CRM', cta: '+ New Lead', ctaTo: '/crm/leads/new' },
+  '/crm/masters': { title: 'CRM Masters', cta: '+ New Lead', ctaTo: '/crm/leads/new' },
   '/sales': { title: 'Sales', cta: '+ Quotation', ctaTo: '/sales/quotes/new' },
-  '/sales/quotes': { title: 'Quotes', cta: '+ Quotation', ctaTo: '/sales/quotes/new' },
-  '/sales/orders': { title: 'Orders', cta: '+ Order', ctaTo: '/sales/orders/new' },
+  '/sales/quotes': { title: 'Quotations', cta: '+ Quotation', ctaTo: '/sales/quotes/new' },
+  '/sales/orders': { title: 'Sale Orders', cta: '+ Order', ctaTo: '/sales/orders/new' },
   '/sales/invoices': { title: 'Invoices', cta: '+ Invoice', ctaTo: '/sales/invoices/new' },
+  '/sales/payments': { title: 'Payment In', cta: null, ctaTo: null },
+  '/sales/returns': { title: 'Sale Returns', cta: '+ Return', ctaTo: '/sales/returns' },
+  '/sales/customers': { title: 'Customers', cta: '+ Customer', ctaTo: null },
   '/inventory': { title: 'Inventory', cta: '+ Product', ctaTo: '/inventory/products/new' },
   '/inventory/products': { title: 'Products', cta: '+ Product', ctaTo: '/inventory/products/new' },
   '/inventory/warehouses': { title: 'Warehouses', cta: '+ Product', ctaTo: '/inventory/products/new' },
@@ -37,14 +41,18 @@ const NAV_SECTIONS = [
       { to: '/crm?tab=contacts', label: 'Contacts', icon: '✦', module: 'crm' },
       { to: '/crm?tab=pipeline', label: 'Pipeline', icon: '⧉', module: 'crm' },
       { to: '/crm?tab=followups', label: 'Follow-ups', icon: '▤', module: 'crm' },
+      { to: '/crm/masters', label: 'Masters', icon: '◑', module: 'crm' },
     ],
   },
   {
-    label: 'Sales',
+    label: 'Sale',
     items: [
-      { to: '/sales/quotes', label: 'Quotes', icon: '❝', module: 'sales' },
-      { to: '/sales/orders', label: 'Orders', icon: '◇', module: 'sales' },
-      { to: '/sales/invoices', label: 'Invoices', icon: '◫', module: 'sales' },
+      { to: '/sales/invoices',  label: 'Invoices',    icon: '◫', module: 'sales' },
+      { to: '/sales/payments',  label: 'Payment In',  icon: '₹', module: 'sales' },
+      { to: '/sales/quotes',    label: 'Quotations',  icon: '❝', module: 'sales' },
+      { to: '/sales/orders',    label: 'Sale Order',  icon: '◇', module: 'sales' },
+      { to: '/sales/returns',   label: 'Sale Return', icon: '↩', module: 'sales' },
+      { to: '/sales/customers', label: 'Customers',   icon: '◉', module: 'sales' },
     ],
   },
   {
@@ -84,7 +92,7 @@ function navItemActive(pathname, search, hash, to) {
   const qi = rest.indexOf('?');
   const path = qi >= 0 ? rest.slice(0, qi) : rest;
   const want = new URLSearchParams(qi >= 0 ? rest.slice(qi + 1) : '');
-  const salesNavRoots = ['/sales/quotes', '/sales/orders', '/sales/invoices'];
+  const salesNavRoots = ['/sales/quotes', '/sales/orders', '/sales/invoices', '/sales/payments', '/sales/returns', '/sales/customers'];
   if (salesNavRoots.includes(path)) {
     if (pathname === path || pathname.startsWith(`${path}/`)) {
       if (wantHash) return (hash || '') === wantHash;

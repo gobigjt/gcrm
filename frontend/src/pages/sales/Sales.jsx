@@ -1,7 +1,8 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSearchParams, useLocation, Link, Navigate, useParams, useNavigate } from 'react-router-dom';
 import { salesListPath, salesNewPath, salesViewPath, salesEditPath } from './salesPaths';
 import api from '../../api/client';
+import { useAuth } from '../../context/AuthContext';
 import { printSalesDocument, downloadSalesDocument } from './invoicePdf';
 import { SALES_FROM_LEAD_PARAM } from '../../utils/salesFromLeadUrl';
 import Modal from '../../components/Modal';
@@ -43,6 +44,9 @@ const STATUS_CLS = {
   processing:'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400',
   delivered:'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
   cancelled:'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-500',
+  confirmed:'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  shipped:'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400',
+  completed:'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
 };
 const StatusBadge = ({ s }) => (
   <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_CLS[s] || STATUS_CLS.draft}`}>{s}</span>
@@ -59,24 +63,264 @@ const StatCard = ({ icon, label, value, sub }) => (
   </div>
 );
 
-// ─── Line Items Editor ────────────────────────────────────────
+// ─── Filter Bar ───────────────────────────────────────────────
 
-const EMPTY_LINE = { product_id: '', description: '', quantity: 1, unit_price: 0, gst_rate: 0 };
+const filterCls =
+  'px-2.5 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 ' +
+  'rounded-lg text-xs text-slate-700 dark:text-slate-200 ' +
+  'focus:outline-none focus:border-brand-400 dark:focus:border-brand-500 focus:ring-1 focus:ring-brand-100 dark:focus:ring-brand-900/40 ' +
+  'transition-all duration-150 cursor-pointer';
 
-function calcLine(l) {
-  const base = Number(l.quantity) * Number(l.unit_price);
-  const gst  = base * Number(l.gst_rate) / 100;
-  return { ...l, base, gst, total: base + gst };
+function FilterBar({ customers, users = [], filters, onChange, statusOptions, executiveFilter = false }) {
+  const set = k => e => onChange({ ...filters, [k]: e.target.value });
+  const hasFilters = filters.customer_id || filters.created_by || filters.from || filters.to || filters.status;
+  return (
+    <div className="flex flex-wrap items-center gap-2 mb-3 p-3 bg-white dark:bg-[#13152a] rounded-xl border border-slate-200 dark:border-slate-700/50">
+      <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mr-1">Filter:</span>
+      <select className={filterCls} style={{maxWidth:160}} value={filters.customer_id||''} onChange={set('customer_id')}>
+        <option value="">All Customers</option>
+        {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+      </select>
+      {users.length > 0 && (
+        <div className="flex items-center gap-1.5">
+          {executiveFilter && (
+            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide whitespace-nowrap">Sales executive</span>
+          )}
+          <select className={filterCls} style={{ maxWidth: executiveFilter ? 168 : 140 }} value={filters.created_by || ''} onChange={set('created_by')}>
+            <option value="">{executiveFilter ? 'All executives' : 'All Users'}</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>{u.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+      <div className="flex items-center gap-1">
+        <span className="text-[10px] text-slate-400">From</span>
+        <input type="date" className={filterCls} style={{width:130}} value={filters.from||''} onChange={set('from')} />
+      </div>
+      <div className="flex items-center gap-1">
+        <span className="text-[10px] text-slate-400">To</span>
+        <input type="date" className={filterCls} style={{width:130}} value={filters.to||''} onChange={set('to')} />
+      </div>
+      {statusOptions && (
+        <select className={filterCls} style={{maxWidth:130}} value={filters.status||''} onChange={set('status')}>
+          <option value="">All Status</option>
+          {statusOptions.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase()+s.slice(1)}</option>)}
+        </select>
+      )}
+      {hasFilters && (
+        <button onClick={() => onChange({})}
+          className="px-2 py-1 text-[10px] font-medium text-red-500 hover:text-red-600 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 rounded-lg transition-colors">
+          ✕ Clear
+        </button>
+      )}
+    </div>
+  );
 }
 
-function LineItems({ items, onChange, products, interstate = false }) {
-  const lines = items.map(calcLine);
-  const subtotal = lines.reduce((s, l) => s + l.base, 0);
+// ─── List Toolbar (Search / Export / Bulk delete) ─────────────
+
+function useSearch(data, keys) {
+  const [q, setQ] = useState('');
+  const filtered = q.trim()
+    ? data.filter(r => keys.some(k => String(r[k]||'').toLowerCase().includes(q.toLowerCase())))
+    : data;
+  return { q, setQ, filtered };
+}
+
+function exportCSV(rows, cols, filename) {
+  const header = cols.map(c => `"${c.label}"`).join(',');
+  const body   = rows.map(r => cols.map(c => `"${String(c.get(r)||'').replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([header + '\n' + body], { type: 'text/csv' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = filename; a.click();
+}
+
+function exportExcel(rows, cols, filename) {
+  const header = cols.map(c => c.label).join('\t');
+  const body   = rows.map(r => cols.map(c => String(c.get(r)||'')).join('\t')).join('\n');
+  const blob = new Blob([header + '\n' + body], { type: 'application/vnd.ms-excel' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = filename + '.xls'; a.click();
+}
+
+function copyToClipboard(rows, cols) {
+  const header = cols.map(c => c.label).join('\t');
+  const body   = rows.map(r => cols.map(c => String(c.get(r)||'')).join('\t')).join('\n');
+  navigator.clipboard.writeText(header + '\n' + body).catch(() => {});
+}
+
+function printTable(rows, cols, title) {
+  const header = `<tr>${cols.map(c=>`<th style="border:1px solid #ccc;padding:6px 10px;background:#f5f5f5">${c.label}</th>`).join('')}</tr>`;
+  const body   = rows.map(r=>`<tr>${cols.map(c=>`<td style="border:1px solid #ccc;padding:5px 10px">${c.get(r)||''}</td>`).join('')}</tr>`).join('');
+  const win = window.open('','_blank');
+  win.document.write(`<html><head><title>${title}</title></head><body>
+    <h2 style="font-family:sans-serif">${title}</h2>
+    <table style="border-collapse:collapse;font-family:sans-serif;font-size:13px">${header}${body}</table>
+    <script>window.onload=()=>{window.print();window.close();}<\/script></body></html>`);
+  win.document.close();
+}
+
+function ListToolbar({ data, cols, title, search, onSearch, selected, onDeleteSelected }) {
+  const btnCls = 'flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-colors';
+  return (
+    <div className="flex flex-wrap items-center gap-2 mb-2">
+      <div className="relative">
+        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">🔍</span>
+        <input className={filterCls + ' pl-7'} style={{width:180}} placeholder="Search…" value={search} onChange={e => onSearch(e.target.value)} />
+      </div>
+      <button onClick={() => copyToClipboard(data, cols)} className={btnCls + ' border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}>📋 Copy</button>
+      <button onClick={() => exportExcel(data, cols, title)} className={btnCls + ' border-green-200 text-green-700 hover:bg-green-50 dark:border-green-800 dark:text-green-400 dark:hover:bg-green-900/20'}>📊 Excel</button>
+      <button onClick={() => exportCSV(data, cols, title + '.csv')} className={btnCls + ' border-blue-200 text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-900/20'}>📄 CSV</button>
+      <button onClick={() => printTable(data, cols, title)} className={btnCls + ' border-red-200 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20'}>🖨 Print</button>
+      {selected.length > 0 && (
+        <button onClick={onDeleteSelected} className={btnCls + ' border-red-300 text-red-600 bg-red-50 hover:bg-red-100 dark:border-red-700 dark:text-red-400 dark:bg-red-900/20'}>
+          🗑 Delete ({selected.length})
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ─── Pagination ───────────────────────────────────────────────
+
+const PAGE_SIZE = 15;
+
+/** Inclusive page indices, unique, length ≤ width (sliding window around `page`). */
+function visiblePageNumbers(page, totalPages, width = 5) {
+  const t = Math.max(0, totalPages);
+  if (t <= 0) return [];
+  if (t <= width) return Array.from({ length: t }, (_, i) => i + 1);
+  const p = Math.min(Math.max(1, page), t);
+  const half = Math.floor(width / 2);
+  let start = p - half;
+  if (start < 1) start = 1;
+  let end = start + width - 1;
+  if (end > t) {
+    end = t;
+    start = Math.max(1, end - width + 1);
+  }
+  return Array.from({ length: end - start + 1 }, (_, i) => start + i);
+}
+
+function usePagination(data) {
+  const [page, setPage] = useState(1);
+  const count = data.length;
+  const totalPages = Math.ceil(count / PAGE_SIZE);
+
+  useEffect(() => {
+    const tp = Math.ceil(count / PAGE_SIZE);
+    const maxPage = Math.max(1, tp);
+    setPage((p) => Math.min(Math.max(1, p), maxPage));
+  }, [count]);
+
+  const slice = data.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  return { page, setPage, total: totalPages, slice, count };
+}
+
+function Pagination({ page, total, count, onChange }) {
+  if (count === 0 || total <= 1) return null;
+  const pages = visiblePageNumbers(page, total, 5);
+  return (
+    <div className="flex items-center justify-between px-4 py-2.5 border-t border-slate-100 dark:border-slate-700/50 text-xs text-slate-500">
+      <span>Page {page} of {total}</span>
+      <div className="flex gap-1">
+        <button disabled={page===1} onClick={()=>onChange(1)} className="px-2 py-1 rounded border border-slate-200 dark:border-slate-700 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-800">«</button>
+        <button disabled={page===1} onClick={()=>onChange(page-1)} className="px-2 py-1 rounded border border-slate-200 dark:border-slate-700 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-800">‹</button>
+        {pages.map((p) => (
+          <button key={p} type="button" onClick={()=>onChange(p)} className={`px-2.5 py-1 rounded border transition-colors ${p===page?'bg-brand-600 text-white border-brand-600':'border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>{p}</button>
+        ))}
+        <button disabled={page===total} onClick={()=>onChange(page+1)} className="px-2 py-1 rounded border border-slate-200 dark:border-slate-700 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-800">›</button>
+        <button disabled={page===total} onClick={()=>onChange(total)} className="px-2 py-1 rounded border border-slate-200 dark:border-slate-700 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-800">»</button>
+      </div>
+      <span>{((page-1)*PAGE_SIZE)+1}–{Math.min(page*PAGE_SIZE,count)} of {count}</span>
+    </div>
+  );
+}
+
+// ─── Row settings dropdown ────────────────────────────────────
+
+function SettingsDropdown({ options }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+  return (
+    <div className="relative" ref={ref}>
+      <button type="button" onClick={e => { e.stopPropagation(); setOpen(o => !o); }}
+        className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold tracking-widest">
+        ⋮
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-50 min-w-[160px] bg-white dark:bg-[#1e2235] border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl overflow-hidden">
+          {options.map((opt, i) => (
+            <button key={i} type="button"
+              onClick={e => { e.stopPropagation(); setOpen(false); opt.onClick(); }}
+              className={`w-full text-left px-4 py-2.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center gap-2 ${opt.danger ? 'text-red-600 dark:text-red-400' : 'text-slate-700 dark:text-slate-200'}`}>
+              <span>{opt.icon}</span>{opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Line Items Editor ────────────────────────────────────────
+
+const EMPTY_LINE = { product_id: '', description: '', quantity: 1, unit_price: 0, discount: 0, gst_rate: 0 };
+
+function calcLine(l) {
+  const base     = Number(l.quantity) * Number(l.unit_price);
+  const lineDisc = Number(l.discount || 0);
+  const taxable  = base - lineDisc;
+  const gst      = taxable * Number(l.gst_rate) / 100;
+  return { ...l, base, taxable, gst, total: taxable + gst };
+}
+
+function calcTotals(lines, interstate, discAmt = 0, shippingAmt = 0, roundOff = 0) {
+  const subtotal = lines.reduce((s, l) => s + l.taxable, 0);
   const totalGst = lines.reduce((s, l) => s + l.gst, 0);
   const cgst = interstate ? 0 : totalGst / 2;
   const sgst = interstate ? 0 : totalGst / 2;
   const igst = interstate ? totalGst : 0;
-  const grandTotal = subtotal + totalGst;
+  const grandTotal = subtotal + cgst + sgst + igst - Number(discAmt) + Number(shippingAmt) + Number(roundOff);
+  return { subtotal, cgst, sgst, igst, grandTotal };
+}
+
+function TotalSummary({ lines, interstate, discountAmount = 0, shippingAmount = 0, roundOff = 0 }) {
+  const { subtotal, cgst, sgst, igst, grandTotal } = calcTotals(
+    lines.map(calcLine), interstate, discountAmount, shippingAmount, roundOff,
+  );
+  const disc = Number(discountAmount || 0);
+  const ship = Number(shippingAmount || 0);
+  const roff = Number(roundOff || 0);
+  return (
+    <div className="flex justify-end">
+      <div className="w-72 space-y-1.5 text-sm bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4">
+        <div className="flex justify-between text-slate-500 dark:text-slate-400"><span>Subtotal</span><span className="font-mono">{fmt(subtotal)}</span></div>
+        {interstate
+          ? <div className="flex justify-between text-slate-500 dark:text-slate-400"><span>IGST</span><span className="font-mono">{fmt(igst)}</span></div>
+          : <><div className="flex justify-between text-slate-500 dark:text-slate-400"><span>CGST</span><span className="font-mono">{fmt(cgst)}</span></div>
+              <div className="flex justify-between text-slate-500 dark:text-slate-400"><span>SGST</span><span className="font-mono">{fmt(sgst)}</span></div></>}
+        {disc > 0 && <div className="flex justify-between text-red-500"><span>Discount</span><span className="font-mono">−{fmt(disc)}</span></div>}
+        {ship > 0 && <div className="flex justify-between text-slate-500 dark:text-slate-400"><span>Shipping</span><span className="font-mono">{fmt(ship)}</span></div>}
+        {roff !== 0 && <div className="flex justify-between text-slate-500 dark:text-slate-400"><span>Round Off</span><span className="font-mono">{roff > 0 ? '+' : ''}{fmt(roff)}</span></div>}
+        <div className="flex justify-between font-bold text-lg text-slate-800 dark:text-slate-100 border-t border-slate-200 dark:border-slate-700 pt-2">
+          <span>Grand Total</span><span className="font-mono">{fmt(grandTotal)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LineItems({ items, onChange, products, interstate = false, showDiscount = false }) {
+  const lines = items.map(calcLine);
+  const { subtotal, cgst, sgst, igst, grandTotal } = calcTotals(lines, interstate);
 
   const update = (i, key, val) => {
     const next = items.map((l, idx) => idx === i ? { ...l, [key]: val } : l);
@@ -102,12 +346,13 @@ function LineItems({ items, onChange, products, interstate = false }) {
           <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700/50">
             <tr>
               <th className={th} style={{width:'30%'}}>Product / Description</th>
-              <th className={th} style={{width:'8%'}}>Qty</th>
-              <th className={th} style={{width:'14%'}}>Unit Price</th>
+              <th className={th} style={{width:'7%'}}>Qty</th>
+              <th className={th} style={{width:'13%'}}>Unit Price</th>
+              {showDiscount && <th className={th} style={{width:'10%'}}>Discount</th>}
               <th className={th} style={{width:'8%'}}>GST%</th>
-              <th className={th} style={{width:'14%'}}>Taxable</th>
-              <th className={th} style={{width:'14%'}}>Total</th>
-              <th className={th} style={{width:'4%'}}></th>
+              <th className={th} style={{width:'12%'}}>Taxable</th>
+              <th className={th} style={{width:'12%'}}>Total</th>
+              <th className={th} style={{width:'3%'}}></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-700/40">
@@ -130,11 +375,17 @@ function LineItems({ items, onChange, products, interstate = false }) {
                   <input type="number" min="0" step="0.01" className={inputCls + ' w-24'} value={l.unit_price}
                     onChange={e => update(i, 'unit_price', e.target.value)} />
                 </td>
+                {showDiscount && (
+                  <td className={td}>
+                    <input type="number" min="0" step="0.01" className={inputCls + ' w-20'} value={l.discount||0}
+                      onChange={e => update(i, 'discount', e.target.value)} />
+                  </td>
+                )}
                 <td className={td}>
                   <input type="number" min="0" max="28" step="0.5" className={inputCls + ' w-14'} value={l.gst_rate}
                     onChange={e => update(i, 'gst_rate', e.target.value)} />
                 </td>
-                <td className={td + ' text-right text-slate-600 dark:text-slate-300 font-mono text-xs'}>{fmt(l.base)}</td>
+                <td className={td + ' text-right text-slate-600 dark:text-slate-300 font-mono text-xs'}>{fmt(l.taxable)}</td>
                 <td className={td + ' text-right text-slate-800 dark:text-slate-100 font-semibold font-mono text-xs'}>{fmt(l.total)}</td>
                 <td className={td}>
                   <button type="button" onClick={() => removeLine(i)}
@@ -239,28 +490,50 @@ function CustomerModal({ customer, crmLeadPrefill, onClose, onSaved }) {
 // ─── Document Modal (Quotation / Order / Invoice) ─────────────
 
 function DocumentModal({ type, customers, products, initialCustomerId = '', existingId = null, onClose, onSaved, fullPage = false }) {
+  const { user } = useAuth();
   const isQuote   = type === 'quotation';
   const isOrder   = type === 'order';
   const isInvoice = type === 'invoice';
   const isEditQuote = Boolean(isQuote && existingId);
   const isEditInvoice = Boolean(isInvoice && existingId);
+  const isEditOrder = Boolean(isOrder && existingId);
 
   const [form, setForm] = useState({
     customer_id: initialCustomerId || '', valid_until: '', order_date: '', invoice_date: '', due_date: '',
-    notes: '', is_interstate: false, status: 'draft',
+    notes: '', is_interstate: false, status: 'draft', created_by: '',
   });
   const [items, setItems]       = useState([{ ...EMPTY_LINE }]);
   const [loading, setLoading]   = useState(false);
-  const [fetchingDoc, setFetchingDoc] = useState(() => Boolean(existingId && (isQuote || isInvoice)));
+  const [fetchingDoc, setFetchingDoc] = useState(() => Boolean(existingId && (isQuote || isInvoice || isOrder)));
   const [loadErr, setLoadErr]   = useState('');
+  const [salesExecs, setSalesExecs] = useState([]);
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
-  useEffect(() => {
-    setForm(f => ({ ...f, customer_id: initialCustomerId || '' }));
-  }, [initialCustomerId, type]);
+  const canPickOtherExecutive = ['Admin', 'Super Admin', 'Sales Manager'].includes(user?.role || '');
+  const executiveOptions = (() => {
+    if (!user?.id) return [];
+    if (canPickOtherExecutive) {
+      if (salesExecs.length) return salesExecs;
+      return [{ id: user.id, name: user.name || user.email || 'You' }];
+    }
+    const self = salesExecs.find((x) => String(x.id) === String(user.id));
+    return self ? [self] : [{ id: user.id, name: user.name || user.email || 'Me' }];
+  })();
 
   useEffect(() => {
-    if ((!isQuote && !isInvoice) || !existingId) {
+    api.get('/sales/executives').then((r) => setSalesExecs(r.data || [])).catch(() => setSalesExecs([]));
+  }, []);
+
+  useEffect(() => {
+    setForm((f) => ({
+      ...f,
+      customer_id: initialCustomerId || '',
+      created_by: existingId ? f.created_by : String(user?.id || f.created_by || ''),
+    }));
+  }, [initialCustomerId, type, existingId, user?.id]);
+
+  useEffect(() => {
+    if (!existingId || (!isQuote && !isInvoice && !isOrder)) {
       setLoadErr('');
       setFetchingDoc(false);
       return undefined;
@@ -268,10 +541,14 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
     let cancelled = false;
     setFetchingDoc(true);
     setLoadErr('');
-    const endpoint = isQuote ? `/sales/quotations/${existingId}` : `/sales/invoices/${existingId}`;
+    const endpoint = isQuote
+      ? `/sales/quotations/${existingId}`
+      : isInvoice
+        ? `/sales/invoices/${existingId}`
+        : `/sales/orders/${existingId}`;
     api.get(endpoint)
       .then((r) => {
-        const q = r.data?.quotation || r.data?.invoice;
+        const q = r.data?.quotation || r.data?.invoice || r.data?.order;
         if (cancelled || !q) return;
         setForm((f) => ({
           ...f,
@@ -279,9 +556,11 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
           valid_until: q.valid_until ? String(q.valid_until).slice(0, 10) : '',
           invoice_date: q.invoice_date ? String(q.invoice_date).slice(0, 10) : '',
           due_date: q.due_date ? String(q.due_date).slice(0, 10) : '',
+          order_date: q.order_date ? String(q.order_date).slice(0, 10) : '',
           notes: q.notes || '',
-          status: q.status || 'draft',
+          status: q.status || (isOrder ? 'pending' : isInvoice ? 'unpaid' : 'draft'),
           is_interstate: Number(q.igst || 0) > 0,
+          created_by: q.created_by != null ? String(q.created_by) : String(user?.id || ''),
         }));
         setItems(
           q.items?.length
@@ -295,10 +574,20 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
             : [{ ...EMPTY_LINE }],
         );
       })
-      .catch((e) => setLoadErr(e?.response?.data?.message || e.message || `Failed to load ${isInvoice ? 'invoice' : 'quotation'}`))
-      .finally(() => { if (!cancelled) setFetchingDoc(false); });
-    return () => { cancelled = true; };
-  }, [isQuote, isInvoice, existingId]);
+      .catch((e) =>
+        setLoadErr(
+          e?.response?.data?.message ||
+            e.message ||
+            `Failed to load ${isInvoice ? 'invoice' : isOrder ? 'order' : 'quotation'}`,
+        ),
+      )
+      .finally(() => {
+        if (!cancelled) setFetchingDoc(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isQuote, isInvoice, isOrder, existingId, user?.id]);
 
   const handleItems = (newItems, _newTotals) => {
     setItems(newItems);
@@ -318,12 +607,14 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
         igst:        form.is_interstate ? l.gst : 0,
         total:       l.total,
       }));
+      const createdByNum = form.created_by ? Number(form.created_by) : undefined;
       if (isEditQuote) {
         await api.patch(`/sales/quotations/${existingId}`, {
           customer_id: Number(form.customer_id),
           valid_until: form.valid_until || null,
           notes: form.notes || null,
           status: form.status || 'draft',
+          created_by: createdByNum,
           items: lines,
         });
       } else if (isEditInvoice) {
@@ -334,17 +625,38 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
           notes: form.notes || null,
           status: form.status || 'unpaid',
           is_interstate: form.is_interstate,
+          created_by: createdByNum,
+          items: lines,
+        });
+      } else if (isEditOrder) {
+        await api.patch(`/sales/orders/${existingId}`, {
+          customer_id: Number(form.customer_id),
+          order_date: form.order_date || null,
+          due_date: form.due_date || null,
+          notes: form.notes || null,
+          status: form.status || 'pending',
+          created_by: createdByNum,
           items: lines,
         });
       } else {
         const endpoint = isQuote ? '/sales/quotations' : isOrder ? '/sales/orders' : '/sales/invoices';
-        await api.post(endpoint, { ...form, items: lines });
+        await api.post(endpoint, { ...form, created_by: createdByNum, items: lines });
       }
       onSaved();
     } finally { setLoading(false); }
   };
 
-  const title = isEditQuote ? 'Edit Quotation' : isEditInvoice ? 'Edit Invoice' : isQuote ? 'New Quotation' : isOrder ? 'New Sales Order' : 'New Invoice';
+  const title = isEditQuote
+    ? 'Edit Quotation'
+    : isEditInvoice
+      ? 'Edit Invoice'
+      : isEditOrder
+        ? 'Edit Order'
+        : isQuote
+          ? 'New Quotation'
+          : isOrder
+            ? 'New Sales Order'
+            : 'New Invoice';
 
   if (fetchingDoc) {
     if (fullPage) {
@@ -370,12 +682,39 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
       {loadErr && (
         <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{loadErr}</p>
       )}
-      <Field label="Customer *">
-        <select className={selectCls} value={form.customer_id} onChange={set('customer_id')} required>
-          <option value="">Select customer…</option>
-          {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-      </Field>
+      {user?.id ? (
+        <div className="grid grid-cols-2 gap-3 items-start">
+          <Field label="Customer *">
+            <select className={selectCls} value={form.customer_id} onChange={set('customer_id')} required>
+              <option value="">Select customer…</option>
+              {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Sales executive *">
+            <select
+              className={selectCls}
+              value={form.created_by}
+              onChange={set('created_by')}
+              required
+              disabled={!canPickOtherExecutive && executiveOptions.length <= 1}
+            >
+              {executiveOptions.map((u) => (
+                <option key={u.id} value={u.id}>{u.name}</option>
+              ))}
+            </select>
+            {!canPickOtherExecutive && (
+              <p className="text-[10px] text-slate-400 mt-1">Only managers and admins can assign a different executive.</p>
+            )}
+          </Field>
+        </div>
+      ) : (
+        <Field label="Customer *">
+          <select className={selectCls} value={form.customer_id} onChange={set('customer_id')} required>
+            <option value="">Select customer…</option>
+            {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </Field>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         {isQuote && isEditQuote && (
@@ -387,8 +726,22 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
             </select>
           </Field>
         )}
+        {isOrder && isEditOrder && (
+          <Field label="Status">
+            <select className={selectCls} value={form.status} onChange={set('status')}>
+              {['pending', 'processing', 'shipped', 'delivered', 'cancelled'].map((s) => (
+                <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+              ))}
+            </select>
+          </Field>
+        )}
         {isQuote && <Field label="Valid Until"><input type="date" className={inputCls} value={form.valid_until} onChange={set('valid_until')} /></Field>}
-        {isOrder && <Field label="Order Date"><input type="date" className={inputCls} value={form.order_date} onChange={set('order_date')} /></Field>}
+        {isOrder && (
+          <>
+            <Field label="Order Date"><input type="date" className={inputCls} value={form.order_date} onChange={set('order_date')} /></Field>
+            <Field label="Due Date"><input type="date" className={inputCls} value={form.due_date} onChange={set('due_date')} /></Field>
+          </>
+        )}
         {isInvoice && (
           <>
             <Field label="Invoice Date"><input type="date" className={inputCls} value={form.invoice_date} onChange={set('invoice_date')} /></Field>
@@ -411,7 +764,10 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
       <FormActions
         onCancel={onClose}
         submitLabel={
-          isEditQuote ? 'Save Quotation' : isEditInvoice ? 'Save Invoice' : `Create ${title.replace('New ', '')}`
+          isEditQuote ? 'Save Quotation'
+            : isEditInvoice ? 'Save Invoice'
+              : isEditOrder ? 'Save Order'
+                : `Create ${title.replace('New ', '')}`
         }
         loading={loading}
       />
@@ -484,9 +840,18 @@ const DETAIL_FULL_PAGE_TITLE = {
   invoice: 'Invoice details',
 };
 
-function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation, onEditInvoice, fullPage = false }) {
+function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation, onEditInvoice, onEditOrder, fullPage = false }) {
   const [doc,     setDoc]     = useState(null);
   const [paying,  setPaying]  = useState(false);
+
+  useEffect(() => {
+    if (fullPage) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [fullPage, onClose]);
 
   const load = useCallback(() => {
     const path = { quotation:'/sales/quotations', order:'/sales/orders', invoice:'/sales/invoices' }[type];
@@ -516,8 +881,8 @@ function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation, onEditInv
     }
     return (
       <div className="fixed inset-0 z-40 flex">
-        <div className="flex-1" onClick={onClose} />
-        <div className="w-full max-w-lg bg-white dark:bg-[#13152a] flex items-center justify-center border-l border-slate-200 dark:border-slate-700">
+        <div className="flex-1 bg-black/30 backdrop-blur-sm" onClick={onClose} />
+        <div className="w-full max-w-xl sm:max-w-2xl bg-white dark:bg-[#13152a] flex items-center justify-center border-l border-slate-200 dark:border-slate-700">
           <p className="text-slate-400 text-sm">Loading…</p>
         </div>
       </div>
@@ -525,12 +890,12 @@ function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation, onEditInv
   }
 
   const QUOTE_STATUSES = ['draft','sent','accepted','rejected'];
-  const ORDER_STATUSES = ['pending','confirmed','processing','delivered','cancelled'];
+  const ORDER_STATUSES = ['pending','processing','shipped','delivered','cancelled'];
   const statuses = type === 'quotation' ? QUOTE_STATUSES : type === 'order' ? ORDER_STATUSES : [];
 
   const contentShellCls = fullPage
     ? 'w-full max-w-none bg-white dark:bg-[#13152a] flex flex-col overflow-hidden'
-    : 'w-full max-w-lg bg-white dark:bg-[#13152a] shadow-2xl flex flex-col border-l border-slate-200/80 dark:border-slate-700/50 overflow-hidden';
+    : 'w-full max-w-xl sm:max-w-2xl bg-white dark:bg-[#13152a] shadow-2xl flex flex-col border-l border-slate-200/80 dark:border-slate-700/50 overflow-hidden';
 
   const content = (
     <div className={contentShellCls}>
@@ -559,6 +924,15 @@ function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation, onEditInv
                 <button
                   type="button"
                   onClick={() => onEditInvoice(id)}
+                  className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-brand-600 text-white hover:bg-brand-700 dark:bg-brand-500 dark:hover:bg-brand-600"
+                >
+                  Edit
+                </button>
+              )}
+              {type === 'order' && onEditOrder && (
+                <button
+                  type="button"
+                  onClick={() => onEditOrder(id)}
                   className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-brand-600 text-white hover:bg-brand-700 dark:bg-brand-500 dark:hover:bg-brand-600"
                 >
                   Edit
@@ -605,10 +979,10 @@ function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation, onEditInv
           {/* Key fields */}
           <div className="grid grid-cols-2 gap-3 text-sm">
             {[
-              ['Date',       fmtD(doc.invoice_date || doc.order_date || doc.created_at)],
+              ['Date', fmtD(doc.invoice_date || doc.order_date || doc.created_at)],
               ['Due / Valid', fmtD(doc.due_date || doc.valid_until)],
-              ['Amount',      fmt(doc.total_amount)],
-              ['Status',     doc.status],
+              ['Amount', fmt(doc.total_amount)],
+              ['Sales executive', doc.created_by_name || '—'],
             ].map(([k,v]) => (
               <div key={k} className="bg-slate-50 dark:bg-slate-800/50 rounded-xl px-3 py-2">
                 <p className="text-xs text-slate-400 dark:text-slate-500 mb-0.5">{k}</p>
@@ -781,15 +1155,16 @@ export function SalesDetailPage({ segment }) {
   };
 
   return (
-    <div className="w-full min-w-0 -mx-5">
+    <div className="w-full min-w-0 -mx-5 min-h-[50vh]">
       <DetailDrawer
         type={type}
         id={id}
-        fullPage
+        fullPage={false}
         onClose={goBack}
         onRefresh={() => {}}
         onEditQuotation={type === 'quotation' ? (qid) => navigate({ pathname: salesEditPath('quotes', qid), search: location.search }) : undefined}
         onEditInvoice={type === 'invoice' ? (iid) => navigate({ pathname: salesEditPath('invoices', iid), search: location.search }) : undefined}
+        onEditOrder={type === 'order' ? (oid) => navigate({ pathname: salesEditPath('orders', oid), search: location.search }) : undefined}
       />
     </div>
   );
@@ -801,9 +1176,44 @@ const VALID_SALES_SEGMENTS = new Set(['quotes', 'orders', 'invoices']);
 const SEGMENT_TO_TAB = { quotes: 'Quotes', orders: 'Orders', invoices: 'Invoices' };
 
 const LIST_PAGE_COPY = {
-  Quotes: { title: 'Quotes', subtitle: 'Open quotations — click a row for details or print.' },
-  Orders: { title: 'Orders', subtitle: 'Sales orders — click a row for details or print.' },
-  Invoices: { title: 'Invoices', subtitle: 'Invoices and payments — click a row for details.' },
+  Quotes:   { title: 'Quotes',   subtitle: 'Click a row to preview in the side drawer; use the row menu to open the full page or edit.' },
+  Orders:   { title: 'Orders',   subtitle: 'Click a row to preview in the side drawer; use the row menu to open the full page or edit.' },
+  Invoices: { title: 'Invoices', subtitle: 'Click a row for a drawer with totals, lines, and payments; row menu has full page and edit.' },
+};
+
+const QUOTE_STATUSES   = ['draft','sent','accepted','rejected'];
+const ORDER_STATUSES   = ['pending','processing','shipped','delivered','cancelled'];
+const INVOICE_STATUSES = ['draft','unpaid','partial','paid','cancelled'];
+
+const LIST_COLS = {
+  Quotes:   [
+    { label: 'Number',   get: r => r.quotation_number },
+    { label: 'Customer', get: r => r.customer_name },
+    { label: 'Status',   get: r => r.status },
+    { label: 'Date',     get: r => fmtD(r.created_at) },
+    { label: 'Created By', get: r => r.created_by_name || '' },
+    { label: 'Amount',   get: r => fmt(r.total_amount) },
+  ],
+  Orders:   [
+    { label: 'Number',   get: r => r.order_number },
+    { label: 'Customer', get: r => r.customer_name },
+    { label: 'Status',   get: r => r.status },
+    { label: 'Date',     get: r => fmtD(r.order_date || r.created_at) },
+    { label: 'Created By', get: r => r.created_by_name || '' },
+    { label: 'Amount',   get: r => fmt(r.total_amount) },
+  ],
+  Invoices: [
+    { label: 'Invoice #', get: r => r.invoice_number },
+    { label: 'Customer', get: r => r.customer_name },
+    { label: 'GSTIN', get: r => r.customer_gstin || '' },
+    { label: 'Before Tax', get: r => fmt(r.subtotal) },
+    { label: 'SGST', get: r => fmt(r.sgst) },
+    { label: 'CGST', get: r => fmt(r.cgst) },
+    { label: 'Grand Total', get: r => fmt(r.total_amount) },
+    { label: 'Balance', get: r => fmt(r.balance) },
+    { label: 'Status', get: r => r.status },
+    { label: 'Date', get: r => fmtD(r.invoice_date || r.created_at) },
+  ],
 };
 
 function leadBannerTitle(lead) {
@@ -824,21 +1234,36 @@ export function SalesListPage({ segment }) {
   const [data,      setData]      = useState([]);
   const [stats,     setStats]     = useState(null);
   const [customers, setCustomers] = useState([]);
-  const [modal,     setModal]     = useState(null); // 'customer' | 'edit-customer'
+  const [modal,     setModal]     = useState(null);
   const [editCust,  setEditCust]  = useState(null);
-  /** Lead loaded from `?fromLead=` (CRM handoff). */
+  const [filters,   setFilters]   = useState({});
+  const [selected,  setSelected]  = useState([]);
   const [bannerLead, setBannerLead] = useState(null);
-  /** When opening “New Customer” from the banner, prefill + POST with lead_id. */
   const [customerPrefillLead, setCustomerPrefillLead] = useState(null);
-  const loadStats   = useCallback(() => { api.get('/sales/stats').then(r => setStats(r.data)).catch(() => {}); }, []);
-  const loadData    = useCallback(() => {
+  const [salesExecutives, setSalesExecutives] = useState([]);
+  /** `{ type, id }` when a document drawer is open (quote / order / invoice). */
+  const [drawer, setDrawer] = useState(null);
+
+  const loadStats = useCallback(() => { api.get('/sales/stats').then(r => setStats(r.data)).catch(() => {}); }, []);
+  const loadData  = useCallback(() => {
     if (!tab) return;
     const paths = { Quotes:'/sales/quotations', Orders:'/sales/orders', Invoices:'/sales/invoices' };
-    api.get(paths[tab], { params: {} }).then(r => setData(r.data || [])).catch(() => setData([]));
-  }, [tab]);
+    const params = {};
+    if (filters.customer_id) params.customer_id = filters.customer_id;
+    if (filters.created_by) params.created_by = filters.created_by;
+    if (filters.status) params.status = filters.status;
+    if (filters.from) params.from = filters.from;
+    if (filters.to) params.to = filters.to;
+    api.get(paths[tab], { params }).then(r => setData(r.data || [])).catch(() => setData([]));
+  }, [tab, filters]);
+
+  const cols = LIST_COLS[tab] || [];
+  const search = useSearch(data, ['invoice_number','quotation_number','order_number','customer_name','customer_gstin']);
+  const pager  = usePagination(search.filtered);
 
   useEffect(() => {
     api.get('/sales/customers').then(r => setCustomers(r.data || [])).catch(() => {});
+    api.get('/sales/executives').then((r) => setSalesExecutives(r.data || [])).catch(() => setSalesExecutives([]));
     loadStats();
   }, []);
 
@@ -876,13 +1301,6 @@ export function SalesListPage({ segment }) {
     ? customers.find((c) => String(c.lead_id) === String(bannerLead.id))
     : null;
 
-  const handleDelete = async (type, id, e) => {
-    e.stopPropagation();
-    if (!confirm('Delete this record?')) return;
-    await api.delete(`/sales/${type}/${id}`);
-    loadData(); loadStats();
-  };
-
   const afterSave = () => {
     setModal(null);
     setEditCust(null);
@@ -893,6 +1311,16 @@ export function SalesListPage({ segment }) {
   };
 
   const tabType = { Quotes: 'quotation', Orders: 'order', Invoices: 'invoice' };
+
+  const openDocDrawer = (r) => {
+    setDrawer({ type: tabType[tab], id: r.id });
+  };
+
+  const docLinkClick = (e, r) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    openDocDrawer(r);
+  };
 
   if (!tab) {
     return <Navigate to="/sales/quotes" replace />;
@@ -928,58 +1356,77 @@ export function SalesListPage({ segment }) {
       </div>
 
       {bannerLead && (
-        <div className="mb-4 rounded-xl border border-brand-200/80 dark:border-brand-800/50 bg-brand-50/90 dark:bg-brand-950/30 px-4 py-3 flex flex-wrap items-center gap-3">
-          <div className="flex-1 min-w-[200px]">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-brand-700 dark:text-brand-300">From CRM lead</p>
-            <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{leadBannerTitle(bannerLead)}</p>
-            {bannerLead.company && (bannerLead.name || bannerLead.phone) && (
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{bannerLead.company}</p>
+        <div className="mb-4 rounded-xl border border-brand-500/30 dark:border-brand-500/20 bg-brand-50 dark:bg-brand-950/20 px-4 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-brand-600 dark:text-brand-400 mb-0.5">From CRM Lead</p>
+              <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{leadBannerTitle(bannerLead)}</p>
+              {bannerLead.company && (bannerLead.name || bannerLead.phone) && (
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">{bannerLead.company}</p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={clearFromLead}
+              className="flex-shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 rounded transition-colors"
+              title="Dismiss"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 mt-3">
+            {!customerLinkedToBanner && (
+              <button
+                type="button"
+                className="btn-wf-secondary text-xs"
+                onClick={() => { setCustomerPrefillLead(bannerLead); setModal('customer'); }}
+              >
+                + Create customer
+              </button>
+            )}
+            {customerLinkedToBanner && (
+              <>
+                <span className="text-xs text-slate-500 dark:text-slate-400">Customer: <span className="font-medium text-slate-700 dark:text-slate-200">{customerLinkedToBanner.name}</span></span>
+                <button
+                  type="button"
+                  className="btn-wf-primary text-xs"
+                  onClick={() => {
+                    const sp = new URLSearchParams(location.search);
+                    sp.set('customerId', String(customerLinkedToBanner.id));
+                    navigate({ pathname: '/sales/quotes/new', search: sp.toString() });
+                  }}
+                >
+                  + New quote
+                </button>
+                <button
+                  type="button"
+                  className="btn-wf-secondary text-xs"
+                  onClick={() => {
+                    const sp = new URLSearchParams(location.search);
+                    sp.set('customerId', String(customerLinkedToBanner.id));
+                    navigate({ pathname: '/sales/orders/new', search: sp.toString() });
+                  }}
+                >
+                  + New order
+                </button>
+              </>
             )}
           </div>
-          <button
-            type="button"
-            className="btn-wf-secondary text-xs"
-            onClick={() => {
-              setCustomerPrefillLead(bannerLead);
-              setModal('customer');
-            }}
-          >
-            + Customer from lead
-          </button>
-          {customerLinkedToBanner && (
-            <>
-              <button
-                type="button"
-                className="btn-wf-primary text-xs"
-                onClick={() => {
-                  const sp = new URLSearchParams(location.search);
-                  sp.set('customerId', String(customerLinkedToBanner.id));
-                  navigate({ pathname: '/sales/quotes/new', search: sp.toString() });
-                }}
-              >
-                New quote
-              </button>
-              <button
-                type="button"
-                className="btn-wf-primary text-xs"
-                onClick={() => {
-                  const sp = new URLSearchParams(location.search);
-                  sp.set('customerId', String(customerLinkedToBanner.id));
-                  navigate({ pathname: '/sales/orders/new', search: sp.toString() });
-                }}
-              >
-                New order
-              </button>
-            </>
-          )}
-          <button type="button" className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" onClick={clearFromLead}>
-            Dismiss
-          </button>
         </div>
       )}
 
-      {/* Stats */}
-      {stats && (
+      {/* Stats — invoice tab shows revenue breakdown like jeg CRM */}
+      {stats && tab === 'Invoices' && stats.total_sales != null && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+          <StatCard icon="💼" label="Total Sales" value={fmt(stats.total_sales)} />
+          <StatCard icon="✅" label="Paid" value={fmt(stats.paid_amount)} />
+          <StatCard icon="❌" label="Unpaid" value={fmt(stats.unpaid_amount)} />
+          <StatCard icon="⏳" label="Partial" value={fmt(stats.partial_amount)} />
+        </div>
+      )}
+      {stats && tab !== 'Invoices' && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
           <StatCard icon="📦" label="Open Orders"    value={stats.open_orders}   />
           <StatCard icon="💰" label="Revenue (Paid)" value={fmt(stats.revenue)} />
@@ -987,63 +1434,161 @@ export function SalesListPage({ segment }) {
         </div>
       )}
 
-      <div className="flex items-center gap-1 p-1 bg-slate-100/80 dark:bg-slate-800/60 rounded-xl w-fit mb-6">
+      <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-100/80 dark:bg-slate-800/60 rounded-xl w-fit mb-6">
         {[
+          { tabKey: 'Invoices', label: 'Invoices', path: '/sales/invoices' },
+          { tabKey: '_payments', label: 'Payment In', path: '/sales/payments' },
           { tabKey: 'Quotes', label: 'Quotes', path: '/sales/quotes' },
           { tabKey: 'Orders', label: 'Orders', path: '/sales/orders' },
-          { tabKey: 'Invoices', label: 'Invoices', path: '/sales/invoices' },
         ].map(({ tabKey, label, path }) => (
           <Link
             key={path}
             to={{ pathname: path, search: location.search }}
-            className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-all duration-150 whitespace-nowrap
-              ${tab === tabKey
-                ? 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-400 shadow-card font-semibold'
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+            className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-all duration-150 whitespace-nowrap ${
+              tabKey === '_payments'
+                ? 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                : tab === tabKey
+                  ? 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-400 shadow-card font-semibold'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+            }`}
           >
             {label}
           </Link>
         ))}
       </div>
 
+      {/* Filters + Toolbar */}
+      <FilterBar
+        customers={customers}
+        users={salesExecutives}
+        executiveFilter
+        filters={filters}
+        onChange={f => { setFilters(f); setSelected([]); }}
+        statusOptions={tab === 'Quotes' ? QUOTE_STATUSES : tab === 'Orders' ? ORDER_STATUSES : INVOICE_STATUSES}
+      />
+      <ListToolbar
+        data={search.filtered}
+        cols={cols}
+        title={LIST_PAGE_COPY[tab]?.title || tab}
+        search={search.q}
+        onSearch={search.setQ}
+        selected={selected}
+        onDeleteSelected={async () => {
+          if (!confirm(`Delete ${selected.length} record(s)?`)) return;
+          const type = tabType[tab];
+          await Promise.all(selected.map(id => api.delete(`/sales/${type}s/${id}`)));
+          setSelected([]); loadData(); loadStats();
+        }}
+      />
+
       {/* Table */}
       <div className="bg-white dark:bg-[#13152a] rounded-xl border border-slate-200 dark:border-slate-700/50 overflow-hidden">
-        {data.length === 0 ? (
+        {pager.slice.length === 0 ? (
           <p className="text-center py-12 text-slate-400 dark:text-slate-500 text-sm">No records found</p>
+        ) : tab === 'Invoices' ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[960px]">
+              <thead><tr className="border-b border-slate-100 dark:border-slate-700/50">
+                <th className="px-3 py-3 w-8">
+                  <input type="checkbox"
+                    checked={selected.length === pager.slice.length && pager.slice.length > 0}
+                    onChange={e => setSelected(e.target.checked ? pager.slice.map(r => r.id) : [])}
+                  />
+                </th>
+                {['Invoice #','Customer','GSTIN','Before Tax','SGST','CGST','Grand Total','Balance','Status','Date',''].map(h => (
+                  <th key={h} className="px-3 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">{h}</th>
+                ))}
+              </tr></thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-700/40">
+                {pager.slice.map(r => {
+                  const type = tabType[tab];
+                  const viewTo = `${salesViewPath(segment, r.id)}${location.search || ''}`;
+                  return (
+                    <tr key={r.id} onClick={() => openDocDrawer(r)}
+                      className="hover:bg-slate-50 dark:hover:bg-slate-800/40 cursor-pointer group">
+                      <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
+                        <input type="checkbox"
+                          checked={selected.includes(r.id)}
+                          onChange={e => setSelected(p => e.target.checked ? [...p, r.id] : p.filter(x => x !== r.id))}
+                        />
+                      </td>
+                      <td className="px-3 py-3 font-mono text-xs font-semibold text-brand-600 dark:text-brand-400">
+                        <Link to={viewTo} className="hover:underline" onClick={(e) => { e.stopPropagation(); docLinkClick(e, r); }}>{r.invoice_number}</Link>
+                      </td>
+                      <td className="px-3 py-3 font-medium text-slate-800 dark:text-slate-100">{r.customer_name}</td>
+                      <td className="px-3 py-3 text-xs text-slate-500">{r.customer_gstin || '—'}</td>
+                      <td className="px-3 py-3 font-mono text-xs">{fmt(r.subtotal)}</td>
+                      <td className="px-3 py-3 font-mono text-xs">{fmt(r.sgst)}</td>
+                      <td className="px-3 py-3 font-mono text-xs">{fmt(r.cgst)}</td>
+                      <td className="px-3 py-3 font-semibold font-mono text-xs">{fmt(r.total_amount)}</td>
+                      <td className="px-3 py-3 font-mono text-xs text-amber-600 dark:text-amber-400">{fmt(r.balance)}</td>
+                      <td className="px-3 py-3"><StatusBadge s={r.status} /></td>
+                      <td className="px-3 py-3 text-xs text-slate-500">{fmtD(r.invoice_date || r.created_at)}</td>
+                      <td className="px-3 py-3 text-right" onClick={e => e.stopPropagation()}>
+                        <SettingsDropdown options={[
+                          { icon: '👁', label: 'View in drawer', onClick: () => openDocDrawer(r) },
+                          { icon: '↗', label: 'Open full page', onClick: () => navigate(viewTo) },
+                          { icon: '✏️', label: 'Edit', onClick: () => navigate(`${salesEditPath(segment, r.id)}${location.search || ''}`) },
+                          { icon: '🗑', label: 'Delete', danger: true, onClick: async () => {
+                            if (!confirm('Delete this record?')) return;
+                            await api.delete(`/sales/${type}s/${r.id}`);
+                            loadData(); loadStats();
+                          }},
+                        ]} />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         ) : (
-          <table className="w-full text-sm min-w-[560px]">
+          <table className="w-full text-sm min-w-[640px]">
             <thead><tr className="border-b border-slate-100 dark:border-slate-700/50">
-              {['Number','Customer','Status','Date','Amount',''].map(h => <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">{h}</th>)}
+              <th className="px-3 py-3 w-8">
+                <input type="checkbox"
+                  checked={selected.length === pager.slice.length && pager.slice.length > 0}
+                  onChange={e => setSelected(e.target.checked ? pager.slice.map(r => r.id) : [])}
+                />
+              </th>
+              {['Number','Customer','Status','Date','Created By','Amount',''].map(h => (
+                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">{h}</th>
+              ))}
             </tr></thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700/40">
-              {data.map(r => {
+              {pager.slice.map(r => {
                 const num  = r.invoice_number || r.quotation_number || r.order_number;
                 const date = r.invoice_date || r.order_date || r.created_at;
                 const type = tabType[tab];
                 const viewTo = `${salesViewPath(segment, r.id)}${location.search || ''}`;
                 return (
-                  <tr
-                    key={r.id}
-                    onClick={() => navigate(viewTo)}
+                  <tr key={r.id} onClick={() => openDocDrawer(r)}
                     className="hover:bg-slate-50 dark:hover:bg-slate-800/40 cursor-pointer group">
+                    <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
+                      <input type="checkbox"
+                        checked={selected.includes(r.id)}
+                        onChange={e => setSelected(p => e.target.checked ? [...p, r.id] : p.filter(x => x !== r.id))}
+                      />
+                    </td>
                     <td className="px-4 py-3 font-mono text-xs font-semibold text-brand-600 dark:text-brand-400">
-                      <Link
-                        to={viewTo}
-                        className="text-brand-600 dark:text-brand-400 hover:underline"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {num}
-                      </Link>
+                      <Link to={viewTo} className="hover:underline" onClick={(e) => { e.stopPropagation(); docLinkClick(e, r); }}>{num}</Link>
                     </td>
                     <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-100">{r.customer_name}</td>
                     <td className="px-4 py-3"><StatusBadge s={r.status} /></td>
                     <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{fmtD(date)}</td>
+                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{r.created_by_name || '—'}</td>
                     <td className="px-4 py-3 font-semibold font-mono text-slate-800 dark:text-slate-100">{fmt(r.total_amount)}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                        <button onClick={e => handleDelete(type+'s', r.id, e)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-xs">🗑</button>
-                      </div>
+                    <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
+                      <SettingsDropdown options={[
+                        { icon: '👁', label: 'View in drawer', onClick: () => openDocDrawer(r) },
+                        { icon: '↗', label: 'Open full page', onClick: () => navigate(viewTo) },
+                        { icon: '✏️', label: 'Edit', onClick: () => navigate(`${salesEditPath(segment, r.id)}${location.search || ''}`) },
+                        { icon: '🗑', label: 'Delete', danger: true, onClick: async () => {
+                          if (!confirm('Delete this record?')) return;
+                          await api.delete(`/sales/${type}s/${r.id}`);
+                          loadData(); loadStats();
+                        }},
+                      ]} />
                     </td>
                   </tr>
                 );
@@ -1051,7 +1596,30 @@ export function SalesListPage({ segment }) {
             </tbody>
           </table>
         )}
+        <Pagination page={pager.page} total={pager.total} count={pager.count} onChange={pager.setPage} />
       </div>
+
+      {drawer && (
+        <DetailDrawer
+          type={drawer.type}
+          id={drawer.id}
+          fullPage={false}
+          onClose={() => setDrawer(null)}
+          onRefresh={() => { loadData(); loadStats(); }}
+          onEditQuotation={drawer.type === 'quotation' ? (qid) => {
+            setDrawer(null);
+            navigate({ pathname: salesEditPath('quotes', qid), search: location.search });
+          } : undefined}
+          onEditInvoice={drawer.type === 'invoice' ? (iid) => {
+            setDrawer(null);
+            navigate({ pathname: salesEditPath('invoices', iid), search: location.search });
+          } : undefined}
+          onEditOrder={drawer.type === 'order' ? (oid) => {
+            setDrawer(null);
+            navigate({ pathname: salesEditPath('orders', oid), search: location.search });
+          } : undefined}
+        />
+      )}
 
       {/* Modals */}
       {modal === 'customer' && (
@@ -1067,6 +1635,437 @@ export function SalesListPage({ segment }) {
       )}
       {modal === 'edit-customer' && editCust && (
         <CustomerModal customer={editCust} onClose={() => { setModal(null); setEditCust(null); }} onSaved={afterSave} />
+      )}
+    </div>
+  );
+}
+
+// ─── Customers Page ───────────────────────────────────────────
+
+export function SalesCustomersPage() {
+  const [customers, setCustomers] = useState([]);
+  const [modal,     setModal]     = useState(null); // 'new' | 'edit'
+  const [editCust,  setEditCust]  = useState(null);
+  const [selected,  setSelected]  = useState([]);
+  const search = useSearch(customers, ['name','phone','email','gstin','address']);
+  const pager  = usePagination(search.filtered);
+  const cols = [
+    { label: 'Name',    get: r => r.name },
+    { label: 'Phone',   get: r => r.phone || '' },
+    { label: 'Email',   get: r => r.email || '' },
+    { label: 'GSTIN',   get: r => r.gstin || '' },
+    { label: 'Address', get: r => r.address || '' },
+  ];
+
+  const load = useCallback(() => {
+    api.get('/sales/customers').then(r => setCustomers(r.data || [])).catch(() => {});
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const afterSave = () => { setModal(null); setEditCust(null); load(); };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-[16px] font-semibold text-slate-800 dark:text-slate-100">Customers</h2>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Manage your customer list</p>
+        </div>
+        <button type="button" className="btn-wf-primary" onClick={() => setModal('new')}>+ Customer</button>
+      </div>
+
+      <ListToolbar
+        data={search.filtered} cols={cols} title="Customers"
+        search={search.q} onSearch={search.setQ}
+        selected={selected}
+        onDeleteSelected={async () => {
+          if (!confirm(`Delete ${selected.length} customer(s)?`)) return;
+          await Promise.all(selected.map(id => api.delete(`/sales/customers/${id}`)));
+          setSelected([]); load();
+        }}
+      />
+
+      <div className="bg-white dark:bg-[#13152a] rounded-xl border border-slate-200 dark:border-slate-700/50 overflow-hidden">
+        {pager.slice.length === 0 ? (
+          <p className="text-center py-12 text-slate-400 dark:text-slate-500 text-sm">No customers yet</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead><tr className="border-b border-slate-100 dark:border-slate-700/50">
+              <th className="px-3 py-3 w-8">
+                <input type="checkbox"
+                  checked={selected.length === pager.slice.length && pager.slice.length > 0}
+                  onChange={e => setSelected(e.target.checked ? pager.slice.map(r => r.id) : [])}
+                />
+              </th>
+              {['Name','Phone','Email','GSTIN','Address',''].map(h => (
+                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">{h}</th>
+              ))}
+            </tr></thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-700/40">
+              {pager.slice.map(c => (
+                <tr key={c.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                  <td className="px-3 py-3">
+                    <input type="checkbox"
+                      checked={selected.includes(c.id)}
+                      onChange={e => setSelected(p => e.target.checked ? [...p, c.id] : p.filter(x => x !== c.id))}
+                    />
+                  </td>
+                  <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-100">{c.name}</td>
+                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{c.phone || '—'}</td>
+                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{c.email || '—'}</td>
+                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs font-mono">{c.gstin || '—'}</td>
+                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs max-w-[180px] truncate">{c.address || '—'}</td>
+                  <td className="px-4 py-3 text-right">
+                    <SettingsDropdown options={[
+                      { icon: '✏️', label: 'Edit', onClick: () => { setEditCust(c); setModal('edit'); } },
+                      { icon: '🗑', label: 'Delete', danger: true, onClick: async () => {
+                        if (!confirm('Delete this customer?')) return;
+                        await api.delete(`/sales/customers/${c.id}`);
+                        load();
+                      }},
+                    ]} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <Pagination page={pager.page} total={pager.total} count={pager.count} onChange={pager.setPage} />
+      </div>
+
+      {modal === 'new'  && <CustomerModal onClose={() => setModal(null)} onSaved={afterSave} />}
+      {modal === 'edit' && editCust && <CustomerModal customer={editCust} onClose={() => { setModal(null); setEditCust(null); }} onSaved={afterSave} />}
+    </div>
+  );
+}
+
+// ─── Payment In (invoice receipts ledger) ─────────────────────
+
+export function SalesPaymentsPage() {
+  const location = useLocation();
+  const [payments, setPayments] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [salesExecutives, setSalesExecutives] = useState([]);
+  const [filters, setFilters] = useState({});
+
+  const load = useCallback(() => {
+    const params = {};
+    if (filters.customer_id) params.customer_id = filters.customer_id;
+    if (filters.created_by) params.created_by = filters.created_by;
+    if (filters.from) params.from = filters.from;
+    if (filters.to) params.to = filters.to;
+    api.get('/sales/payments', { params }).then((r) => setPayments(r.data || [])).catch(() => setPayments([]));
+  }, [filters]);
+
+  useEffect(() => {
+    api.get('/sales/customers').then((r) => setCustomers(r.data || [])).catch(() => {});
+    api.get('/sales/executives').then((r) => setSalesExecutives(r.data || [])).catch(() => setSalesExecutives([]));
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const search = useSearch(payments, ['invoice_number', 'customer_name', 'reference']);
+  const pager = usePagination(search.filtered);
+  const cols = [
+    { label: 'Date', get: (p) => fmtD(p.payment_date) },
+    { label: 'Reference No.', get: (p) => p.reference || '' },
+    { label: 'Invoice #', get: (p) => p.invoice_number },
+    { label: 'Customer', get: (p) => p.customer_name },
+    { label: 'Paid', get: (p) => fmt(p.amount) },
+    { label: 'Method', get: (p) => p.method?.replace('_', ' ') || '' },
+    { label: 'Created By', get: (p) => p.created_by_name || '' },
+  ];
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-[16px] font-semibold text-slate-800 dark:text-slate-100">Payment In</h2>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">All recorded invoice payments</p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-100/80 dark:bg-slate-800/60 rounded-xl w-fit mb-6">
+        {[
+          { path: '/sales/invoices', label: 'Invoices', activeMatch: (p) => p.startsWith('/sales/invoices') },
+          { path: '/sales/payments', label: 'Payment In', activeMatch: (p) => p.startsWith('/sales/payments') },
+          { path: '/sales/quotes', label: 'Quotes', activeMatch: (p) => p.startsWith('/sales/quotes') },
+          { path: '/sales/orders', label: 'Orders', activeMatch: (p) => p.startsWith('/sales/orders') },
+        ].map(({ path, label, activeMatch }) => (
+          <Link
+            key={path}
+            to={{ pathname: path, search: location.search }}
+            className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-all duration-150 whitespace-nowrap ${
+              activeMatch(location.pathname)
+                ? 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-400 shadow-card font-semibold'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+            }`}
+          >
+            {label}
+          </Link>
+        ))}
+      </div>
+
+      <FilterBar
+        customers={customers}
+        users={salesExecutives}
+        executiveFilter
+        filters={filters}
+        onChange={(f) => setFilters(f)}
+      />
+      <ListToolbar
+        data={search.filtered}
+        cols={cols}
+        title="Payment In"
+        search={search.q}
+        onSearch={search.setQ}
+        selected={[]}
+        onDeleteSelected={() => {}}
+      />
+
+      <div className="bg-white dark:bg-[#13152a] rounded-xl border border-slate-200 dark:border-slate-700/50 overflow-hidden">
+        {pager.slice.length === 0 ? (
+          <p className="text-center py-12 text-slate-400 dark:text-slate-500 text-sm">No payments found</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[720px]">
+              <thead>
+                <tr className="border-b border-slate-100 dark:border-slate-700/50">
+                  {['Date', 'Reference No.', 'Invoice #', 'Customer', 'Paid', 'Method', 'Created By'].map((h) => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-700/40">
+                {pager.slice.map((p) => (
+                  <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                    <td className="px-4 py-3 text-xs text-slate-500">{fmtD(p.payment_date)}</td>
+                    <td className="px-4 py-3 text-xs font-mono text-slate-500">{p.reference || '—'}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-brand-600 dark:text-brand-400">{p.invoice_number}</td>
+                    <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-100">{p.customer_name}</td>
+                    <td className="px-4 py-3 font-semibold font-mono text-xs text-emerald-600 dark:text-emerald-400">{fmt(p.amount)}</td>
+                    <td className="px-4 py-3 text-xs text-slate-500">{p.method?.replace('_', ' ')}</td>
+                    <td className="px-4 py-3 text-xs text-slate-500">{p.created_by_name || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <Pagination page={pager.page} total={pager.total} count={pager.count} onChange={pager.setPage} />
+      </div>
+    </div>
+  );
+}
+
+// ─── Sale Returns Page ────────────────────────────────────────
+
+function ReturnPaymentModal({ ret, onClose, onSaved }) {
+  const balance = Number(ret.total_amount) - Number(ret.paid_amount || 0);
+  const [form, setForm] = useState({ amount: balance.toFixed(2), method: 'bank_transfer', payment_date: '', reference: '' });
+  const [loading, setLoading] = useState(false);
+  const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
+  const handleSubmit = async (e) => {
+    e.preventDefault(); setLoading(true);
+    try { await api.post(`/sales/returns/${ret.id}/payments`, form); onSaved(); }
+    finally { setLoading(false); }
+  };
+  return (
+    <Modal title="Make Payment (Return)" onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3 text-sm">
+          <div className="flex justify-between"><span className="text-slate-500 dark:text-slate-400">Return total</span><span className="font-semibold">{fmt(ret.total_amount)}</span></div>
+          <div className="flex justify-between mt-1"><span className="text-slate-500 dark:text-slate-400">Balance</span><span className="font-bold text-amber-600 dark:text-amber-400">{fmt(balance)}</span></div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Amount *"><input type="number" step="0.01" min="0.01" className={inputCls} value={form.amount} onChange={set('amount')} required /></Field>
+          <Field label="Payment Date"><input type="date" className={inputCls} value={form.payment_date} onChange={set('payment_date')} /></Field>
+        </div>
+        <Field label="Method">
+          <select className={selectCls} value={form.method} onChange={set('method')}>
+            {['bank_transfer','cash','cheque','upi','card','other'].map(m => <option key={m} value={m}>{m.replace('_',' ').replace(/\b\w/g,c=>c.toUpperCase())}</option>)}
+          </select>
+        </Field>
+        <FormActions onCancel={onClose} submitLabel="Make Payment" loading={loading} />
+      </form>
+    </Modal>
+  );
+}
+
+export function SalesReturnsPage() {
+  const [returns,   setReturns]   = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [products,  setProducts]  = useState([]);
+  const [salesExecutives, setSalesExecutives] = useState([]);
+  const [modal,     setModal]     = useState(null); // 'new' | { type: 'pay', ret }
+  const [filters,   setFilters]   = useState({});
+  const [selected,  setSelected]  = useState([]);
+
+  const search = useSearch(returns, ['return_number','customer_name','reference_no']);
+  const pager  = usePagination(search.filtered);
+  const cols = [
+    { label: 'Number',   get: r => r.return_number },
+    { label: 'Customer', get: r => r.customer_name },
+    { label: 'Date',     get: r => fmtD(r.return_date || r.created_at) },
+    { label: 'Amount',   get: r => fmt(r.total_amount) },
+    { label: 'Status',   get: r => r.status || '' },
+  ];
+
+  const load = useCallback(() => {
+    const params = {};
+    if (filters.customer_id) params.customer_id = filters.customer_id;
+    if (filters.created_by) params.created_by = filters.created_by;
+    if (filters.from) params.from = filters.from;
+    if (filters.to) params.to = filters.to;
+    api.get('/sales/returns', { params }).then(r => setReturns(r.data || [])).catch(() => setReturns([]));
+  }, [filters]);
+
+  useEffect(() => {
+    load();
+    api.get('/sales/customers').then(r => setCustomers(r.data || [])).catch(() => {});
+    api.get('/sales/executives').then((r) => setSalesExecutives(r.data || [])).catch(() => setSalesExecutives([]));
+    api.get('/inventory/products').then(r => setProducts(r.data.products || r.data || [])).catch(() => {});
+  }, [load]);
+
+  const [newForm, setNewForm] = useState({
+    customer_id:'', return_date:'', reference_no:'', notes:'', is_interstate: false,
+    discount_amount: 0, round_off: 0,
+  });
+  const [newItems, setNewItems] = useState([{ ...EMPTY_LINE }]);
+  const [saving,   setSaving]   = useState(false);
+  const setF = k => e => setNewForm(f => ({ ...f, [k]: e.target.value }));
+
+  const handleCreate = async (e) => {
+    e.preventDefault(); setSaving(true);
+    try {
+      const lines = newItems.map(calcLine).map(l => ({
+        product_id: l.product_id || null, description: l.description,
+        quantity: Number(l.quantity), unit_price: Number(l.unit_price),
+        discount: Number(l.discount || 0), gst_rate: Number(l.gst_rate),
+        cgst: newForm.is_interstate ? 0 : l.gst / 2,
+        sgst: newForm.is_interstate ? 0 : l.gst / 2,
+        igst: newForm.is_interstate ? l.gst : 0,
+        total: l.total,
+      }));
+      await api.post('/sales/returns', { ...newForm, items: lines });
+      setModal(null);
+      setNewForm({ customer_id:'', return_date:'', reference_no:'', notes:'', is_interstate: false, discount_amount: 0, round_off: 0 });
+      setNewItems([{ ...EMPTY_LINE }]);
+      load();
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-[16px] font-semibold text-slate-800 dark:text-slate-100">Sale Returns</h2>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Credit notes and return management</p>
+        </div>
+        <button type="button" className="btn-wf-primary" onClick={() => setModal('new')}>+ Return</button>
+      </div>
+
+      <FilterBar
+        customers={customers}
+        users={salesExecutives}
+        executiveFilter
+        filters={filters}
+        onChange={(f) => { setFilters(f); setSelected([]); }}
+      />
+      <ListToolbar
+        data={search.filtered} cols={cols} title="Sale Returns"
+        search={search.q} onSearch={search.setQ}
+        selected={selected}
+        onDeleteSelected={async () => {
+          if (!confirm(`Delete ${selected.length} return(s)?`)) return;
+          await Promise.all(selected.map(id => api.delete(`/sales/returns/${id}`)));
+          setSelected([]); load();
+        }}
+      />
+
+      <div className="bg-white dark:bg-[#13152a] rounded-xl border border-slate-200 dark:border-slate-700/50 overflow-hidden">
+        {pager.slice.length === 0 ? (
+          <p className="text-center py-12 text-slate-400 dark:text-slate-500 text-sm">No returns found</p>
+        ) : (
+          <table className="w-full text-sm min-w-[560px]">
+            <thead><tr className="border-b border-slate-100 dark:border-slate-700/50">
+              <th className="px-3 py-3 w-8">
+                <input type="checkbox"
+                  checked={selected.length === pager.slice.length && pager.slice.length > 0}
+                  onChange={e => setSelected(e.target.checked ? pager.slice.map(r => r.id) : [])}
+                />
+              </th>
+              {['Number','Customer','Date','Amount','Status',''].map(h => (
+                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">{h}</th>
+              ))}
+            </tr></thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-700/40">
+              {pager.slice.map(r => (
+                <tr key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                  <td className="px-3 py-3">
+                    <input type="checkbox"
+                      checked={selected.includes(r.id)}
+                      onChange={e => setSelected(p => e.target.checked ? [...p, r.id] : p.filter(x => x !== r.id))}
+                    />
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs font-semibold text-brand-600 dark:text-brand-400">{r.return_number || `RET-${r.id}`}</td>
+                  <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-100">{r.customer_name}</td>
+                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{fmtD(r.return_date || r.created_at)}</td>
+                  <td className="px-4 py-3 font-semibold font-mono text-slate-800 dark:text-slate-100">{fmt(r.total_amount)}</td>
+                  <td className="px-4 py-3"><StatusBadge s={r.status || 'pending'} /></td>
+                  <td className="px-4 py-3 text-right">
+                    <SettingsDropdown options={[
+                      { icon: '₹', label: 'Record Payment', onClick: () => setModal({ type: 'pay', ret: r }) },
+                      { icon: '🗑', label: 'Delete', danger: true, onClick: async () => {
+                        if (!confirm('Delete this return?')) return;
+                        await api.delete(`/sales/returns/${r.id}`);
+                        load();
+                      }},
+                    ]} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <Pagination page={pager.page} total={pager.total} count={pager.count} onChange={pager.setPage} />
+      </div>
+
+      {/* New Return Modal */}
+      {modal === 'new' && (
+        <Modal title="New Sale Return / Credit Note" onClose={() => setModal(null)} size="xl">
+          <form onSubmit={handleCreate} className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Customer *">
+                <select className={selectCls} value={newForm.customer_id} onChange={setF('customer_id')} required>
+                  <option value="">Select customer…</option>
+                  {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </Field>
+              <Field label="Return Date"><input type="date" className={inputCls} value={newForm.return_date} onChange={setF('return_date')} /></Field>
+              <Field label="Reference No."><input className={inputCls} value={newForm.reference_no} onChange={setF('reference_no')} /></Field>
+              <Field label="Discount (₹)"><input type="number" min="0" step="0.01" className={inputCls} value={newForm.discount_amount} onChange={setF('discount_amount')} /></Field>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 cursor-pointer">
+              <input type="checkbox" checked={newForm.is_interstate} onChange={e => setNewForm(f => ({ ...f, is_interstate: e.target.checked }))} />
+              Interstate supply (IGST)
+            </label>
+            <LineItems items={newItems} onChange={setNewItems} products={products} interstate={newForm.is_interstate} showDiscount />
+            <TotalSummary lines={newItems} interstate={newForm.is_interstate} discountAmount={newForm.discount_amount} roundOff={newForm.round_off} />
+            <Field label="Notes"><textarea className={inputCls + ' h-16 resize-none'} value={newForm.notes} onChange={setF('notes')} /></Field>
+            <FormActions onCancel={() => setModal(null)} submitLabel="Create Return" loading={saving} />
+          </form>
+        </Modal>
+      )}
+
+      {/* Payment Modal */}
+      {modal?.type === 'pay' && (
+        <ReturnPaymentModal ret={modal.ret} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(); }} />
       )}
     </div>
   );

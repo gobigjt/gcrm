@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, Query, UseGuards, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard }  from '../../common/guards/jwt-auth.guard';
 import { RolesGuard }    from '../../common/guards/roles.guard';
@@ -24,6 +24,67 @@ export class LeadsController {
   @Get('assignees') assignees() { return this.svc.assignees(); }
   @Get('stats')     stats(@CurrentUser() u: any)     { return this.svc.stats(u); }
   @Get('followups') allFollowups(@Query() q: any, @CurrentUser() u: any) { return this.svc.allFollowups(q, u); }
+
+  // ─── Masters ──────────────────────────────────────────────
+  @Get('masters/sources')  listMasterSources()  { return this.svc.masterSources().list(); }
+  @Get('masters/segments') listSegments()       { return this.svc.masterSegments().list(); }
+  @Get('masters/priorities') listPriorities()   { return this.svc.masterPriorities().list(); }
+
+  @UseGuards(RolesGuard) @Roles('Admin')
+  @Post('masters/sources')
+  createMasterSource(@Body() b: any) {
+    if (!b.name?.trim()) throw new BadRequestException('Name is required');
+    return this.svc.masterSources().create(b.name.trim());
+  }
+
+  @UseGuards(RolesGuard) @Roles('Admin')
+  @Patch('masters/sources/:id')
+  updateMasterSource(@Param('id') id: string, @Body() b: any) {
+    if (!b.name?.trim()) throw new BadRequestException('Name is required');
+    return this.svc.masterSources().update(Number(id), b.name.trim());
+  }
+
+  @UseGuards(RolesGuard) @Roles('Admin')
+  @Delete('masters/sources/:id')
+  removeMasterSource(@Param('id') id: string) { return this.svc.masterSources().remove(Number(id)); }
+
+  @UseGuards(RolesGuard) @Roles('Admin')
+  @Post('masters/segments')
+  createSegment(@Body() b: any) {
+    if (!b.name?.trim()) throw new BadRequestException('Name is required');
+    return this.svc.masterSegments().create(b.name.trim());
+  }
+
+  @UseGuards(RolesGuard) @Roles('Admin')
+  @Patch('masters/segments/:id')
+  updateSegment(@Param('id') id: string, @Body() b: any) {
+    if (!b.name?.trim()) throw new BadRequestException('Name is required');
+    return this.svc.masterSegments().update(Number(id), b.name.trim());
+  }
+
+  @UseGuards(RolesGuard) @Roles('Admin')
+  @Delete('masters/segments/:id')
+  removeSegment(@Param('id') id: string) { return this.svc.masterSegments().remove(Number(id)); }
+
+  @UseGuards(RolesGuard) @Roles('Admin')
+  @Post('masters/priorities')
+  createPriority(@Body() b: any) {
+    if (!b.name?.trim()) throw new BadRequestException('Name is required');
+    const extra = b.color !== undefined ? { color: b.color } : {};
+    return this.svc.masterPriorities().create(b.name.trim(), extra);
+  }
+
+  @UseGuards(RolesGuard) @Roles('Admin')
+  @Patch('masters/priorities/:id')
+  updatePriority(@Param('id') id: string, @Body() b: any) {
+    if (!b.name?.trim()) throw new BadRequestException('Name is required');
+    const extra = b.color !== undefined ? { color: b.color } : {};
+    return this.svc.masterPriorities().update(Number(id), b.name.trim(), extra);
+  }
+
+  @UseGuards(RolesGuard) @Roles('Admin')
+  @Delete('masters/priorities/:id')
+  removePriority(@Param('id') id: string) { return this.svc.masterPriorities().remove(Number(id)); }
 
   @Get()
   @ApiOperation({ summary: 'List leads (optional pagination: pass page>=1 → { data, total, page, page_size })' })

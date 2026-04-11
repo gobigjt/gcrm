@@ -146,6 +146,153 @@ export class SettingsService {
     return stats;
   }
 
+  async getDashboardCharts() {
+    const cacheKey = 'dashboard:charts';
+    const cached = await this.cache.get(cacheKey);
+    if (cached) return cached;
+
+    const now = new Date();
+    const curFYStart = now.getMonth() >= 3
+      ? new Date(now.getFullYear(), 3, 1)
+      : new Date(now.getFullYear() - 1, 3, 1);
+    const curFYEnd   = new Date(curFYStart.getFullYear() + 1, 3, 1);
+    const prevFYStart = new Date(curFYStart.getFullYear() - 1, 3, 1);
+    const prevFYEnd   = curFYStart;
+    const fmtDate = (d: Date) => d.toISOString().split('T')[0];
+
+    const [curSales, prevSales, clientSales, recentBuyers, recentInvoices, lowStock, salesStats] =
+      await Promise.all([
+        this.db.query(
+          `SELECT EXTRACT(MONTH FROM invoice_date)::int AS m, EXTRACT(YEAR FROM invoice_date)::int AS y,
+                  COALESCE(SUM(total_amount),0) AS amount
+           FROM invoices WHERE invoice_date >= $1 AND invoice_date < $2 GROUP BY m, y`,
+          [fmtDate(curFYStart), fmtDate(curFYEnd)],
+        ),
+        this.db.query(
+          `SELECT EXTRACT(MONTH FROM invoice_date)::int AS m, EXTRACT(YEAR FROM invoice_date)::int AS y,
+                  COALESCE(SUM(total_amount),0) AS amount
+           FROM invoices WHERE invoice_date >= $1 AND invoice_date < $2 GROUP BY m, y`,
+          [fmtDate(prevFYStart), fmtDate(prevFYEnd)],
+        ),
+        this.db.query(
+          `WITH top_clients AS (
+             SELECT customer_id FROM invoices
+             WHERE invoice_date >= $1 AND invoice_date < $2
+             GROUP BY customer_id ORDER BY SUM(total_amount) DESC LIMIT 8
+           )
+           SELECT c.name AS customer_name,
+                  EXTRACT(MONTH FROM i.invoice_date)::int AS m,
+                  EXTRACT(YEAR FROM i.invoice_date)::int AS y,
+                  COALESCE(SUM(i.total_amount),0) AS amount
+           FROM invoices i
+           JOIN customers c ON c.id = i.customer_id
+           WHERE i.customer_id IN (SELECT customer_id FROM top_clients)
+             AND i.invoice_date >= $1 AND i.invoice_date < $2
+           GROUP BY c.name, m, y`,
+          [fmtDate(curFYStart), fmtDate(curFYEnd)],
+        ),
+        this.db.query(
+          `SELECT c.name, COALESCE(SUM(i.total_amount),0) AS total_spent,
+                  COUNT(i.id) AS invoice_count, MAX(i.invoice_date) AS last_purchase
+           FROM customers c JOIN invoices i ON i.customer_id = c.id
+           GROUP BY c.id, c.name ORDER BY total_spent DESC LIMIT 10`,
+        ),
+        this.db.query(
+          `SELECT i.invoice_number, c.name AS customer_name,
+                  i.total_amount, i.status, i.invoice_date,
+                  i.total_amount - COALESCE((SELECT SUM(amount) FROM payments WHERE invoice_id=i.id),0) AS balance
+           FROM invoices i JOIN customers c ON c.id = i.customer_id
+           ORDER BY i.created_at DESC LIMIT 6`,
+        ),
+        this.db.query(
+          `SELECT p.name, p.sku, p.low_stock_alert,
+                  COALESCE(SUM(s.quantity),0) AS stock
+           FROM products p LEFT JOIN stock s ON s.product_id = p.id
+           WHERE p.is_active = TRUE
+           GROUP BY p.id, p.name, p.sku, p.low_stock_alert
+           HAVING COALESCE(SUM(s.quantity),0) <= GREATEST(p.low_stock_alert, 5)
+           ORDER BY COALESCE(SUM(s.quantity),0) ASC LIMIT 8`,
+        ),
+        this.db.query(
+          `SELECT COUNT(*) AS total_invoices,
+                  COALESCE(SUM(total_amount),0) AS total_sales,
+                  COALESCE(SUM(CASE WHEN status='paid'    THEN total_amount ELSE 0 END),0) AS paid_amount,
+                  COALESCE(SUM(CASE WHEN status='unpaid'  THEN total_amount ELSE 0 END),0) AS unpaid_amount,
+                  COALESCE(SUM(CASE WHEN status='partial' THEN total_amount ELSE 0 END),0) AS partial_amount,
+                  COUNT(DISTINCT customer_id) AS unique_customers
+           FROM invoices`,
+        ),
+      ]);
+
+    const fyMonths    = [4,5,6,7,8,9,10,11,12,1,2,3];
+    const monthLabels = ['Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar'];
+
+    const buildMonthArray = (rows: any[], fyStart: Date) => {
+      const map: Record<string, number> = {};
+      rows.forEach((r: any) => { map[`${r.y}-${r.m}`] = Number(r.amount); });
+      return fyMonths.map((m, idx) => {
+        const y = m >= 4 ? fyStart.getFullYear() : fyStart.getFullYear() + 1;
+        return { month: monthLabels[idx], amount: map[`${y}-${m}`] || 0 };
+      });
+    };
+
+    const curArr  = buildMonthArray(curSales.rows,  curFYStart);
+    const prevArr = buildMonthArray(prevSales.rows, prevFYStart);
+
+    const monthlyComparison = monthLabels.map((m, i) => ({
+      month: m,
+      current: curArr[i].amount,
+      prev:    prevArr[i].amount,
+    }));
+
+    const clientMap: Record<string, Record<string, number>> = {};
+    clientSales.rows.forEach((r: any) => {
+      if (!clientMap[r.customer_name]) clientMap[r.customer_name] = {};
+      const mLabel = monthLabels[fyMonths.indexOf(Number(r.m))];
+      clientMap[r.customer_name][mLabel] = Number(r.amount);
+    });
+    const clientMonthly = Object.entries(clientMap).map(([name, months]) => ({
+      customer: name,
+      months: monthLabels.map(m => months[m] || 0),
+      total: monthLabels.reduce((s, m) => s + (months[m] || 0), 0),
+    })).sort((a, b) => b.total - a.total);
+
+    const fyLabel = (s: Date) =>
+      `FY ${s.getFullYear()}-${String(s.getFullYear() + 1).slice(-2)}`;
+
+    const result = {
+      fy_current:         fyLabel(curFYStart),
+      fy_prev:            fyLabel(prevFYStart),
+      month_labels:       monthLabels,
+      monthly_comparison: monthlyComparison,
+      client_monthly:     clientMonthly,
+      recent_buyers:      recentBuyers.rows.map((r: any) => ({
+        name:          r.name,
+        total_spent:   Number(r.total_spent),
+        invoice_count: Number(r.invoice_count),
+        last_purchase: r.last_purchase,
+      })),
+      recent_invoices: recentInvoices.rows,
+      low_stock_items: lowStock.rows.map((r: any) => ({
+        name:            r.name,
+        sku:             r.sku,
+        stock:           Number(r.stock),
+        low_stock_alert: Number(r.low_stock_alert),
+      })),
+      sales_stats: {
+        total_invoices:   Number(salesStats.rows[0]?.total_invoices   || 0),
+        total_sales:      Number(salesStats.rows[0]?.total_sales      || 0),
+        paid_amount:      Number(salesStats.rows[0]?.paid_amount      || 0),
+        unpaid_amount:    Number(salesStats.rows[0]?.unpaid_amount    || 0),
+        partial_amount:   Number(salesStats.rows[0]?.partial_amount   || 0),
+        unique_customers: Number(salesStats.rows[0]?.unique_customers || 0),
+      },
+    };
+
+    await this.cache.set(cacheKey, result, 300);
+    return result;
+  }
+
   /** Real aggregates for Super Admin platform screens (single-tenant DB today). */
   async getPlatformSummary() {
     const [users, leads, unpaidInv, overdueFu, products, warehouses] = await Promise.all([

@@ -44,6 +44,8 @@ export default function CRMLeadFormPage() {
   const [stages, setStages] = useState([]);
   const [sources, setSources] = useState([]);
   const [users, setUsers] = useState([]);
+  const [segments, setSegments] = useState([]);
+  const [priorities, setPriorities] = useState([]);
   const [form, setForm] = useState({ ...EMPTY });
   const [loading, setLoading] = useState(false);
 
@@ -51,6 +53,8 @@ export default function CRMLeadFormPage() {
     api.get('/crm/leads/stages').then((r) => setStages(r.data || [])).catch(() => setStages([]));
     api.get('/crm/leads/sources').then((r) => setSources(r.data || [])).catch(() => setSources([]));
     api.get('/crm/leads/assignees').then((r) => setUsers(r.data || [])).catch(() => setUsers([]));
+    api.get('/crm/leads/masters/segments').then((r) => setSegments(Array.isArray(r.data) ? r.data : [])).catch(() => setSegments([]));
+    api.get('/crm/leads/masters/priorities').then((r) => setPriorities(Array.isArray(r.data) ? r.data : [])).catch(() => setPriorities([]));
   }, []);
 
   useEffect(() => {
@@ -124,7 +128,12 @@ export default function CRMLeadFormPage() {
             </div>
             <Field label="Company"><input className={inputCls} value={form.company} onChange={set('company')} /></Field>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Segment"><input className={inputCls} value={form.lead_segment} onChange={set('lead_segment')} /></Field>
+              <Field label="Segment">
+                  <select className={selectCls} value={form.lead_segment} onChange={set('lead_segment')}>
+                    <option value="">Select…</option>
+                    {segments.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
+                  </select>
+                </Field>
               <Field label="Job title"><input className={inputCls} value={form.job_title} onChange={set('job_title')} /></Field>
             </div>
             <Field label="Website"><input className={inputCls} value={form.website} onChange={set('website')} /></Field>
@@ -173,9 +182,18 @@ export default function CRMLeadFormPage() {
               </div>
               <Field label="Priority">
                 <select className={selectCls} value={form.priority} onChange={set('priority')}>
-                  <option value="hot">🔥 Hot</option>
-                  <option value="warm">☀️ Warm</option>
-                  <option value="cold">❄️ Cold</option>
+                  <option value="">Select…</option>
+                  {priorities.length > 0
+                    ? priorities.map((p) => (
+                        <option key={p.id} value={p.name.toLowerCase()}>{p.name}</option>
+                      ))
+                    : (
+                      <>
+                        <option value="hot">Hot</option>
+                        <option value="warm">Warm</option>
+                        <option value="cold">Cold</option>
+                      </>
+                    )}
                 </select>
               </Field>
             </section>
