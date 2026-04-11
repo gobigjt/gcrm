@@ -10,7 +10,11 @@
       "Bash(git log:*)",
       "Bash(grep -E \"\\\\.sql$\")",
       "Bash(flutter pub:*)",
-      "Bash(dart run:*)"
+      "Bash(dart run:*)",
+      "Read(//c/dev/jeg//**)",
+      "Read(//c/dev/jeg/**)",
+      "Bash(grep -l \"lead_sources\\\\|INSERT INTO lead_sources\" /c/dev/herd-projects/crm/backend/src/database/migrations/*.sql)",
+      "Bash(grep -h \"INSERT INTO lead_sources\" /c/dev/herd-projects/crm/backend/src/database/migrations/*.sql)"
     ]
   }
 }

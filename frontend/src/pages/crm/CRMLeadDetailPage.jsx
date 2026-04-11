@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/client';
 import { inputCls, selectCls } from '../../components/FormField';
+import { useToast, ToastContainer } from '../../components/Toast';
 
 function formatDate(dt) {
   if (!dt) return '—';
@@ -22,6 +23,7 @@ function leadDisplayTitle(l) {
 export default function CRMLeadDetailPage() {
   const { id } = useParams();
   const nav = useNavigate();
+  const { toasts, show: showToast } = useToast();
   const [lead, setLead] = useState(null);
   const [stages, setStages] = useState([]);
   const [users, setUsers] = useState([]);
@@ -70,6 +72,7 @@ export default function CRMLeadDetailPage() {
       await api.post(`/crm/leads/${id}/followups`, fuForm);
       setFuForm({ due_date: '', description: '', assigned_to: '' });
       load();
+      showToast('Task created successfully');
     } finally {
       setSaving(false);
     }
@@ -88,6 +91,7 @@ export default function CRMLeadDetailPage() {
 
   return (
     <div className="space-y-4 max-w-5xl">
+      <ToastContainer toasts={toasts} />
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-[16px] font-semibold text-slate-800 dark:text-slate-100">{leadDisplayTitle(lead) || 'Lead'}</h2>
@@ -100,19 +104,62 @@ export default function CRMLeadDetailPage() {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-[#1a1d2e] rounded-2xl border border-slate-200/80 dark:border-slate-700/50 shadow-card p-5">
+      <div className="bg-white dark:bg-[#1a1d2e] rounded-2xl border border-slate-200/80 dark:border-slate-700/50 shadow-card p-5 space-y-4">
         <div className="grid grid-cols-2 gap-3 text-sm">
-          <div><span className="text-slate-500">Phone:</span> {lead?.phone || '—'}</div>
-          <div><span className="text-slate-500">Email:</span> {lead?.email || '—'}</div>
-          <div><span className="text-slate-500">Company:</span> {lead?.company || '—'}</div>
-          <div><span className="text-slate-500">Source:</span> {lead?.source || '—'}</div>
-          <div><span className="text-slate-500">Assigned:</span> {lead?.assigned_name || 'Unassigned'}</div>
-          <div><span className="text-slate-500">Assigned manager:</span> {lead?.assigned_manager_name || 'Unassigned'}</div>
-          <div><span className="text-slate-500">Created:</span> {formatDate(lead?.created_at)}</div>
+          {[
+            ['Phone',      lead?.phone            || '—'],
+            ['Email',      lead?.email            || '—'],
+            ['Company',    lead?.company          || '—'],
+            ['Source',     lead?.source           || '—'],
+            ['Segment',    lead?.lead_segment     || '—'],
+            ['Job Title',  lead?.job_title        || '—'],
+            ['Website',    lead?.website          || '—'],
+            ['Address',    lead?.address          || '—'],
+            ['Priority',   lead?.priority         || '—'],
+            ['Deal Size',  lead?.deal_size != null ? `Rs ${Number(lead.deal_size).toLocaleString('en-IN')}` : '—'],
+            ['Lead Score', lead?.lead_score != null ? String(lead.lead_score) : '—'],
+            ['Created',    formatDate(lead?.created_at)],
+          ].map(([k, v]) => (
+            <div key={k} className="bg-slate-50 dark:bg-slate-800/50 rounded-xl px-3 py-2.5">
+              <p className="text-xs text-slate-400 dark:text-slate-500 mb-0.5">{k}</p>
+              <p className="text-sm font-medium text-slate-700 dark:text-slate-200 break-all">{v}</p>
+            </div>
+          ))}
         </div>
-        <div className="mt-3">
-          <label className="text-xs text-slate-500">Move Stage</label>
-          <div className="flex flex-wrap gap-2 mt-1">
+
+        {Array.isArray(lead?.tags) && lead.tags.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-2">Tags</p>
+            <div className="flex flex-wrap gap-1.5">
+              {lead.tags.map((t, i) => (
+                <span key={`${t}-${i}`} className="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200">{t}</span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {lead?.notes && (
+          <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200/60 dark:border-amber-800/30 rounded-xl p-3">
+            <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-1">Notes</p>
+            <p className="text-sm text-amber-800 dark:text-amber-300 whitespace-pre-wrap">{lead.notes}</p>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          {[
+            ['Assigned To',      lead?.assigned_name         || 'Unassigned'],
+            ['Assigned Manager', lead?.assigned_manager_name || 'Unassigned'],
+          ].map(([k, v]) => (
+            <div key={k} className="bg-slate-50 dark:bg-slate-800/50 rounded-xl px-3 py-2.5">
+              <p className="text-xs text-slate-400 dark:text-slate-500 mb-0.5">{k}</p>
+              <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{v}</p>
+            </div>
+          ))}
+        </div>
+
+        <div>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">Move Stage</p>
+          <div className="flex flex-wrap gap-2">
             {stages.map((s) => (
               <button key={s.id} type="button" onClick={() => changeStage(s.id)} className="px-3 py-1 rounded-full text-xs border border-slate-300 dark:border-slate-600 hover:border-brand-500">
                 {s.name}
@@ -120,8 +167,9 @@ export default function CRMLeadDetailPage() {
             ))}
           </div>
         </div>
+
         {whatsappUrl && (
-          <a href={whatsappUrl} target="_blank" rel="noreferrer" className="inline-block mt-3 text-sm text-green-600 hover:text-green-700">Open WhatsApp</a>
+          <a href={whatsappUrl} target="_blank" rel="noreferrer" className="inline-block text-sm text-green-600 hover:text-green-700">Open WhatsApp</a>
         )}
       </div>
 

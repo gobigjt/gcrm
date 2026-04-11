@@ -114,6 +114,10 @@ export class LeadsService {
       conds.push(`l.priority=$${i++}`);
       vals.push(f.priority);
     }
+    if (f.lead_segment) {
+      conds.push(`l.lead_segment=$${i++}`);
+      vals.push(f.lead_segment);
+    }
     if (f.search) {
       const term = `%${f.search}%`;
       conds.push(`(
@@ -280,6 +284,35 @@ export class LeadsService {
 
   async stages()  { return (await this.db.query('SELECT * FROM lead_stages ORDER BY position')).rows; }
   async sources() { return (await this.db.query('SELECT * FROM lead_sources ORDER BY name')).rows; }
+
+  // ─── Masters CRUD ──────────────────────────────────────────
+  private masterCrud(table: string) {
+    return {
+      list:   () => this.db.query(`SELECT * FROM ${table} ORDER BY name`).then(r => r.rows),
+      create: (name: string, extra: Record<string, any> = {}) => {
+        const cols = ['name', ...Object.keys(extra)];
+        const vals = [name, ...Object.values(extra)];
+        const placeholders = cols.map((_, i) => `$${i + 1}`).join(',');
+        return this.db.query(
+          `INSERT INTO ${table} (${cols.join(',')}) VALUES (${placeholders}) RETURNING *`,
+          vals,
+        ).then(r => r.rows[0]);
+      },
+      update: (id: number, name: string, extra: Record<string, any> = {}) => {
+        const sets = ['name=$1', ...Object.keys(extra).map((k, i) => `${k}=$${i + 2}`)];
+        const vals = [name, ...Object.values(extra), id];
+        return this.db.query(
+          `UPDATE ${table} SET ${sets.join(',')} WHERE id=$${vals.length} RETURNING *`,
+          vals,
+        ).then(r => r.rows[0] || null);
+      },
+      remove: (id: number) => this.db.query(`DELETE FROM ${table} WHERE id=$1`, [id]),
+    };
+  }
+
+  masterSources()  { return this.masterCrud('lead_sources'); }
+  masterSegments() { return this.masterCrud('crm_segments'); }
+  masterPriorities() { return this.masterCrud('crm_priorities'); }
 
   /** Per-source lead counts + total (for “All lists” mobile UI). */
   async sourceCounts(currentUser?: { id?: unknown; role?: unknown }) {

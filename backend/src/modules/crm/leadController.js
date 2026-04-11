@@ -50,6 +50,61 @@ export async function sources(req, res) {
   catch (err) { console.error(err); res.status(500).json({ message: "Internal server error" }); }
 }
 
+// ─── CRM Masters ──────────────────────────────────────────
+
+function masterController(masterModel, key) {
+  return {
+    async list(req, res) {
+      try { res.json(await masterModel.list()); }
+      catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }); }
+    },
+    async create(req, res) {
+      try {
+        const { name, color } = req.body;
+        if (!name?.trim()) return res.status(400).json({ message: 'Name is required' });
+        const extra = color !== undefined ? { color } : {};
+        const row = await masterModel.create(name.trim(), extra);
+        res.status(201).json(row);
+      } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }); }
+    },
+    async update(req, res) {
+      try {
+        const { name, color } = req.body;
+        if (!name?.trim()) return res.status(400).json({ message: 'Name is required' });
+        const extra = color !== undefined ? { color } : {};
+        const row = await masterModel.update(Number(req.params.id), name.trim(), extra);
+        if (!row) return res.status(404).json({ message: 'Not found' });
+        res.json(row);
+      } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }); }
+    },
+    async remove(req, res) {
+      try {
+        await masterModel.remove(Number(req.params.id));
+        res.json({ message: 'Deleted' });
+      } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }); }
+    },
+  };
+}
+
+const _sources    = masterController(model.sourcesMaster,    'sources');
+const _segments   = masterController(model.segmentsMaster,   'segments');
+const _priorities = masterController(model.prioritiesMaster, 'priorities');
+
+export const listMasterSources  = _sources.list.bind(_sources);
+export const createMasterSource = _sources.create.bind(_sources);
+export const updateMasterSource = _sources.update.bind(_sources);
+export const removeMasterSource = _sources.remove.bind(_sources);
+
+export const listSegments     = _segments.list.bind(_segments);
+export const createSegment    = _segments.create.bind(_segments);
+export const updateSegment    = _segments.update.bind(_segments);
+export const removeSegment    = _segments.remove.bind(_segments);
+
+export const listPriorities   = _priorities.list.bind(_priorities);
+export const createPriority   = _priorities.create.bind(_priorities);
+export const updatePriority   = _priorities.update.bind(_priorities);
+export const removePriority   = _priorities.remove.bind(_priorities);
+
 // ─── Activities ───────────────────────────────────────────
 export async function getActivities(req, res) {
   try {

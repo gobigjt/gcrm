@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
@@ -7,6 +8,7 @@ import { salesFromLeadPath } from '../../utils/salesFromLeadUrl';
 import Modal from '../../components/Modal';
 import Tabs  from '../../components/Tabs';
 import { Field, inputCls, selectCls, FormActions } from '../../components/FormField';
+import { useToast, ToastContainer } from '../../components/Toast';
 
 // ─── Helpers ─────────────────────────────────────────────────
 
@@ -310,13 +312,14 @@ function LeadModal({ lead, stages, sources, users, onClose, onSaved }) {
 // ─── Lead Drawer ─────────────────────────────────────────────
 
 function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
+  const nav = useNavigate();
+  const { toasts: drawerToasts, show: showToast } = useToast();
   const [activities, setActivities] = useState([]);
   const [followups,  setFollowups]  = useState([]);
   const [actForm,    setActForm]    = useState({ type: 'note', description: '' });
   const [fuForm,     setFuForm]     = useState({ due_date: '', description: '', assigned_to: '' });
   const [saving,     setSaving]     = useState(false);
   const [detail,     setDetail]     = useState(lead);
-  const [editing,    setEditing]    = useState(false);
   const [copyLabel,    setCopyLabel]    = useState('');
   const [copyAppLabel, setCopyAppLabel] = useState('');
 
@@ -350,6 +353,7 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
       await api.post(`/crm/leads/${lead.id}/followups`, fuForm);
       setFuForm({ due_date: '', description: '', assigned_to: '' });
       reload();
+      showToast('Task created successfully');
     } finally { setSaving(false); }
   };
 
@@ -400,6 +404,7 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
 
   return (
     <div className="fixed inset-0 z-40 flex">
+      <ToastContainer toasts={drawerToasts} />
       {/* Backdrop */}
       <div className="flex-1 bg-black/30 backdrop-blur-sm" onClick={onClose} />
 
@@ -447,7 +452,7 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
               {copyAppLabel || '📱 App link'}
             </button>
-            <button onClick={() => setEditing(true)}
+            <button onClick={() => nav(`/crm/leads/${detail.id}/edit`)}
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-brand-50 dark:bg-brand-900/20 text-brand-600 dark:text-brand-400 text-xs font-medium hover:bg-brand-100 dark:hover:bg-brand-900/30 transition-colors ml-auto">
               ✏️ Edit
             </button>
@@ -495,6 +500,18 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
         {/* Single scroll: info + timeline + follow-ups (wireframe / mobile parity) */}
         <div className="flex-1 overflow-y-auto">
           <div className="p-5 space-y-5">
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                ['Assigned', detail?.assigned_name         || 'Unassigned'],
+                ['Manager',  detail?.assigned_manager_name || 'Unassigned'],
+              ].map(([k, v]) => (
+                <div key={k} className="bg-slate-50 dark:bg-slate-800/50 rounded-xl px-3 py-2.5">
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mb-0.5">{k}</p>
+                  <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{v}</p>
+                </div>
+              ))}
+            </div>
+
             <div>
               <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-2">Move Stage</p>
               <div className="flex flex-wrap gap-1.5">
@@ -511,14 +528,18 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
 
             <div className="grid grid-cols-2 gap-3">
               {[
-                ['Email',    detail?.email    || '—'],
-                ['Phone',    detail?.phone    || '—'],
-                ['Company',  detail?.company  || '—'],
-                ['Website',  detail?.website  || '—'],
-                ['Address',  detail?.address  || '—'],
-                ['Source',   detail?.source   || '—'],
-                ['Assigned', detail?.assigned_name || 'Unassigned'],
-                ['Created',  formatDate(detail?.created_at)],
+                ['Email',       detail?.email           || '—'],
+                ['Phone',       detail?.phone           || '—'],
+                ['Company',     detail?.company         || '—'],
+                ['Source',      detail?.source          || '—'],
+                ['Segment',     detail?.lead_segment    || '—'],
+                ['Job Title',   detail?.job_title       || '—'],
+                ['Website',     detail?.website         || '—'],
+                ['Address',     detail?.address         || '—'],
+                ['Priority',    detail?.priority        || '—'],
+                ['Deal Size',   detail?.deal_size != null ? `Rs ${Number(detail.deal_size).toLocaleString('en-IN')}` : '—'],
+                ['Lead Score',  detail?.lead_score != null ? String(detail.lead_score) : '—'],
+                ['Created',     formatDate(detail?.created_at)],
               ].map(([k, v]) => (
                 <div key={k} className="bg-slate-50 dark:bg-slate-800/50 rounded-xl px-3 py-2.5">
                   <p className="text-xs text-slate-400 dark:text-slate-500 mb-0.5">{k}</p>
@@ -651,16 +672,6 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
         </div>
       </div>
 
-      {/* Edit modal on top of drawer */}
-      {editing && (
-        <LeadModal
-          key={`crm-edit-${detail.id}`}
-          lead={detail}
-          stages={stages} sources={sources} users={users}
-          onClose={() => setEditing(false)}
-          onSaved={() => { setEditing(false); reload(); onUpdated(); }}
-        />
-      )}
     </div>
   );
 }
@@ -797,17 +808,19 @@ export default function CRM() {
   const [stats,    setStats]    = useState(null);
   const [stages,   setStages]   = useState([]);
   const [sources,  setSources]  = useState([]);
+  const [segments, setSegments] = useState([]);
+  const [priorities, setPriorities] = useState([]);
   const [users,    setUsers]    = useState([]);
   const [tab,      setTab]      = useState('List');
   const [drawer,   setDrawer]   = useState(null);
   const [addModal, setAddModal] = useState(false);
-  const [listEditLead, setListEditLead] = useState(null);
   const [dashEx, setDashEx] = useState(null);
 
   // Filters
   const [search,   setSearch]   = useState('');
   const [fStage,   setFStage]   = useState('');
   const [fSource,  setFSource]  = useState('');
+  const [fSegment, setFSegment] = useState('');
   const [fPrio,    setFPrio]    = useState('');
   const [fUser,    setFUser]    = useState('');
   const [fCreatedFrom, setFCreatedFrom] = useState('');
@@ -816,6 +829,9 @@ export default function CRM() {
   const [listPage, setListPage] = useState(1);
   const [listPageSize, setListPageSize] = useState(25);
   const [listTotal, setListTotal] = useState(0);
+  const [leadsLoading, setLeadsLoading] = useState(false);
+  const [rowMenu, setRowMenu] = useState(null); // { id, top, right, lead }
+  const rowMenuRef = useRef(null);
 
   const roleName = String(user?.role || '').toLowerCase();
   const ownAssignedOnly = roleName === 'sales executive' || roleName === 'sales manager';
@@ -827,8 +843,9 @@ export default function CRM() {
       ownAssignedOnly && Number.isInteger(uid) && uid > 0 ? String(uid) : fUser;
     if (search)  params.search      = search;
     if (fStage)  params.stage_id    = fStage;
-    if (fSource) params.source_id   = fSource;
-    if (fPrio)   params.priority    = fPrio;
+    if (fSource)  params.source_id    = fSource;
+    if (fSegment) params.lead_segment = fSegment;
+    if (fPrio)    params.priority     = fPrio;
     if (effectiveAssignedTo) params.assigned_to = effectiveAssignedTo;
     if (fCreatedFrom) params.created_from = fCreatedFrom;
     if (fCreatedTo) params.created_to = fCreatedTo;
@@ -839,6 +856,7 @@ export default function CRM() {
       params.page_size = listPageSize;
     }
 
+    setLeadsLoading(true);
     api
       .get('/crm/leads', { params })
       .then((r) => {
@@ -854,8 +872,9 @@ export default function CRM() {
           }
         }
       })
-      .catch(() => {});
-  }, [search, fStage, fSource, fPrio, fUser, fCreatedFrom, fCreatedTo, ownAssignedOnly, user?.id, tab, listPage, listPageSize]);
+      .catch(() => {})
+      .finally(() => setLeadsLoading(false));
+  }, [search, fStage, fSource, fSegment, fPrio, fUser, fCreatedFrom, fCreatedTo, ownAssignedOnly, user?.id, tab, listPage, listPageSize]);
 
   const loadStats = useCallback(() => {
     api.get('/crm/leads/stats').then(r => setStats(r.data)).catch(() => {});
@@ -866,8 +885,21 @@ export default function CRM() {
     api.get('/crm/leads/sources').then(r => setSources(r.data || []));
     api.get('/crm/leads/assignees').then(r => setUsers(r.data || []));
     api.get('/crm/leads/source-counts').then((r) => setSourceCounts(r.data || null)).catch(() => setSourceCounts(null));
+    api.get('/crm/leads/masters/segments').then(r => setSegments(Array.isArray(r.data) ? r.data : [])).catch(() => {});
+    api.get('/crm/leads/masters/priorities').then(r => setPriorities(Array.isArray(r.data) ? r.data : [])).catch(() => {});
     api.get('/settings/dashboard').then((r) => setDashEx(r.data || null)).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!rowMenu) return;
+    const handler = (e) => {
+      if (rowMenuRef.current && !rowMenuRef.current.contains(e.target)) {
+        setRowMenu(null);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [rowMenu]);
 
   useEffect(() => {
     loadStats();
@@ -931,7 +963,11 @@ export default function CRM() {
 
   const openDrawer = (lead) => {
     if (!lead?.id) return;
-    navigate(`/crm/leads/${lead.id}`);
+    setDrawer(lead);
+    const sp = new URLSearchParams(searchParams);
+    sp.set('lead', String(lead.id));
+    sp.delete('openLead');
+    setSearchParams(sp);
   };
 
   return (
@@ -952,6 +988,7 @@ export default function CRM() {
           <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Search and filter your pipeline</p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
+          <Link to="/crm/masters" className="btn-wf-secondary">Masters</Link>
           <button
             type="button"
             onClick={() => navigate('/crm/leads/new')}
@@ -997,36 +1034,6 @@ export default function CRM() {
         onChange={(v) => setTab(v === 'Pipeline' ? 'Kanban' : v)}
       />
 
-      {/* Lead lists by source (parity with mobile “All lists”) */}
-      {tab !== 'Follow-ups' && sourceCounts && (
-        <div className="flex gap-2 overflow-x-auto pb-2 mb-3 -mx-1 px-1 scrollbar-thin">
-          <button
-            type="button"
-            onClick={() => { setFSource(''); setListPage(1); }}
-            className={`flex-shrink-0 px-3 py-2 rounded-full text-xs font-bold border transition-colors ${
-              !fSource
-                ? 'bg-[#E6F1FB] border-[#185FA5] text-[#0C447C]'
-                : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-slate-300'
-            }`}
-          >
-            All leads ({sourceCounts.total ?? 0})
-          </button>
-          {(sourceCounts.sources || []).map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => { setFSource(String(s.id)); setListPage(1); }}
-              className={`flex-shrink-0 px-3 py-2 rounded-full text-xs font-bold border transition-colors ${
-                fSource === String(s.id)
-                  ? 'bg-[#E6F1FB] border-[#185FA5] text-[#0C447C]'
-                  : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-slate-300'
-              }`}
-            >
-              {s.name} ({s.lead_count ?? 0})
-            </button>
-          ))}
-        </div>
-      )}
 
       {/* Stage chips (showcase / mobile parity) */}
       {tab !== 'Follow-ups' && stats && (() => {
@@ -1069,7 +1076,7 @@ export default function CRM() {
             placeholder="Search name, phone, company…"
             value={search}
             onChange={(e) => { setSearch(e.target.value); setListPage(1); }}
-            className={inputCls + ' flex-1 max-w-100'}
+            className={inputCls + ' flex-1 max-w-xs sm:max-w-sm md:max-w-md'}
           />
           <select
             className={selectCls+'flex-1 max-w-40'}
@@ -1087,15 +1094,26 @@ export default function CRM() {
             <option value="">All Sources</option>
             {sources.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
+          {segments.length > 0 && (
+            <select
+              className={selectCls+'flex-1 max-w-40'}
+              value={fSegment}
+              onChange={(e) => { setFSegment(e.target.value); setListPage(1); }}
+            >
+              <option value="">All Segments</option>
+              {segments.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+            </select>
+          )}
           <select
             className={selectCls+'flex-1 max-w-40'}
             value={fPrio}
             onChange={(e) => { setFPrio(e.target.value); setListPage(1); }}
           >
             <option value="">All Priority</option>
-            <option value="hot">🔥 Hot</option>
-            <option value="warm">☀️ Warm</option>
-            <option value="cold">❄️ Cold</option>
+            {priorities.length > 0
+              ? priorities.map(p => <option key={p.id} value={p.name.toLowerCase()}>{p.name}</option>)
+              : (<><option value="hot">Hot</option><option value="warm">Warm</option><option value="cold">Cold</option></>)
+            }
           </select>
           {!ownAssignedOnly && (
             <select
@@ -1108,9 +1126,6 @@ export default function CRM() {
             </select>
           )}
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto border-t sm:border-t-0 border-slate-100 dark:border-slate-700/50 pt-2 sm:pt-0 mt-1 sm:mt-0">
-            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide w-full sm:w-auto sm:mr-1">
-              Created date
-            </span>
             <label className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
               From
               <input
@@ -1148,13 +1163,21 @@ export default function CRM() {
       {/* List */}
       {tab === 'List' && (
         <div className="bg-white dark:bg-[#1a1d2e] rounded-2xl border border-slate-200/80 dark:border-slate-700/50 shadow-card overflow-hidden">
-          {leads.length === 0 ? (
+          {leadsLoading ? (
+            <div className="flex items-center justify-center py-16 gap-3 text-slate-400 dark:text-slate-500">
+              <svg className="animate-spin h-5 w-5 text-brand-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
+              <span className="text-sm font-medium">Loading leads…</span>
+            </div>
+          ) : leads.length === 0 ? (
             <p className="text-center py-12 text-slate-400 dark:text-slate-500 text-sm">No leads found</p>
           ) : (
             <table className="w-full text-sm min-w-[1320px]">
               <thead>
                 <tr className="border-b border-slate-100 dark:border-slate-700/50">
-                  {['Name / Email', 'Date', 'Platform / Google Sheet ID', 'Phone', 'Company', 'City / State', 'Segment', 'Source', 'Stage', 'Score', 'Priority', 'Assigned', 'Actions'].map(h => (
+                  {['Name / Email', 'Date', 'Phone', 'Company', 'City / State', 'Segment', 'Source', 'Stage', 'Score', 'Priority', 'Assigned', 'Actions'].map(h => (
                     <th
                       key={h}
                       className={`px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide whitespace-nowrap ${
@@ -1178,14 +1201,6 @@ export default function CRM() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs whitespace-nowrap">{formatDateTime(l.created_at)}</td>
-                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs whitespace-nowrap">
-                      <div>
-                        <p>{leadPlatformLabel(l)}</p>
-                        <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                          {leadValue(l, ['google_sheet_lead_id', 'sheet_lead_id', 'sheet_id']) || '—'}
-                        </p>
-                      </div>
-                    </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
                       {l.phone ? (
                         <a href={`tel:${l.phone}`} onClick={e => e.stopPropagation()}
@@ -1217,40 +1232,18 @@ export default function CRM() {
                             💬
                           </a>
                         )}
-                        <details className="relative">
-                          <summary className="list-none cursor-pointer p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 [&::-webkit-details-marker]:hidden">
-                            <span className="text-lg font-bold leading-none">⋮</span>
-                          </summary>
-                          <div className="absolute right-0 mt-1 w-44 py-1 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-[#1a1d2e] shadow-lg z-40 text-left">
-                            <button
-                              type="button"
-                              className="w-full px-3 py-2 text-sm text-left hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200"
-                              onClick={() => openDrawer(l)}
-                            >
-                              View details
-                            </button>
-                            <button
-                              type="button"
-                              className="w-full px-3 py-2 text-sm text-left hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200"
-                              onClick={() => navigate(`/crm/leads/${l.id}/edit`)}
-                            >
-                              Edit lead
-                            </button>
-                            <Link
-                              to={salesFromLeadPath(l.id)}
-                              className="block px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200"
-                            >
-                              Sales / order…
-                            </Link>
-                            <button
-                              type="button"
-                              className="w-full px-3 py-2 text-sm text-left text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
-                              onClick={(e) => handleDelete(l.id, e)}
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </details>
+                        <button
+                          type="button"
+                          className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (rowMenu?.id === l.id) { setRowMenu(null); return; }
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setRowMenu({ id: l.id, lead: l, top: rect.bottom + 4, right: window.innerWidth - rect.right });
+                          }}
+                        >
+                          <span className="text-lg font-bold leading-none">⋮</span>
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -1327,30 +1320,6 @@ export default function CRM() {
         <FollowupsView onSelectLead={openDrawer} />
       )}
 
-      {/* Edit from list row */}
-      {listEditLead && (
-        <LeadModal
-          key={`crm-list-edit-${listEditLead.id}`}
-          lead={listEditLead}
-          stages={stages} sources={sources} users={users}
-          onClose={() => setListEditLead(null)}
-          onSaved={() => {
-            const editedId = listEditLead.id;
-            setListEditLead(null);
-            loadLeads();
-            loadStats();
-            api
-              .get(`/crm/leads/${editedId}`)
-              .then((r) => {
-                const row = r.data.lead || r.data;
-                if (!row?.id) return;
-                setDrawer((d) => (d && d.id === row.id ? row : d));
-              })
-              .catch(() => {});
-          }}
-        />
-      )}
-
       {/* Add Lead Modal */}
       {addModal && (
         <LeadModal
@@ -1369,6 +1338,46 @@ export default function CRM() {
           onClose={handleCloseDrawer}
           onUpdated={() => { loadLeads(); loadStats(); }}
         />
+      )}
+
+      {/* Row context menu — portal to escape table stacking context */}
+      {rowMenu && createPortal(
+        <div
+          ref={rowMenuRef}
+          style={{ position: 'fixed', top: rowMenu.top, right: rowMenu.right, zIndex: 9999 }}
+          className="w-48 py-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#1a1d2e] shadow-xl"
+        >
+          <button
+            type="button"
+            className="w-full px-4 py-2 text-sm text-left hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 transition-colors"
+            onClick={() => { setRowMenu(null); openDrawer(rowMenu.lead); }}
+          >
+            View details
+          </button>
+          <button
+            type="button"
+            className="w-full px-4 py-2 text-sm text-left hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 transition-colors"
+            onClick={() => { setRowMenu(null); navigate(`/crm/leads/${rowMenu.lead.id}/edit`); }}
+          >
+            Edit lead
+          </button>
+          <Link
+            to={salesFromLeadPath(rowMenu.lead.id)}
+            className="block px-4 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 transition-colors"
+            onClick={() => setRowMenu(null)}
+          >
+            Sales / order…
+          </Link>
+          <div className="my-1 border-t border-slate-100 dark:border-slate-700/60" />
+          <button
+            type="button"
+            className="w-full px-4 py-2 text-sm text-left text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+            onClick={(e) => { setRowMenu(null); handleDelete(rowMenu.lead.id, e); }}
+          >
+            Delete
+          </button>
+        </div>,
+        document.body
       )}
     </div>
   );

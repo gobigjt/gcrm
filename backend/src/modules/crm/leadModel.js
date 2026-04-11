@@ -83,6 +83,44 @@ export async function listSources() {
   return res.rows;
 }
 
+// ─── CRM Masters (platforms, segments, priorities) ────────
+
+function masterCrud(table) {
+  return {
+    async list() {
+      const res = await db.query(`SELECT * FROM ${table} ORDER BY name`);
+      return res.rows;
+    },
+    async create(name, extra = {}) {
+      const cols = ['name', ...Object.keys(extra)];
+      const vals = [name, ...Object.values(extra)];
+      const placeholders = vals.map((_, i) => `$${i + 1}`).join(',');
+      const res = await db.query(
+        `INSERT INTO ${table} (${cols.join(',')}) VALUES (${placeholders}) RETURNING *`,
+        vals
+      );
+      return res.rows[0];
+    },
+    async update(id, name, extra = {}) {
+      const fields = { name, ...extra };
+      const sets = Object.keys(fields).map((k, i) => `${k}=$${i + 1}`);
+      const vals = [...Object.values(fields), id];
+      const res = await db.query(
+        `UPDATE ${table} SET ${sets.join(',')} WHERE id=$${vals.length} RETURNING *`,
+        vals
+      );
+      return res.rows[0];
+    },
+    async remove(id) {
+      await db.query(`DELETE FROM ${table} WHERE id=$1`, [id]);
+    },
+  };
+}
+
+export const sourcesMaster    = masterCrud('lead_sources');
+export const segmentsMaster   = masterCrud('crm_segments');
+export const prioritiesMaster = masterCrud('crm_priorities');
+
 // ─── Activities ───────────────────────────────────────────
 export async function listActivities(lead_id) {
   const res = await db.query(

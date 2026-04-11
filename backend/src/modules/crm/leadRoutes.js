@@ -8,6 +8,22 @@ router.use(authorize());
 router.get("/stages", ctrl.stages);
 router.get("/sources", ctrl.sources);
 
+// ─── Masters ──────────────────────────────────────────────
+router.get("/masters/sources",        ctrl.listMasterSources);
+router.post("/masters/sources",       authorize(["Admin"]), ctrl.createMasterSource);
+router.patch("/masters/sources/:id",  authorize(["Admin"]), ctrl.updateMasterSource);
+router.delete("/masters/sources/:id", authorize(["Admin"]), ctrl.removeMasterSource);
+
+router.get("/masters/segments",       ctrl.listSegments);
+router.post("/masters/segments",      authorize(["Admin"]), ctrl.createSegment);
+router.patch("/masters/segments/:id", authorize(["Admin"]), ctrl.updateSegment);
+router.delete("/masters/segments/:id",authorize(["Admin"]), ctrl.removeSegment);
+
+router.get("/masters/priorities",       ctrl.listPriorities);
+router.post("/masters/priorities",      authorize(["Admin"]), ctrl.createPriority);
+router.patch("/masters/priorities/:id", authorize(["Admin"]), ctrl.updatePriority);
+router.delete("/masters/priorities/:id",authorize(["Admin"]), ctrl.removePriority);
+
 router.get("/", ctrl.index);
 router.post("/", ctrl.create);
 router.get("/:id", ctrl.show);

@@ -36,6 +36,49 @@ export class SalesService {
     return res.rows[0];
   }
 
+  /** Active users who can own quotes/orders/invoices (sales module filters). */
+  async listSalesExecutives() {
+    return (
+      await this.db.query(
+        `SELECT DISTINCT u.id, u.name
+         FROM users u
+         INNER JOIN roles r ON r.id = u.role_id
+         WHERE u.is_active = TRUE
+           AND r.name IN ('Sales Executive', 'Sales Manager', 'Admin', 'Super Admin')
+         ORDER BY u.name`,
+      )
+    ).rows;
+  }
+
+  /** Whether this user may be stored as document owner (created_by). */
+  private async isAssignableSalesUser(userId: number): Promise<boolean> {
+    const r = await this.db.query(
+      `SELECT 1 FROM users u
+       INNER JOIN roles ro ON ro.id = u.role_id
+       WHERE u.id = $1 AND u.is_active = TRUE
+         AND ro.name IN ('Sales Executive', 'Sales Manager', 'Admin', 'Super Admin')
+       LIMIT 1`,
+      [userId],
+    );
+    return r.rows.length > 0;
+  }
+
+  /**
+   * Pick `created_by` for a new/patched sales document.
+   * Admins / Super Admins / Sales Managers may assign another sales user; others always self.
+   */
+  async resolveDocumentCreatedBy(actor: { id: number; role?: string }, requested: unknown): Promise<number> {
+    const self = Number(actor.id);
+    if (requested === undefined || requested === null || requested === '') return self;
+    const rid = Number(requested);
+    if (!Number.isFinite(rid) || rid <= 0) return self;
+    if (rid === self) return self;
+    const assignerRoles = new Set(['Admin', 'Super Admin', 'Sales Manager']);
+    if (!assignerRoles.has(String(actor.role || ''))) return self;
+    const ok = await this.isAssignableSalesUser(rid);
+    return ok ? rid : self;
+  }
+
   // ─── Proposals ────────────────────────────────────────────
   async listProposals() {
     return (await this.db.query(
@@ -68,17 +111,52 @@ export class SalesService {
   }
 
   // ─── Quotations ───────────────────────────────────────────
-  async listQuotations() {
-    return (await this.db.query(
-      `SELECT q.*,c.name AS customer_name FROM quotations q JOIN customers c ON c.id=q.customer_id ORDER BY q.created_at DESC`
-    )).rows;
+  async listQuotations(filters?: { customer_id?: number; created_by?: number; status?: string; from?: string; to?: string }) {
+    const conds: string[] = [];
+    const vals: any[] = [];
+    let n = 1;
+    if (filters?.customer_id) {
+      conds.push(`q.customer_id=$${n++}`);
+      vals.push(filters.customer_id);
+    }
+    if (filters?.created_by) {
+      conds.push(`q.created_by=$${n++}`);
+      vals.push(filters.created_by);
+    }
+    if (filters?.status) {
+      conds.push(`q.status=$${n++}`);
+      vals.push(filters.status);
+    }
+    if (filters?.from) {
+      conds.push(`q.created_at>=$${n++}`);
+      vals.push(filters.from);
+    }
+    if (filters?.to) {
+      conds.push(`q.created_at<=$${n++}`);
+      vals.push(`${filters.to} 23:59:59`);
+    }
+    const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+    return (
+      await this.db.query(
+        `SELECT q.*, c.name AS customer_name, u.name AS created_by_name
+         FROM quotations q
+         JOIN customers c ON c.id=q.customer_id
+         LEFT JOIN users u ON u.id=q.created_by
+         ${where} ORDER BY q.created_at DESC`,
+        vals,
+      )
+    ).rows;
   }
   async getQuotation(id: number) {
     const [q, items] = await Promise.all([
       this.db.query(
         `SELECT q.*, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
-                c.gstin AS customer_gstin, c.address AS customer_address
-           FROM quotations q JOIN customers c ON c.id=q.customer_id WHERE q.id=$1`,
+                c.gstin AS customer_gstin, c.address AS customer_address,
+                cu.name AS created_by_name
+           FROM quotations q
+           JOIN customers c ON c.id=q.customer_id
+           LEFT JOIN users cu ON cu.id=q.created_by
+           WHERE q.id=$1`,
         [id],
       ),
       this.db.query(
@@ -105,17 +183,52 @@ export class SalesService {
   }
 
   // ─── Orders ───────────────────────────────────────────────
-  async listOrders() {
-    return (await this.db.query(
-      `SELECT o.*,c.name AS customer_name FROM sales_orders o JOIN customers c ON c.id=o.customer_id ORDER BY o.created_at DESC`
-    )).rows;
+  async listOrders(filters?: { customer_id?: number; created_by?: number; status?: string; from?: string; to?: string }) {
+    const conds: string[] = [];
+    const vals: any[] = [];
+    let n = 1;
+    if (filters?.customer_id) {
+      conds.push(`o.customer_id=$${n++}`);
+      vals.push(filters.customer_id);
+    }
+    if (filters?.created_by) {
+      conds.push(`o.created_by=$${n++}`);
+      vals.push(filters.created_by);
+    }
+    if (filters?.status) {
+      conds.push(`o.status=$${n++}`);
+      vals.push(filters.status);
+    }
+    if (filters?.from) {
+      conds.push(`o.order_date>=$${n++}`);
+      vals.push(filters.from);
+    }
+    if (filters?.to) {
+      conds.push(`o.order_date<=$${n++}`);
+      vals.push(filters.to);
+    }
+    const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+    return (
+      await this.db.query(
+        `SELECT o.*, c.name AS customer_name, u.name AS created_by_name
+         FROM sales_orders o
+         JOIN customers c ON c.id=o.customer_id
+         LEFT JOIN users u ON u.id=o.created_by
+         ${where} ORDER BY o.created_at DESC`,
+        vals,
+      )
+    ).rows;
   }
   async getOrder(id: number) {
     const [o, items] = await Promise.all([
       this.db.query(
         `SELECT o.*, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
-                c.gstin AS customer_gstin, c.address AS customer_address
-           FROM sales_orders o JOIN customers c ON c.id=o.customer_id WHERE o.id=$1`,
+                c.gstin AS customer_gstin, c.address AS customer_address,
+                cu.name AS created_by_name
+           FROM sales_orders o
+           JOIN customers c ON c.id=o.customer_id
+           LEFT JOIN users cu ON cu.id=o.created_by
+           WHERE o.id=$1`,
         [id],
       ),
       this.db.query(
@@ -140,22 +253,148 @@ export class SalesService {
       return or.rows[0];
     });
   }
-  async patchOrder(id: number, status: string) {
-    return (await this.db.query('UPDATE sales_orders SET status=$1 WHERE id=$2 RETURNING *', [status, id])).rows[0];
+  async patchOrder(id: number, b: any) {
+    if (typeof b === 'string') {
+      return (await this.db.query('UPDATE sales_orders SET status=$1 WHERE id=$2 RETURNING *', [b, id])).rows[0];
+    }
+    if (b?.items !== undefined && Array.isArray(b.items)) {
+      return this.db.transaction(async (client) => {
+        const ex = await client.query('SELECT id FROM sales_orders WHERE id=$1', [id]);
+        if (!ex.rows[0]) return null;
+        await client.query('DELETE FROM sales_order_items WHERE order_id=$1', [id]);
+        let sum = 0;
+        for (const it of b.items) {
+          const lineTotal = Number(it.total ?? 0);
+          sum += lineTotal;
+          await client.query(
+            'INSERT INTO sales_order_items (order_id,product_id,description,quantity,unit_price,gst_rate,total) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+            [
+              id,
+              it.product_id ?? null,
+              String(it.description ?? ''),
+              Number(it.quantity),
+              Number(it.unit_price),
+              Number(it.gst_rate ?? 0),
+              lineTotal,
+            ],
+          );
+        }
+        const sets = ['total_amount = $1'];
+        const vals: any[] = [sum];
+        let n = 2;
+        if (b.customer_id !== undefined) {
+          sets.push(`customer_id=$${n++}`);
+          vals.push(b.customer_id);
+        }
+        if (b.order_date !== undefined) {
+          sets.push(`order_date=$${n++}`);
+          vals.push(b.order_date);
+        }
+        if (b.due_date !== undefined) {
+          sets.push(`due_date=$${n++}`);
+          vals.push(b.due_date);
+        }
+        if (b.notes !== undefined) {
+          sets.push(`notes=$${n++}`);
+          vals.push(b.notes);
+        }
+        if (b.status !== undefined) {
+          sets.push(`status=$${n++}`);
+          vals.push(b.status);
+        }
+        if (b.created_by !== undefined) {
+          sets.push(`created_by=$${n++}`);
+          vals.push(b.created_by);
+        }
+        vals.push(id);
+        await client.query(`UPDATE sales_orders SET ${sets.join(', ')} WHERE id=$${n}`, vals);
+        return this.getOrder(id);
+      });
+    }
+    const sets: string[] = [];
+    const vals: any[] = [];
+    let n = 1;
+    if (b?.status !== undefined) {
+      sets.push(`status=$${n++}`);
+      vals.push(b.status);
+    }
+    if (b?.notes !== undefined) {
+      sets.push(`notes=$${n++}`);
+      vals.push(b.notes);
+    }
+    if (b?.order_date !== undefined) {
+      sets.push(`order_date=$${n++}`);
+      vals.push(b.order_date);
+    }
+    if (b?.due_date !== undefined) {
+      sets.push(`due_date=$${n++}`);
+      vals.push(b.due_date);
+    }
+    if (b?.customer_id !== undefined) {
+      sets.push(`customer_id=$${n++}`);
+      vals.push(b.customer_id);
+    }
+    if (b?.created_by !== undefined) {
+      sets.push(`created_by=$${n++}`);
+      vals.push(b.created_by);
+    }
+    if (!sets.length) {
+      return (await this.db.query('SELECT * FROM sales_orders WHERE id=$1', [id])).rows[0];
+    }
+    vals.push(id);
+    return (await this.db.query(`UPDATE sales_orders SET ${sets.join(', ')} WHERE id=$${n} RETURNING *`, vals)).rows[0];
   }
 
   // ─── Invoices ─────────────────────────────────────────────
-  async listInvoices() {
-    return (await this.db.query(
-      `SELECT i.*,c.name AS customer_name FROM invoices i JOIN customers c ON c.id=i.customer_id ORDER BY i.created_at DESC`
-    )).rows;
+  async listInvoices(filters?: { customer_id?: number; created_by?: number; status?: string; from?: string; to?: string }) {
+    const conds: string[] = [];
+    const vals: any[] = [];
+    let n = 1;
+    if (filters?.customer_id) {
+      conds.push(`i.customer_id=$${n++}`);
+      vals.push(filters.customer_id);
+    }
+    if (filters?.created_by) {
+      conds.push(`i.created_by=$${n++}`);
+      vals.push(filters.created_by);
+    }
+    if (filters?.status) {
+      conds.push(`i.status=$${n++}`);
+      vals.push(filters.status);
+    }
+    if (filters?.from) {
+      conds.push(`i.invoice_date>=$${n++}`);
+      vals.push(filters.from);
+    }
+    if (filters?.to) {
+      conds.push(`i.invoice_date<=$${n++}`);
+      vals.push(filters.to);
+    }
+    const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+    return (
+      await this.db.query(
+        `SELECT i.*, c.name AS customer_name, c.gstin AS customer_gstin,
+                u.name AS created_by_name,
+                COALESCE((SELECT SUM(amount) FROM payments WHERE invoice_id=i.id),0) AS paid_amount,
+                i.total_amount - COALESCE((SELECT SUM(amount) FROM payments WHERE invoice_id=i.id),0) AS balance
+         FROM invoices i
+         JOIN customers c ON c.id=i.customer_id
+         LEFT JOIN users u ON u.id=i.created_by
+         ${where} ORDER BY i.created_at DESC`,
+        vals,
+      )
+    ).rows;
   }
   async getInvoice(id: number) {
     const [inv, items, pays] = await Promise.all([
       this.db.query(
         `SELECT i.*, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
-                c.gstin AS customer_gstin, c.address AS customer_address
-           FROM invoices i JOIN customers c ON c.id=i.customer_id WHERE i.id=$1`,
+                c.gstin AS customer_gstin, c.address AS customer_address,
+                cu.name AS created_by_name
+           FROM invoices i
+           JOIN customers c ON c.id=i.customer_id
+           LEFT JOIN users cu ON cu.id=i.created_by
+           WHERE i.id=$1`,
         [id],
       ),
       this.db.query(
@@ -196,10 +435,195 @@ export class SalesService {
         (SELECT COUNT(*)::int        FROM sales_orders WHERE status NOT IN ('delivered','cancelled'))          AS open_orders,
         (SELECT COALESCE(SUM(total_amount),0) FROM invoices WHERE status='paid')                              AS revenue,
         (SELECT COALESCE(SUM(total_amount),0) FROM invoices WHERE status IN ('unpaid','partial'))             AS receivable,
-        (SELECT COUNT(*)::int        FROM invoices WHERE status IN ('unpaid','partial') AND due_date < NOW()) AS overdue
+        (SELECT COUNT(*)::int        FROM invoices WHERE status IN ('unpaid','partial') AND due_date < NOW()) AS overdue,
+        (SELECT COALESCE(SUM(total_amount),0) FROM invoices)                                                  AS total_sales,
+        (SELECT COALESCE(SUM(total_amount),0) FROM invoices WHERE status='paid')                              AS paid_amount,
+        (SELECT COALESCE(SUM(total_amount),0) FROM invoices WHERE status='unpaid')                            AS unpaid_amount,
+        (SELECT COALESCE(SUM(total_amount),0) FROM invoices WHERE status='partial')                           AS partial_amount
     `);
     const r = res.rows[0];
-    return { customers: r.customers, open_orders: r.open_orders, revenue: Number(r.revenue), receivable: Number(r.receivable), overdue: r.overdue };
+    return {
+      customers: r.customers,
+      open_orders: r.open_orders,
+      revenue: Number(r.revenue),
+      receivable: Number(r.receivable),
+      overdue: r.overdue,
+      total_sales: Number(r.total_sales),
+      paid_amount: Number(r.paid_amount),
+      unpaid_amount: Number(r.unpaid_amount),
+      partial_amount: Number(r.partial_amount),
+    };
+  }
+
+  // ─── Payments (all invoice receipts) ──────────────────────
+  async listPayments(filters?: { customer_id?: number; created_by?: number; from?: string; to?: string }) {
+    const conds: string[] = [];
+    const vals: any[] = [];
+    let n = 1;
+    if (filters?.customer_id) {
+      conds.push(`i.customer_id=$${n++}`);
+      vals.push(filters.customer_id);
+    }
+    if (filters?.created_by) {
+      conds.push(`p.created_by=$${n++}`);
+      vals.push(filters.created_by);
+    }
+    if (filters?.from) {
+      conds.push(`p.payment_date>=$${n++}`);
+      vals.push(filters.from);
+    }
+    if (filters?.to) {
+      conds.push(`p.payment_date<=$${n++}`);
+      vals.push(filters.to);
+    }
+    const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+    return (
+      await this.db.query(
+        `SELECT p.*, i.invoice_number, c.name AS customer_name, u.name AS created_by_name
+         FROM payments p
+         JOIN invoices i ON i.id=p.invoice_id
+         JOIN customers c ON c.id=i.customer_id
+         LEFT JOIN users u ON u.id=p.created_by
+         ${where} ORDER BY p.payment_date DESC, p.created_at DESC`,
+        vals,
+      )
+    ).rows;
+  }
+
+  // ─── Sale returns ─────────────────────────────────────────
+  async listReturns(filters?: { customer_id?: number; created_by?: number; from?: string; to?: string }) {
+    const conds: string[] = [];
+    const vals: any[] = [];
+    let n = 1;
+    if (filters?.customer_id) {
+      conds.push(`r.customer_id=$${n++}`);
+      vals.push(filters.customer_id);
+    }
+    if (filters?.created_by) {
+      conds.push(`r.created_by=$${n++}`);
+      vals.push(filters.created_by);
+    }
+    if (filters?.from) {
+      conds.push(`r.return_date>=$${n++}`);
+      vals.push(filters.from);
+    }
+    if (filters?.to) {
+      conds.push(`r.return_date<=$${n++}`);
+      vals.push(filters.to);
+    }
+    const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+    return (
+      await this.db.query(
+        `SELECT r.*, c.name AS customer_name, u.name AS created_by_name,
+                r.total_amount - r.paid_amount AS balance
+         FROM sale_returns r
+         JOIN customers c ON c.id=r.customer_id
+         LEFT JOIN users u ON u.id=r.created_by
+         ${where} ORDER BY r.created_at DESC`,
+        vals,
+      )
+    ).rows;
+  }
+
+  async getReturn(id: number) {
+    const [r, items, pays] = await Promise.all([
+      this.db.query(
+        `SELECT r.*, c.name AS customer_name FROM sale_returns r JOIN customers c ON c.id=r.customer_id WHERE r.id=$1`,
+        [id],
+      ),
+      this.db.query(
+        `SELECT ri.*, pr.name AS product_name FROM sale_return_items ri LEFT JOIN products pr ON pr.id=ri.product_id WHERE ri.return_id=$1`,
+        [id],
+      ),
+      this.db.query(`SELECT * FROM sale_return_payments WHERE return_id=$1 ORDER BY payment_date`, [id]),
+    ]);
+    return r.rows[0] ? { ...r.rows[0], items: items.rows, payments: pays.rows } : null;
+  }
+
+  async createReturn(data: any, items: any[]) {
+    return this.db.transaction(async (client) => {
+      let subtotal = 0;
+      let cgst = 0;
+      let sgst = 0;
+      let igst = 0;
+      for (const it of items) {
+        const lineBase = Number(it.unit_price) * Number(it.quantity) - Number(it.discount || 0);
+        subtotal += lineBase;
+        cgst += Number(it.cgst || 0);
+        sgst += Number(it.sgst || 0);
+        igst += Number(it.igst || 0);
+      }
+      const discount = Number(data.discount_amount || 0);
+      const roundOff = Number(data.round_off || 0);
+      const total = subtotal + cgst + sgst + igst - discount + roundOff;
+      const rn = `RET-${Date.now()}`;
+      const rr = await client.query(
+        `INSERT INTO sale_returns
+          (return_number,customer_id,reference_no,return_date,state_of_supply,
+           exchange_rate,notes,subtotal,cgst,sgst,igst,discount_amount,round_off,total_amount,created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+        [
+          rn,
+          data.customer_id,
+          data.reference_no,
+          data.return_date || new Date().toISOString().split('T')[0],
+          data.state_of_supply,
+          data.exchange_rate || 1,
+          data.notes,
+          subtotal,
+          cgst,
+          sgst,
+          igst,
+          discount,
+          roundOff,
+          total,
+          data.created_by,
+        ],
+      );
+      for (const it of items) {
+        await client.query(
+          'INSERT INTO sale_return_items (return_id,product_id,description,quantity,unit_price,discount,gst_rate,total) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+          [
+            rr.rows[0].id,
+            it.product_id,
+            it.description,
+            it.quantity,
+            it.unit_price,
+            it.discount || 0,
+            it.gst_rate || 0,
+            it.total,
+          ],
+        );
+      }
+      return rr.rows[0];
+    });
+  }
+
+  async addReturnPayment(returnId: number, data: any) {
+    return this.db.transaction(async (client) => {
+      const pr = await client.query(
+        'INSERT INTO sale_return_payments (return_id,amount,payment_date,method,reference,notes,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+        [
+          returnId,
+          data.amount,
+          data.payment_date || new Date().toISOString().split('T')[0],
+          data.method || 'bank_transfer',
+          data.reference,
+          data.notes,
+          data.created_by,
+        ],
+      );
+      const totPaid = await client.query(
+        'SELECT COALESCE(SUM(amount),0) AS paid FROM sale_return_payments WHERE return_id=$1',
+        [returnId],
+      );
+      await client.query('UPDATE sale_returns SET paid_amount=$1 WHERE id=$2', [Number(totPaid.rows[0].paid), returnId]);
+      return pr.rows[0];
+    });
+  }
+
+  async deleteReturn(id: number) {
+    await this.db.query('DELETE FROM sale_returns WHERE id=$1', [id]);
   }
 
   async deleteCustomer(id: number)   { await this.db.query('DELETE FROM customers WHERE id=$1', [id]); await this.cache.delPattern('customers:*'); }
@@ -256,6 +680,10 @@ export class SalesService {
           sets.push(`status = $${n++}`);
           vals.push(b.status);
         }
+        if (b.created_by !== undefined) {
+          sets.push(`created_by = $${n++}`);
+          vals.push(b.created_by);
+        }
         vals.push(id);
         await client.query(`UPDATE quotations SET ${sets.join(', ')} WHERE id = $${n}`, vals);
         return this.getQuotation(id);
@@ -279,6 +707,10 @@ export class SalesService {
     if (b?.customer_id !== undefined) {
       sets.push(`customer_id = $${n++}`);
       vals.push(b.customer_id);
+    }
+    if (b?.created_by !== undefined) {
+      sets.push(`created_by = $${n++}`);
+      vals.push(b.created_by);
     }
     if (!sets.length) return this.getQuotation(id);
     vals.push(id);
@@ -340,6 +772,7 @@ export class SalesService {
         if (b.due_date !== undefined) { sets.push(`due_date=$${n++}`); vals.push(b.due_date); }
         if (b.notes !== undefined) { sets.push(`notes=$${n++}`); vals.push(b.notes); }
         if (b.status !== undefined) { sets.push(`status=$${n++}`); vals.push(b.status); }
+        if (b.created_by !== undefined) { sets.push(`created_by=$${n++}`); vals.push(b.created_by); }
         vals.push(id);
         await client.query(`UPDATE invoices SET ${sets.join(', ')} WHERE id=$${n}`, vals);
         return this.getInvoice(id);
@@ -356,6 +789,7 @@ export class SalesService {
     if (b?.invoice_date !== undefined) { sets.push(`invoice_date=$${n++}`); vals.push(b.invoice_date); }
     if (b?.due_date !== undefined) { sets.push(`due_date=$${n++}`); vals.push(b.due_date); }
     if (b?.customer_id !== undefined) { sets.push(`customer_id=$${n++}`); vals.push(b.customer_id); }
+    if (b?.created_by !== undefined) { sets.push(`created_by=$${n++}`); vals.push(b.created_by); }
     if (!sets.length) return this.getInvoice(id);
     vals.push(id);
     await this.db.query(`UPDATE invoices SET ${sets.join(', ')} WHERE id=$${n}`, vals);
