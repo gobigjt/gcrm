@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../core/utils/product_catalog.dart';
 import '../../routes/app_routes.dart';
 import '../../shared/widgets/app_error_banner.dart';
 import '../../shared/widgets/app_navigation_drawer.dart';
@@ -75,9 +76,12 @@ class InventoryView extends GetView<InventoryController> {
                     final name = (p['name'] ?? '—').toString();
                     final sku = (p['sku'] ?? '').toString();
                     final price = p['sale_price'];
+                    final stock = productTotalStock(p);
+                    final stockLabel = stock == stock.roundToDouble() ? stock.round().toString() : stock.toStringAsFixed(2);
+                    final skuLine = sku.isEmpty ? 'SKU —' : 'SKU $sku';
                     return ListTile(
                       title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                      subtitle: Text(sku.isEmpty ? 'SKU —' : 'SKU $sku'),
+                      subtitle: Text('$skuLine · Stock $stockLabel'),
                       trailing: Text(price != null ? '₹$price' : '—'),
                     );
                   },

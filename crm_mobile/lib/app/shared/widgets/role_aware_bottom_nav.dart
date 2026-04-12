@@ -27,9 +27,8 @@ class RoleAwareBottomNav extends StatelessWidget {
     final activeBg = isDark
         ? scheme.primary.withValues(alpha: 0.15)
         : const Color(0xFFE6F1FB);
-    final inactiveColor = isDark
-        ? scheme.onSurfaceVariant.withValues(alpha: 0.7)
-        : Theme.of(context).hintColor;
+    final inactiveColor =
+        isDark ? scheme.onSurfaceVariant : const Color(0xFF334155);
 
     return SafeArea(
       top: false,

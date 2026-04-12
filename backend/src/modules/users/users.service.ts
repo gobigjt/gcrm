@@ -11,7 +11,7 @@ export class UsersService {
 
   async listUsers() {
     const res = await this.db.query(`
-      SELECT u.id, u.name, u.email, u.role, u.is_active, u.created_at,
+      SELECT u.id, u.name, u.email, u.role, u.is_active, u.created_at, u.avatar_url,
              r.id AS role_id, r.description AS role_description,
              COUNT(DISTINCT up.permission_id) AS extra_permissions
         FROM users u

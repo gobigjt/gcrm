@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import api from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
+import { resolveApiPublicUrl } from '../../utils/publicAssetUrl';
 import Table from '../../components/Table';
 import Tabs  from '../../components/Tabs';
 import { Field, inputCls, selectCls, FormActions } from '../../components/FormField';
@@ -30,26 +31,6 @@ const MODULE_ICONS = {
 };
 
 // ─── Company Tab ─────────────────────────────────────────────
-
-function logoPreviewSrc(logoUrl) {
-  if (!logoUrl || typeof logoUrl !== 'string') return '';
-  if (/^https?:\/\//i.test(logoUrl)) return logoUrl;
-  const p = logoUrl.startsWith('/') ? logoUrl : `/${logoUrl}`;
-  // Prefer backend/API origin when frontend and backend run on different hosts.
-  const apiBase = String(api?.defaults?.baseURL || '').trim();
-  if (/^https?:\/\//i.test(apiBase)) {
-    try {
-      const u = new URL(apiBase);
-      return `${u.origin}${p}`;
-    } catch {
-      /* fall through */
-    }
-  }
-  if (typeof window !== 'undefined' && window.location?.origin) {
-    return `${window.location.origin}${p}`;
-  }
-  return p;
-}
 
 function letterIcon(text) {
   const t = String(text || '').trim();
@@ -83,9 +64,7 @@ function CompanyTab({ user }) {
     try {
       const fd = new FormData();
       fd.append('file', file);
-      const r = await api.post('/settings/company/logo', fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const r = await api.post('/settings/company/logo', fd);
       setForm((f) => ({ ...f, ...(r.data || {}) }));
     } catch {
       /* toast optional */
@@ -112,9 +91,7 @@ function CompanyTab({ user }) {
     try {
       const fd = new FormData();
       fd.append('file', file);
-      const r = await api.post('/settings/company/favicon', fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const r = await api.post('/settings/company/favicon', fd);
       setForm((f) => ({ ...f, ...(r.data || {}) }));
     } catch {
       /* toast optional */
@@ -167,7 +144,7 @@ function CompanyTab({ user }) {
           <div className="flex flex-wrap items-start gap-4">
             {form.logo_url ? (
               <img
-                src={logoPreviewSrc(form.logo_url)}
+                src={resolveApiPublicUrl(form.logo_url)}
                 alt="Company logo"
                 className="max-h-20 max-w-[200px] object-contain rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 p-1"
               />
@@ -202,7 +179,7 @@ function CompanyTab({ user }) {
           <div className="flex flex-wrap items-start gap-4 mt-3">
             {form.favicon_url ? (
               <img
-                src={logoPreviewSrc(form.favicon_url)}
+                src={resolveApiPublicUrl(form.favicon_url)}
                 alt="Company favicon"
                 className="h-10 w-10 object-contain rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 p-1"
               />

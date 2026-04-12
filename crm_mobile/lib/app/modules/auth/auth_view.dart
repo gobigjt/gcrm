@@ -18,7 +18,7 @@ class AuthView extends GetView<AuthController> {
 
     final fieldFill = isDark ? scheme.surfaceContainerHigh : const Color(0xFFF8F9FB);
     final borderColor = isDark ? scheme.outlineVariant : const Color(0xFFE2E8F0);
-    final subtitleColor = isDark ? scheme.onSurfaceVariant : const Color(0xFF64748B);
+    final subtitleColor = isDark ? scheme.onSurfaceVariant : const Color(0xFF334155);
     final textColor = isDark ? scheme.onSurface : const Color(0xFF1E293B);
 
     InputDecoration fieldDeco(String label,
@@ -283,7 +283,7 @@ class _HeroSection extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text(
-            'EZ CRM',
+            'EzCRM',
             style: TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.w800,

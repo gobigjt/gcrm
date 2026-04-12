@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/models/crm_models.dart';
+import '../../core/utils/ui_format.dart' show toYmd;
 import '../../shared/widgets/app_error_banner.dart';
 import '../../shared/widgets/app_navigation_drawer.dart';
 import '../../routes/app_routes.dart';
@@ -54,7 +55,19 @@ class CrmView extends GetView<CrmController> {
             onPressed: () => _openSourceFilterSheet(context, controller),
           ),
           IconButton(
-            onPressed: controller.loadInitial,
+            onPressed: () {
+              if (controller.selectedStageId.value != null ||
+                  controller.selectedSourceId.value != null ||
+                  controller.searchQuery.value.trim().isNotEmpty ||
+                  (controller.createdFromYmd.value != null &&
+                      controller.createdFromYmd.value!.trim().isNotEmpty) ||
+                  (controller.createdToYmd.value != null &&
+                      controller.createdToYmd.value!.trim().isNotEmpty)) {
+                controller.applyFilters();
+              } else {
+                controller.loadInitial();
+              }
+            },
             icon: const Icon(Icons.refresh_rounded),
             tooltip: 'Refresh',
           ),
@@ -127,6 +140,39 @@ class CrmView extends GetView<CrmController> {
                   textInputAction: TextInputAction.search,
                   onSubmitted: (_) => controller.applyFilters(),
                 ),
+                const SizedBox(height: 8),
+                Obx(() {
+                  final from = controller.createdFromYmd.value?.trim();
+                  final to = controller.createdToYmd.value?.trim();
+                  final has = from != null &&
+                      from.isNotEmpty &&
+                      to != null &&
+                      to.isNotEmpty;
+                  final scheme = Theme.of(context).colorScheme;
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => _pickLeadDateRange(context, controller),
+                          icon: const Icon(Icons.date_range_rounded, size: 20),
+                          label: Text(
+                            has ? 'Created $from → $to' : 'Created date…',
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                          ),
+                        ),
+                      ),
+                      if (has) ...[
+                        const SizedBox(width: 8),
+                        IconButton(
+                          tooltip: 'Clear dates',
+                          onPressed: controller.clearCreatedDateFilter,
+                          icon: Icon(Icons.close_rounded, color: scheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ],
+                  );
+                }),
                 const SizedBox(height: 10),
                 const ShowcaseSectionTitle('Stage filters'),
                 Obx(() {
@@ -204,7 +250,13 @@ class CrmView extends GetView<CrmController> {
               () => AppErrorBanner(
                 message: controller.errorMessage.value,
                 onRetry: () {
-                  if (controller.selectedStageId.value != null || controller.selectedSourceId.value != null) {
+                  if (controller.selectedStageId.value != null ||
+                      controller.selectedSourceId.value != null ||
+                      controller.searchQuery.value.trim().isNotEmpty ||
+                      (controller.createdFromYmd.value != null &&
+                          controller.createdFromYmd.value!.trim().isNotEmpty) ||
+                      (controller.createdToYmd.value != null &&
+                          controller.createdToYmd.value!.trim().isNotEmpty)) {
                     controller.applyFilters();
                   } else {
                     controller.loadInitial();
@@ -439,6 +491,34 @@ class _LeadCard extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+Future<void> _pickLeadDateRange(BuildContext context, CrmController c) async {
+  final now = DateTime.now();
+  DateTimeRange? initial;
+  final fromS = c.createdFromYmd.value?.trim();
+  final toS = c.createdToYmd.value?.trim();
+  if (fromS != null &&
+      fromS.isNotEmpty &&
+      toS != null &&
+      toS.isNotEmpty) {
+    try {
+      final start = DateTime.parse('${fromS}T12:00:00');
+      final end = DateTime.parse('${toS}T12:00:00');
+      initial = DateTimeRange(start: start, end: end);
+    } catch (_) {}
+  }
+  final picked = await showDateRangePicker(
+    context: context,
+    firstDate: DateTime(now.year - 10, 1, 1),
+    lastDate: DateTime(now.year + 1, 12, 31),
+    initialDateRange: initial,
+  );
+  if (picked != null) {
+    c.createdFromYmd.value = toYmd(picked.start);
+    c.createdToYmd.value = toYmd(picked.end);
+    await c.applyFilters();
   }
 }
 

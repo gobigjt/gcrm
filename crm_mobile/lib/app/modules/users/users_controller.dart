@@ -35,8 +35,15 @@ class UsersController extends GetxController {
   Future<void> loadUsers() async {
     final res = await _auth.authorizedRequest(method: 'GET', path: '/users');
     users.assignAll(
-      (res as List).map((e) => AdminUserRow.fromJson(Map<String, dynamic>.from(e as Map))),
+      (res as List)
+          .map((e) => AdminUserRow.fromJson(Map<String, dynamic>.from(e as Map)))
+          .where((u) => !_isSuperAdminRole(u.role)),
     );
+  }
+
+  static bool _isSuperAdminRole(String role) {
+    final n = role.toLowerCase().replaceAll(RegExp(r'[\s_-]+'), '');
+    return n == 'superadmin';
   }
 
   Future<void> loadRoles() async {
@@ -44,7 +51,7 @@ class UsersController extends GetxController {
     roles.assignAll(
       (res as List)
           .map((e) => RoleOption.fromJson(Map<String, dynamic>.from(e as Map)))
-          .where((r) => r.name.toLowerCase() != 'super admin'),
+          .where((r) => !_isSuperAdminRole(r.name)),
     );
   }
 

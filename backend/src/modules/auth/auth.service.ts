@@ -2,6 +2,8 @@ import { Injectable, ConflictException, UnauthorizedException } from '@nestjs/co
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
+import { existsSync, unlinkSync } from 'fs';
+import { basename, join } from 'path';
 import { DatabaseService } from '../../database/database.service';
 import { AuditService }   from '../audit/audit.service';
 import { LoginDto }    from './dto/login.dto';
@@ -57,7 +59,7 @@ export class AuthService {
     const roleRes  = await this.db.query('SELECT id FROM roles WHERE name=$1', [roleName]);
     const roleId   = roleRes.rows[0]?.id ?? null;
     const res = await this.db.query(
-      'INSERT INTO users (name,email,password,role,role_id) VALUES ($1,$2,$3,$4,$5) RETURNING id,name,email,role,role_id',
+      'INSERT INTO users (name,email,password,role,role_id) VALUES ($1,$2,$3,$4,$5) RETURNING id,name,email,role,role_id,avatar_url',
       [dto.name, dto.email, hashed, roleName, roleId],
     );
     const user         = res.rows[0];
@@ -69,7 +71,8 @@ export class AuthService {
 
   async login(dto: LoginDto) {
     const res = await this.db.query(
-      'SELECT id,name,email,password,role,role_id FROM users WHERE email=$1 AND is_active=TRUE', [dto.email],
+      'SELECT id,name,email,password,role,role_id,avatar_url FROM users WHERE email=$1 AND is_active=TRUE',
+      [dto.email],
     );
     const user = res.rows[0];
     if (!user) throw new UnauthorizedException('Invalid email / password');
@@ -106,9 +109,39 @@ export class AuthService {
 
   async me(id: number) {
     const res = await this.db.query(
-      'SELECT id,name,email,role,role_id,is_active,created_at FROM users WHERE id=$1', [id],
+      'SELECT id,name,email,role,role_id,is_active,created_at,avatar_url FROM users WHERE id=$1', [id],
     );
     return res.rows[0];
+  }
+
+  private removeAvatarFile(prevUrl: string | null | undefined) {
+    if (!prevUrl || typeof prevUrl !== 'string' || !prevUrl.startsWith('/uploads/users/')) return;
+    const fp = join(process.cwd(), 'uploads', 'users', basename(prevUrl));
+    try {
+      if (existsSync(fp)) unlinkSync(fp);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /** Save profile image; returns updated user (same shape as `me`). */
+  async setAvatarFromUpload(userId: number, filename: string) {
+    const prevRes = await this.db.query('SELECT avatar_url FROM users WHERE id=$1', [userId]);
+    const prev = prevRes.rows[0]?.avatar_url as string | undefined;
+    this.removeAvatarFile(prev);
+    const rel = `/uploads/users/${filename}`;
+    await this.db.query('UPDATE users SET avatar_url=$2, updated_at=NOW() WHERE id=$1', [userId, rel]);
+    this.audit.log({ user_id: userId, action: 'update_avatar', module: 'auth' });
+    return this.me(userId);
+  }
+
+  async clearAvatar(userId: number) {
+    const prevRes = await this.db.query('SELECT avatar_url FROM users WHERE id=$1', [userId]);
+    const prev = prevRes.rows[0]?.avatar_url as string | undefined;
+    this.removeAvatarFile(prev);
+    await this.db.query('UPDATE users SET avatar_url=NULL, updated_at=NOW() WHERE id=$1', [userId]);
+    this.audit.log({ user_id: userId, action: 'clear_avatar', module: 'auth' });
+    return this.me(userId);
   }
 
   async changePassword(userId: number, currentPassword: string, newPassword: string) {

@@ -18,6 +18,9 @@ class CrmController extends GetxController {
   final selectedStageId = RxnInt();
   final selectedSourceId = RxnInt();
   final searchQuery = ''.obs;
+  /// `YYYY-MM-DD` for API `created_from` / `created_to` (inclusive range).
+  final createdFromYmd = Rx<String?>(null);
+  final createdToYmd = Rx<String?>(null);
 
   bool get _ownAssignedOnly {
     final role = _auth.role.value.trim().toLowerCase();
@@ -69,6 +72,12 @@ class CrmController extends GetxController {
     }
   }
 
+  void clearCreatedDateFilter() {
+    createdFromYmd.value = null;
+    createdToYmd.value = null;
+    applyFilters();
+  }
+
   Future<void> applyFilters() async {
     isLoading.value = true;
     errorMessage.value = '';
@@ -78,6 +87,14 @@ class CrmController extends GetxController {
       if (selectedSourceId.value != null) query.add('source_id=${selectedSourceId.value}');
       final q = searchQuery.value.trim();
       if (q.isNotEmpty) query.add('search=${Uri.encodeComponent(q)}');
+      final from = createdFromYmd.value?.trim();
+      final to = createdToYmd.value?.trim();
+      if (from != null && from.isNotEmpty) {
+        query.add('created_from=${Uri.encodeComponent(from)}');
+      }
+      if (to != null && to.isNotEmpty) {
+        query.add('created_to=${Uri.encodeComponent(to)}');
+      }
       if (_ownAssignedOnly && _auth.userId.value > 0) {
         query.add('assigned_to=${_auth.userId.value}');
       }
@@ -86,7 +103,9 @@ class CrmController extends GetxController {
       leads.assignAll((leadsRes as List).map((e) => CrmLead.fromJson(Map<String, dynamic>.from(e as Map))));
       if (selectedStageId.value == null &&
           selectedSourceId.value == null &&
-          searchQuery.value.trim().isEmpty) {
+          searchQuery.value.trim().isEmpty &&
+          (createdFromYmd.value == null || createdFromYmd.value!.trim().isEmpty) &&
+          (createdToYmd.value == null || createdToYmd.value!.trim().isEmpty)) {
         leadsAll.assignAll(leads);
       }
     } catch (e) {

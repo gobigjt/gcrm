@@ -2,14 +2,32 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 abstract class AppTheme {
+  /// Stronger body / title contrast (WCAG-friendly on surfaces).
+  static TextTheme _textThemeFor(ColorScheme scheme, ThemeData base) {
+    return base.textTheme.apply(
+      bodyColor: scheme.onSurface,
+      displayColor: scheme.onSurface,
+    );
+  }
+
   static ThemeData get lightTheme {
-    final scheme = ColorScheme.fromSeed(
+    final seeded = ColorScheme.fromSeed(
       seedColor: const Color(0xFF185FA5),
       brightness: Brightness.light,
     );
+    final scheme = seeded.copyWith(
+      onSurface: const Color(0xFF070B12),
+      onSurfaceVariant: const Color(0xFF2E3D4F),
+      outline: const Color(0xFF6B7C90),
+      outlineVariant: const Color(0xFFC8D2DF),
+    );
     final base = ThemeData(colorScheme: scheme, useMaterial3: true);
+    final textTheme = _textThemeFor(scheme, base);
 
     return base.copyWith(
+      textTheme: textTheme,
+      primaryTextTheme: _textThemeFor(scheme, base),
+      hintColor: scheme.onSurfaceVariant,
       scaffoldBackgroundColor: const Color(0xFFF4F7FB),
       appBarTheme: AppBarTheme(
         centerTitle: false,
@@ -52,6 +70,10 @@ abstract class AppTheme {
           textStyle: const TextStyle(fontWeight: FontWeight.w700),
         ),
       ),
+      listTileTheme: ListTileThemeData(
+        iconColor: scheme.onSurfaceVariant,
+        textColor: scheme.onSurface,
+      ),
     );
   }
 
@@ -61,26 +83,30 @@ abstract class AppTheme {
       brightness: Brightness.dark,
     );
     final scheme = seeded.copyWith(
-      primary: const Color(0xFF60A5FA),
-      onPrimary: const Color(0xFF001E40),
+      primary: const Color(0xFF7AB8FF),
+      onPrimary: const Color(0xFF00152E),
       primaryContainer: const Color(0xFF003370),
-      onPrimaryContainer: const Color(0xFFD1E4FF),
-      surface: const Color(0xFF080F1C),
-      surfaceContainerLowest: const Color(0xFF080F1C),
-      surfaceContainerLow: const Color(0xFF0C1729),
-      surfaceContainer: const Color(0xFF101E33),
-      surfaceContainerHigh: const Color(0xFF162540),
-      surfaceContainerHighest: const Color(0xFF1D304F),
-      outline: const Color(0xFF3D5680),
-      outlineVariant: const Color(0xFF253D5F),
-      onSurface: const Color(0xFFE8EEF8),
-      onSurfaceVariant: const Color(0xFF90A8C4),
-      secondary: const Color(0xFF93C5FD),
-      onSecondary: const Color(0xFF001933),
+      onPrimaryContainer: const Color(0xFFE3EEFF),
+      surface: const Color(0xFF060A12),
+      surfaceContainerLowest: const Color(0xFF060A12),
+      surfaceContainerLow: const Color(0xFF0A1422),
+      surfaceContainer: const Color(0xFF0E1A2E),
+      surfaceContainerHigh: const Color(0xFF13203A),
+      surfaceContainerHighest: const Color(0xFF1A2B48),
+      outline: const Color(0xFF5A7399),
+      outlineVariant: const Color(0xFF354B6E),
+      onSurface: const Color(0xFFF8FAFC),
+      onSurfaceVariant: const Color(0xFFC8D7EA),
+      secondary: const Color(0xFF9ECAFF),
+      onSecondary: const Color(0xFF001225),
     );
     final base = ThemeData(colorScheme: scheme, useMaterial3: true);
+    final textTheme = _textThemeFor(scheme, base);
 
     return base.copyWith(
+      textTheme: textTheme,
+      primaryTextTheme: _textThemeFor(scheme, base),
+      hintColor: scheme.onSurfaceVariant,
       scaffoldBackgroundColor: scheme.surface,
       appBarTheme: AppBarTheme(
         centerTitle: false,
@@ -129,7 +155,7 @@ abstract class AppTheme {
               color: scheme.primary.withValues(alpha: 0.9), width: 1.5),
         ),
         hintStyle: TextStyle(
-            color: scheme.onSurfaceVariant.withValues(alpha: 0.75)),
+            color: scheme.onSurfaceVariant.withValues(alpha: 0.88)),
         labelStyle: TextStyle(
             color: scheme.onSurfaceVariant, fontWeight: FontWeight.w600),
         isDense: true,
@@ -147,6 +173,28 @@ abstract class AppTheme {
         selectedColor: scheme.primaryContainer,
         side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.6)),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+      listTileTheme: ListTileThemeData(
+        iconColor: scheme.onSurfaceVariant,
+        textColor: scheme.onSurface,
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        indicatorColor: scheme.primaryContainer,
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return IconThemeData(
+            color: selected ? scheme.primary : scheme.onSurfaceVariant,
+            size: 24,
+          );
+        }),
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return TextStyle(
+            fontSize: 12,
+            fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+            color: selected ? scheme.primary : scheme.onSurfaceVariant,
+          );
+        }),
       ),
     );
   }

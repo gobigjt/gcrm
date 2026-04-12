@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
 
 import '../../core/network/api_exception.dart';
@@ -11,6 +12,13 @@ import '../../core/storage/secure_storage_service.dart';
 import '../../core/auth/role_home_route.dart';
 import '../../routes/app_routes.dart';
 import '../attendance/sales_attendance_controller.dart';
+
+String _readAvatarUrlFromUser(Map<String, dynamic> user) {
+  final v = user['avatar_url'] ?? user['avatarUrl'];
+  if (v == null) return '';
+  final s = v.toString().trim();
+  return s;
+}
 
 class AuthController extends GetxController {
   final ApiClient _api = ApiClient();
@@ -26,6 +34,8 @@ class AuthController extends GetxController {
   final isLoggedIn = false.obs;
   final userName = 'Guest'.obs;
   final userEmail = ''.obs;
+  /// Relative path from API, e.g. `/uploads/users/avatar-….jpg`.
+  final userAvatarUrl = ''.obs;
   final userId = 0.obs;
   final role = ''.obs;
   final grantedPermissions = <String>{}.obs;
@@ -102,6 +112,16 @@ class AuthController extends GetxController {
       await _clearLocalSession();
     } finally {
       isBootstrapping.value = false;
+    }
+    if (isLoggedIn.value) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Get.offAllNamed(
+          resolveRoleHome(
+            roleName: role.value,
+            hasPermission: hasPermission,
+          ),
+        );
+      });
     }
   }
 
@@ -182,6 +202,7 @@ class AuthController extends GetxController {
   }) async {
     userName.value = (user['name'] ?? 'User').toString();
     userEmail.value = (user['email'] ?? '').toString();
+    userAvatarUrl.value = _readAvatarUrlFromUser(user);
     userId.value = (user['id'] as num? ?? 0).toInt();
     role.value = (user['role'] ?? '').toString();
     accessToken.value = access;
@@ -284,10 +305,59 @@ class AuthController extends GetxController {
     password.value = '';
     role.value = '';
     userEmail.value = '';
+    userAvatarUrl.value = '';
     userId.value = 0;
     accessToken.value = '';
     refreshToken.value = '';
     grantedPermissions.clear();
     await _storage.clearSession();
+  }
+
+  Future<void> _persistUserFromAvatarResponse(Map<String, dynamic> data) async {
+    final raw = data['user'];
+    if (raw is! Map) return;
+    final user = Map<String, dynamic>.from(raw);
+    await _storage.saveSession(
+      accessToken: accessToken.value,
+      refreshToken: refreshToken.value,
+      user: user,
+    );
+    await _applySession(
+      user: user,
+      access: accessToken.value,
+      refresh: refreshToken.value,
+    );
+  }
+
+  Future<void> uploadProfileAvatarBytes(List<int> bytes, String filename) async {
+    Future<Map<String, dynamic>> once(String token) => _api.uploadProfileAvatar(
+          accessToken: token,
+          fileBytes: bytes,
+          filename: filename,
+        );
+    try {
+      final data = await once(accessToken.value);
+      await _persistUserFromAvatarResponse(data);
+    } catch (e) {
+      final is401 = e is ApiException && e.statusCode == 401;
+      if (!is401) rethrow;
+      await _ensureFreshTokens();
+      final data = await once(accessToken.value);
+      await _persistUserFromAvatarResponse(data);
+    }
+  }
+
+  Future<void> removeProfileAvatar() async {
+    Future<Map<String, dynamic>> once(String token) => _api.deleteProfileAvatar(token);
+    try {
+      final data = await once(accessToken.value);
+      await _persistUserFromAvatarResponse(data);
+    } catch (e) {
+      final is401 = e is ApiException && e.statusCode == 401;
+      if (!is401) rethrow;
+      await _ensureFreshTokens();
+      final data = await once(accessToken.value);
+      await _persistUserFromAvatarResponse(data);
+    }
   }
 }

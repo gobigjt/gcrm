@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 import 'api_exception.dart';
 
@@ -8,6 +10,9 @@ class ApiClient {
   ApiClient({http.Client? client}) : _client = client ?? http.Client();
 
   final http.Client _client;
+
+  /// Avoid hanging forever on cold start / splash when the host is wrong or offline.
+  static const Duration requestTimeout = Duration(seconds: 20);
 
   // Android emulator localhost mapping; override with --dart-define=API_BASE_URL=...
   // Use a full absolute URL, e.g. http://127.0.0.1:4000/api (note the double slash after http:).
@@ -62,34 +67,34 @@ class ApiClient {
       requestHeaders['Content-Type'] = 'application/json';
     }
 
-    late http.Response res;
+    late final Future<http.Response> pending;
     switch (method.toUpperCase()) {
       case 'GET':
-        res = await _client.get(_uri(path), headers: requestHeaders);
+        pending = _client.get(_uri(path), headers: requestHeaders);
         break;
       case 'POST':
-        res = await _client.post(
+        pending = _client.post(
           _uri(path),
           headers: requestHeaders,
           body: body == null ? null : jsonEncode(body),
         );
         break;
       case 'PATCH':
-        res = await _client.patch(
+        pending = _client.patch(
           _uri(path),
           headers: requestHeaders,
           body: body == null ? null : jsonEncode(body),
         );
         break;
       case 'PUT':
-        res = await _client.put(
+        pending = _client.put(
           _uri(path),
           headers: requestHeaders,
           body: body == null ? null : jsonEncode(body),
         );
         break;
       case 'DELETE':
-        res = await _client.delete(
+        pending = _client.delete(
           _uri(path),
           headers: requestHeaders,
           body: body == null ? null : jsonEncode(body),
@@ -98,6 +103,15 @@ class ApiClient {
       default:
         throw Exception('Unsupported HTTP method: $method');
     }
+    final res = await pending.timeout(
+      requestTimeout,
+      onTimeout: () => throw ApiException(
+        message:
+            'Connection timed out. Check Wi‑Fi/mobile data and that the app points to your API '
+            '(build with --dart-define=API_BASE_URL=…).',
+        statusCode: 408,
+      ),
+    );
     return _decodeJson(res);
   }
 
@@ -140,6 +154,51 @@ class ApiClient {
     final data = await request(
       method: 'GET',
       path: '/auth/me',
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+    return Map<String, dynamic>.from(data as Map);
+  }
+
+  static MediaType _imageMediaTypeForFilename(String name) {
+    final lower = name.toLowerCase();
+    if (lower.endsWith('.png')) return MediaType('image', 'png');
+    if (lower.endsWith('.webp')) return MediaType('image', 'webp');
+    if (lower.endsWith('.gif')) return MediaType('image', 'gif');
+    return MediaType('image', 'jpeg');
+  }
+
+  Future<Map<String, dynamic>> uploadProfileAvatar({
+    required String accessToken,
+    required List<int> fileBytes,
+    required String filename,
+  }) async {
+    final uri = _uri('/auth/me/avatar');
+    final req = http.MultipartRequest('POST', uri);
+    req.headers['Authorization'] = 'Bearer $accessToken';
+    final fn = filename.isEmpty ? 'avatar.jpg' : filename;
+    req.files.add(
+      http.MultipartFile.fromBytes(
+        'file',
+        fileBytes,
+        filename: fn,
+        contentType: _imageMediaTypeForFilename(fn),
+      ),
+    );
+    final streamed = await req.send().timeout(
+      requestTimeout,
+      onTimeout: () => throw ApiException(
+        message: 'Upload timed out.',
+        statusCode: 408,
+      ),
+    );
+    final res = await http.Response.fromStream(streamed);
+    return Map<String, dynamic>.from(_decodeJson(res) as Map);
+  }
+
+  Future<Map<String, dynamic>> deleteProfileAvatar(String accessToken) async {
+    final data = await request(
+      method: 'DELETE',
+      path: '/auth/me/avatar',
       headers: {'Authorization': 'Bearer $accessToken'},
     );
     return Map<String, dynamic>.from(data as Map);

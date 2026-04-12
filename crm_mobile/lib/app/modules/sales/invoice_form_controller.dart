@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/network/error_utils.dart';
+import '../../core/utils/product_catalog.dart';
 import '../../core/utils/ui_format.dart';
 import '../auth/auth_controller.dart';
 import 'sales_line_draft.dart';
@@ -25,8 +26,10 @@ class InvoiceFormController extends GetxController {
 
   final customers = <Map<String, dynamic>>[].obs;
   final products  = <Map<String, dynamic>>[].obs;
+  final executives = <Map<String, dynamic>>[].obs;
 
   final selectedCustomerId = Rxn<int>();
+  final selectedCreatedById = Rxn<int>();
   late final TextEditingController invoiceDateCtrl;
   late final TextEditingController dueDateCtrl;
   final notesCtrl       = TextEditingController();
@@ -47,6 +50,12 @@ class InvoiceFormController extends GetxController {
   final paymentMethodValue = ''.obs;
 
   final lines = <SalesLineDraft>[].obs;
+
+  /// Indian place of supply (web `state_of_supply`).
+  final stateOfSupplyValue = ''.obs;
+
+  /// Web `INVOICE_STATUSES` when editing.
+  final invoiceStatusValue = 'unpaid'.obs;
 
   bool get isInterstate => gstTypeValue.value == 'inter_state';
 
@@ -83,11 +92,12 @@ class InvoiceFormController extends GetxController {
     isLoading.value = true;
     errorMessage.value = '';
     try {
-      await Future.wait([_loadCustomers(), _loadProducts()]);
+      await Future.wait([_loadCustomers(), _loadProducts(), _loadExecutives()]);
       if (isEdit) {
         await _loadExistingInvoice();
-      } else if (lines.isEmpty) {
-        addLine();
+      } else {
+        _syncCreatedBySelection();
+        if (lines.isEmpty) addLine();
       }
     } catch (e) {
       errorMessage.value = userFriendlyError(e);
@@ -114,10 +124,30 @@ class InvoiceFormController extends GetxController {
   Future<void> _loadProducts() async {
     try {
       final res  = await _auth.authorizedRequest(method: 'GET', path: '/inventory/products');
-      final list = _extractProducts(res);
+      final list = productsWithAvailableStock(_extractProducts(res));
       products.assignAll(list);
     } catch (_) {
       products.clear();
+    }
+  }
+
+  Future<void> _loadExecutives() async {
+    try {
+      final res = await _auth.authorizedRequest(method: 'GET', path: '/sales/executives');
+      executives.assignAll(_extractExecutives(res));
+    } catch (_) {
+      executives.clear();
+    }
+  }
+
+  void _syncCreatedBySelection([int? preferred]) {
+    final uid = _auth.userId.value > 0 ? _auth.userId.value : null;
+    final p = preferred ?? selectedCreatedById.value ?? uid;
+    final ids = executives.map((e) => (e['id'] as num).toInt()).toSet();
+    if (p != null && ids.contains(p)) {
+      selectedCreatedById.value = p;
+    } else if (executives.isNotEmpty) {
+      selectedCreatedById.value = (executives.first['id'] as num).toInt();
     }
   }
 
@@ -137,6 +167,10 @@ class InvoiceFormController extends GetxController {
     dueDateCtrl.text         = _ymdFromApi(inv['due_date']);
     notesCtrl.text           = (inv['notes'] ?? '').toString();
     referenceNoCtrl.text     = (inv['reference_no'] ?? '').toString();
+    selectedCreatedById.value = (inv['created_by'] as num?)?.toInt();
+    _syncCreatedBySelection(selectedCreatedById.value);
+    stateOfSupplyValue.value = (inv['state_of_supply'] ?? '').toString();
+    invoiceStatusValue.value = (inv['status'] ?? 'unpaid').toString();
 
     // GST & tax type
     final hasIgst = parseDynamicNum(inv['igst']) > 0;
@@ -179,6 +213,13 @@ class InvoiceFormController extends GetxController {
     return [];
   }
 
+  static List<Map<String, dynamic>> _extractExecutives(dynamic res) {
+    if (res is List) {
+      return res.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    }
+    return [];
+  }
+
   void addLine() {
     lines.add(SalesLineDraft());
     lines.refresh();
@@ -208,6 +249,10 @@ class InvoiceFormController extends GetxController {
       Get.snackbar('Missing customer', 'Select a customer.');
       return;
     }
+    if (selectedCreatedById.value == null) {
+      Get.snackbar('Sales executive', 'Select the sales executive for this document.');
+      return;
+    }
     final interstate = isInterstate;
     final tt         = taxTypeValue.value;
     final payloadLines = lines
@@ -224,15 +269,19 @@ class InvoiceFormController extends GetxController {
       final inv = invoiceDateCtrl.text.trim();
       final due = dueDateCtrl.text.trim();
       final ref = referenceNoCtrl.text.trim();
+      final supply = stateOfSupplyValue.value.trim();
       final body = <String, dynamic>{
         'customer_id':     cid,
         'invoice_date':    inv.isEmpty ? null : inv,
         'due_date':        due.isEmpty ? null : due,
         'notes':           notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
         'reference_no':    ref.isEmpty ? null : ref,
+        'state_of_supply': supply.isEmpty ? null : supply,
         'is_interstate':   interstate,
         'gst_type':        gstTypeValue.value,
         'tax_type':        taxTypeValue.value,
+        'created_by':      selectedCreatedById.value,
+        'status':          isEdit ? invoiceStatusValue.value : 'unpaid',
         'discount_amount': double.tryParse(discountAmountCtrl.text) ?? 0,
         'shipping_amount': double.tryParse(shippingAmountCtrl.text) ?? 0,
         'extra_discount':  double.tryParse(extraDiscountCtrl.text)  ?? 0,

@@ -27,11 +27,17 @@ class CrmSuiteLogoMark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Image.asset(
-      'assets/images/ez_crm_logo.png',
+    return SizedBox(
       width: size,
       height: size,
-      fit: BoxFit.contain,
+      child: Image.asset(
+        'assets/images/ez_crm_logo.png',
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        alignment: Alignment.center,
+        filterQuality: FilterQuality.high,
+      ),
     );
   }
 }

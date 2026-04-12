@@ -320,7 +320,7 @@ class _KpiCell extends StatelessWidget {
   final ShowcaseKpiCell data;
 
   static const Color _cardBgLight = Color(0xFFF1EFE8);
-  static const Color _labelLight = Color(0xFF73726C);
+  static const Color _labelLight = Color(0xFF4A4843);
   static const Color _valueLight = Color(0xFF1A1A18);
 
   @override

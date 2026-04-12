@@ -69,19 +69,12 @@ class SalesLineDraft {
     return double.parse(t.toStringAsFixed(2));
   }
 
-  /// Quotation and sales order line payload.
-  Map<String, dynamic> toPayload({String taxType = 'exclusive'}) {
-    final desc = descCtrl.text.trim();
-    return {
-      'product_id': productId,
-      'description': desc.isEmpty ? 'Item' : desc,
-      'quantity': quantity(),
-      'unit_price': unitPrice(),
-      'discount': discountAmt(),
-      'gst_rate': gstRate(),
-      'total': computedTotal(taxType: taxType),
-    };
-  }
+  /// Quotation / order line payload (matches web `DocumentModal` line submit).
+  Map<String, dynamic> toPayload({
+    String taxType = 'exclusive',
+    bool interstate = false,
+  }) =>
+      toInvoiceLinePayload(interstate: interstate, taxType: taxType);
 
   /// Invoice API: per-line CGST/SGST/IGST split (matches web `DocumentModal` submit).
   Map<String, dynamic> toInvoiceLinePayload({
