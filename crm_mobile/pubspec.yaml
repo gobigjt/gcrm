@@ -99,7 +99,12 @@ flutter:
 # Generates and replaces the Android/iOS launcher icons using the image above.
 # This overwrites `android/app/src/main/res/mipmap-*/ic_launcher.png` and
 # `ios/Runner/Assets.xcassets/AppIcon.appiconset/*`.
-flutter_icons:
+# Adaptive Android icons avoid the legacy “small icon on white tile” look.
+flutter_launcher_icons:
   android: true
   ios: true
   image_path: "assets/images/ez_crm_logo.png"
+  adaptive_icon_background: "#0D47A1"
+  adaptive_icon_foreground: "assets/images/ez_crm_logo.png"
+  adaptive_icon_foreground_inset: 0
+  remove_alpha_ios: true

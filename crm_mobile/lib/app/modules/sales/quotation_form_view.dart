@@ -44,8 +44,7 @@ class _QuotationFormViewState extends State<QuotationFormView> {
   @override
   Widget build(BuildContext context) {
     final isEdit = widget.quotationId != null && widget.quotationId! > 0;
-    final title = isEdit ? 'Edit Quotation' : 'New Quotation';
-
+    final title  = isEdit ? 'Edit Quotation' : 'New Quotation';
     final pageBg = Theme.of(context).scaffoldBackgroundColor;
 
     return Obx(() {
@@ -53,9 +52,7 @@ class _QuotationFormViewState extends State<QuotationFormView> {
         return Scaffold(
           backgroundColor: pageBg,
           appBar: salesDocAppBar(context, title: title, showSave: false, isSaving: false, onSave: null),
-          body: Center(
-            child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
-          ),
+          body: Center(child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary)),
         );
       }
 
@@ -74,295 +71,290 @@ class _QuotationFormViewState extends State<QuotationFormView> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
                 children: [
-            if (c.errorMessage.value.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: AppErrorBanner(
-                  message: c.errorMessage.value,
-                  onRetry: c.retry,
-                ),
-              ),
-            Obx(() {
-              String? name;
-              final sid = c.selectedCustomerId.value;
-              if (sid != null) {
-                for (final cu in c.customers) {
-                  if ((cu['id'] as num?)?.toInt() == sid) {
-                    name = (cu['name'] ?? '').toString();
-                    break;
-                  }
-                }
-              }
-              final hint = (name == null || name.isEmpty) ? 'Select customer' : 'for M/s.$name';
-              final cs = Theme.of(context).colorScheme;
-              return Text(
-                hint,
-                style: TextStyle(
-                  color: Theme.of(context).brightness == Brightness.dark ? cs.onSurfaceVariant : Colors.grey.shade900,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
-              );
-            }),
-            const SizedBox(height: 12),
-            Text('Customer', style: salesFieldSectionLabel(context)),
-            const SizedBox(height: 6),
-            Obx(() {
-              final cur = c.selectedCustomerId.value;
-              final ids = c.customers.map((cu) => (cu['id'] as num).toInt()).toSet();
-              final safeVal = cur != null && ids.contains(cur) ? cur : null;
-              return DropdownButtonFormField<int>(
-                value: safeVal,
-                decoration: salesCustomerDropdownDecoration(
-                  context,
-                  hint: Text(
-                    'Choose customer',
-                    style: TextStyle(
-                      color: Theme.of(context).brightness == Brightness.dark
-                          ? Theme.of(context).colorScheme.onSurfaceVariant
-                          : const Color(0xFF475569),
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
+                  if (c.errorMessage.value.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: AppErrorBanner(message: c.errorMessage.value, onRetry: c.retry),
                     ),
-                  ),
-                ),
-                dropdownColor: Theme.of(context).brightness == Brightness.dark
-                    ? Theme.of(context).colorScheme.surfaceContainerHighest
-                    : null,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                ),
-                items: c.customers
-                    .map(
-                      (cu) => DropdownMenuItem<int>(
-                        value: (cu['id'] as num).toInt(),
-                        child: Text((cu['name'] ?? '—').toString(), overflow: TextOverflow.ellipsis),
+
+                  // ── Customer name hint ──────────────────────────────
+                  Obx(() {
+                    String? name;
+                    final sid = c.selectedCustomerId.value;
+                    if (sid != null) {
+                      for (final cu in c.customers) {
+                        if ((cu['id'] as num?)?.toInt() == sid) {
+                          name = (cu['name'] ?? '').toString();
+                          break;
+                        }
+                      }
+                    }
+                    final hint = (name == null || name.isEmpty) ? 'Select customer' : 'for M/s.$name';
+                    final cs2  = Theme.of(context).colorScheme;
+                    return Text(hint,
+                        style: TextStyle(
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? cs2.onSurfaceVariant
+                              : Colors.grey.shade900,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ));
+                  }),
+                  const SizedBox(height: 12),
+
+                  // ── Customer dropdown ──────────────────────────────
+                  Text('Customer', style: salesFieldSectionLabel(context)),
+                  const SizedBox(height: 6),
+                  Obx(() {
+                    final cur    = c.selectedCustomerId.value;
+                    final ids    = c.customers.map((cu) => (cu['id'] as num).toInt()).toSet();
+                    final safeVal = cur != null && ids.contains(cur) ? cur : null;
+                    return DropdownButtonFormField<int>(
+                      value: safeVal,
+                      decoration: salesCustomerDropdownDecoration(
+                        context,
+                        hint: Text('Choose customer',
+                            style: TextStyle(
+                              color: Theme.of(context).brightness == Brightness.dark
+                                  ? Theme.of(context).colorScheme.onSurfaceVariant
+                                  : const Color(0xFF475569),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            )),
                       ),
-                    )
-                    .toList(),
-                onChanged: (v) => c.selectedCustomerId.value = v,
-              );
-            }),
-            const SizedBox(height: 12),
-            Text('Valid until', style: salesFieldSectionLabel(context)),
-            const SizedBox(height: 6),
-            TextField(
-              controller: c.validUntilCtrl,
-              readOnly: true,
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15),
-              decoration: salesOutlineField(
-                context,
-                hintText: 'Tap calendar to pick a date',
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    Icons.calendar_today_rounded,
-                    color: Theme.of(context).brightness == Brightness.dark
-                        ? Theme.of(context).colorScheme.onSurfaceVariant
-                        : Colors.grey.shade700,
-                  ),
-                  onPressed: () => pickDateIntoController(context: context, controller: c.validUntilCtrl),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text('Notes', style: salesFieldSectionLabel(context)),
-            const SizedBox(height: 6),
-            TextField(
-              controller: c.notesCtrl,
-              maxLines: 3,
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15),
-              decoration: salesOutlineField(context, hintText: 'Optional notes for this quotation'),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Text('Products', style: salesFieldSectionLabel(context)),
-                const Spacer(),
-                Text(
-                  'Unit Price × Qty · Amount (INR)',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Theme.of(context).brightness == Brightness.dark
-                        ? Theme.of(context).colorScheme.onSurfaceVariant
-                        : Colors.grey.shade800,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Obx(() {
-              return Column(
-                children: List.generate(c.lines.length, (i) {
-                  final line = c.lines[i];
-                  final cs = Theme.of(context).colorScheme;
-                  final isDark = Theme.of(context).brightness == Brightness.dark;
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    color: cs.surfaceContainer,
-                    elevation: isDark ? 0 : 1.5,
-                    shadowColor: isDark ? Colors.transparent : Colors.black26,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      side: BorderSide(color: isDark ? cs.outlineVariant : Colors.grey.shade300),
+                      dropdownColor: Theme.of(context).brightness == Brightness.dark
+                          ? Theme.of(context).colorScheme.surfaceContainerHighest
+                          : null,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurface,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      items: c.customers
+                          .map((cu) => DropdownMenuItem<int>(
+                                value: (cu['id'] as num).toInt(),
+                                child: Text((cu['name'] ?? '—').toString(), overflow: TextOverflow.ellipsis),
+                              ))
+                          .toList(),
+                      onChanged: (v) => c.selectedCustomerId.value = v,
+                    );
+                  }),
+                  const SizedBox(height: 12),
+
+                  // ── Valid until ────────────────────────────────────
+                  Text('Valid until', style: salesFieldSectionLabel(context)),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: c.validUntilCtrl,
+                    readOnly: true,
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15),
+                    decoration: salesOutlineField(
+                      context,
+                      hintText: 'Tap calendar to pick a date',
+                      suffixIcon: IconButton(
+                        icon: Icon(Icons.calendar_today_rounded,
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? Theme.of(context).colorScheme.onSurfaceVariant
+                                : Colors.grey.shade700),
+                        onPressed: () => pickDateIntoController(context: context, controller: c.validUntilCtrl),
+                      ),
                     ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(10),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                                  children: [
-                                    Text('Description', style: salesLineItemCaption(context)),
-                                    const SizedBox(height: 4),
-                                    TextField(
-                                      controller: line.descCtrl,
-                                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15),
-                                      decoration: salesOutlineField(context, hintText: 'Product or description'),
-                                      onChanged: (_) => c.lines.refresh(),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              IconButton(
-                                onPressed: () => c.removeLineAt(i),
-                                icon: const Icon(Icons.delete_outline, color: Color(0xFFE53935)),
-                              ),
-                            ],
-                          ),
-                          if (c.products.isNotEmpty)
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: TextButton.icon(
-                                onPressed: () => _pickProduct(context, c, i),
-                                icon: const Icon(Icons.inventory_2_outlined, size: 18),
-                                label: const Text('Fill from product'),
-                              ),
-                            ),
-                          const SizedBox(height: 8),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                                  children: [
-                                    Text('Qty', style: salesLineItemCaption(context)),
-                                    const SizedBox(height: 4),
-                                    TextField(
-                                      controller: line.qtyCtrl,
-                                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15),
-                                      decoration: salesOutlineField(context, hintText: '1'),
-                                      onChanged: (_) => c.lines.refresh(),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                                  children: [
-                                    Text('Unit price', style: salesLineItemCaption(context)),
-                                    const SizedBox(height: 4),
-                                    TextField(
-                                      controller: line.unitCtrl,
-                                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15),
-                                      decoration: salesOutlineField(context, hintText: '0.00'),
-                                      onChanged: (_) => c.lines.refresh(),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                                  children: [
-                                    Text('GST %', style: salesLineItemCaption(context)),
-                                    const SizedBox(height: 4),
-                                    TextField(
-                                      controller: line.gstCtrl,
-                                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15),
-                                      decoration: salesOutlineField(context, hintText: '0'),
-                                      onChanged: (_) => c.lines.refresh(),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'Line total: ${line.computedTotal().toStringAsFixed(2)}',
-                            textAlign: TextAlign.right,
-                            style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF26A69A)),
-                          ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // ── Reference No ───────────────────────────────────
+                  Text('Reference No.', style: salesFieldSectionLabel(context)),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: c.referenceNoCtrl,
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15),
+                    decoration: salesOutlineField(context, hintText: 'Optional reference number'),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // ── GST Type ───────────────────────────────────────
+                  Obx(() => salesRadioGroup(
+                        context: context,
+                        label: 'GST TYPE',
+                        options: const [
+                          ('intra_state', 'Intra State (CGST+SGST)'),
+                          ('inter_state', 'Inter State (IGST)'),
                         ],
-                      ),
-                    ),
-                  );
-                }),
-              );
-            }),
-            Center(
-              child: Material(
-                color: kSalesAccent,
-                shape: const CircleBorder(),
-                elevation: 2,
-                shadowColor: Colors.black38,
-                child: InkWell(
-                  customBorder: const CircleBorder(),
-                  onTap: c.addLine,
-                  child: const Padding(
-                    padding: EdgeInsets.all(14),
-                    child: Icon(Icons.add, color: Colors.white, size: 28),
+                        selected: c.gstTypeValue.value,
+                        onChanged: (v) {
+                          c.gstTypeValue.value = v;
+                          c.lines.refresh();
+                        },
+                      )),
+                  const SizedBox(height: 12),
+
+                  // ── Tax Type ───────────────────────────────────────
+                  Obx(() => salesRadioGroup(
+                        context: context,
+                        label: 'TAX',
+                        options: const [
+                          ('exclusive', 'Tax Exclusive'),
+                          ('inclusive', 'Tax Inclusive'),
+                          ('no_tax', 'No Tax'),
+                        ],
+                        selected: c.taxTypeValue.value,
+                        onChanged: (v) {
+                          c.taxTypeValue.value = v;
+                          c.lines.refresh();
+                        },
+                      )),
+                  const SizedBox(height: 16),
+
+                  // ── Notes ──────────────────────────────────────────
+                  Text('Notes', style: salesFieldSectionLabel(context)),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: c.notesCtrl,
+                    maxLines: 3,
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15),
+                    decoration: salesOutlineField(context, hintText: 'Optional notes for this quotation'),
                   ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Obx(() {
-              double sum = 0;
-              for (final L in c.lines) {
-                sum += L.computedTotal();
-              }
-              final cs = Theme.of(context).colorScheme;
-              final isDark = Theme.of(context).brightness == Brightness.dark;
-              return Card(
-                color: isDark ? cs.surfaceContainerHigh : kSalesLightAppBarBg,
-                elevation: isDark ? 0 : 2,
-                shadowColor: isDark ? Colors.transparent : Colors.black26,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(color: isDark ? cs.outlineVariant : Colors.transparent),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
+                  const SizedBox(height: 20),
+
+                  // ── Line items header ──────────────────────────────
+                  Row(
                     children: [
-                      _totRow(context, 'Sub total', sum, lightModeSlateTotalsCard: !isDark),
-                      _totRow(context, 'Net total', sum, lightModeSlateTotalsCard: !isDark),
-                      Divider(height: 20, color: isDark ? cs.outlineVariant.withValues(alpha: 0.65) : const Color(0x40FFFFFF)),
-                      _totRow(context, 'Grand total', sum, bold: true, lightModeSlateTotalsCard: !isDark),
+                      Text('Products', style: salesFieldSectionLabel(context)),
+                      const Spacer(),
+                      Text('Qty · Price · Disc · GST',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? Theme.of(context).colorScheme.onSurfaceVariant
+                                : Colors.grey.shade800,
+                            fontWeight: FontWeight.w600,
+                          )),
                     ],
                   ),
-                ),
-              );
-            }),
+                  const SizedBox(height: 8),
+
+                  // ── Line items ─────────────────────────────────────
+                  Obx(() {
+                    final tt = c.taxTypeValue.value;
+                    return Column(
+                      children: List.generate(c.lines.length, (i) {
+                        final line   = c.lines[i];
+                        final cs2    = Theme.of(context).colorScheme;
+                        final isDark = Theme.of(context).brightness == Brightness.dark;
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          color: cs2.surfaceContainer,
+                          elevation: isDark ? 0 : 1.5,
+                          shadowColor: isDark ? Colors.transparent : Colors.black26,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            side: BorderSide(color: isDark ? cs2.outlineVariant : Colors.grey.shade300),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                                        Text('Description', style: salesLineItemCaption(context)),
+                                        const SizedBox(height: 4),
+                                        TextField(
+                                          controller: line.descCtrl,
+                                          style: TextStyle(color: cs2.onSurface, fontSize: 15),
+                                          decoration: salesOutlineField(context, hintText: 'Product or description'),
+                                          onChanged: (_) => c.lines.refresh(),
+                                        ),
+                                      ]),
+                                    ),
+                                    IconButton(
+                                      onPressed: () => c.removeLineAt(i),
+                                      icon: const Icon(Icons.delete_outline, color: Color(0xFFE53935)),
+                                    ),
+                                  ],
+                                ),
+                                if (c.products.isNotEmpty)
+                                  Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: TextButton.icon(
+                                      onPressed: () => _pickProduct(context, i),
+                                      icon: const Icon(Icons.inventory_2_outlined, size: 18),
+                                      label: const Text('Fill from product'),
+                                    ),
+                                  ),
+                                const SizedBox(height: 8),
+                                // Qty + Unit price row
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(child: _lineField(context, 'Qty', line.qtyCtrl, '1', c)),
+                                    const SizedBox(width: 8),
+                                    Expanded(child: _lineField(context, 'Unit price', line.unitCtrl, '0.00', c)),
+                                    const SizedBox(width: 8),
+                                    Expanded(child: _lineField(context, 'Discount', line.discountCtrl, '0', c)),
+                                    const SizedBox(width: 8),
+                                    Expanded(child: _lineField(context, 'GST %', line.gstCtrl, '0', c)),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  'Line total: ${line.computedTotal(taxType: tt).toStringAsFixed(2)}',
+                                  textAlign: TextAlign.right,
+                                  style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF26A69A)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
+                    );
+                  }),
+
+                  // ── Add line button ────────────────────────────────
+                  Center(
+                    child: Material(
+                      color: kSalesAccent,
+                      shape: const CircleBorder(),
+                      elevation: 2,
+                      shadowColor: Colors.black38,
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: c.addLine,
+                        child: const Padding(
+                          padding: EdgeInsets.all(14),
+                          child: Icon(Icons.add, color: Colors.white, size: 28),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // ── Extra charges ──────────────────────────────────
+                  _extraChargesCard(context),
+                  const SizedBox(height: 12),
+
+                  // ── Payment ────────────────────────────────────────
+                  _paymentCard(context),
+                  const SizedBox(height: 20),
+
+                  // ── Totals card ────────────────────────────────────
+                  Obx(() => salesTotalsCard(
+                        context: context,
+                        lines: c.lines,
+                        gstType: c.gstTypeValue.value,
+                        taxType: c.taxTypeValue.value,
+                        discountAmountCtrl: c.discountAmountCtrl,
+                        shippingAmountCtrl: c.shippingAmountCtrl,
+                        roundOffCtrl: c.roundOffCtrl,
+                      )),
                 ],
               ),
             ),
+
+            // ── Bottom save button ─────────────────────────────────
             SafeArea(
               top: false,
               child: Material(
@@ -405,65 +397,105 @@ class _QuotationFormViewState extends State<QuotationFormView> {
     });
   }
 
-  Widget _totRow(BuildContext context, String label, double v, {bool bold = false, bool lightModeSlateTotalsCard = false}) {
-    final cs = Theme.of(context).colorScheme;
-    if (lightModeSlateTotalsCard) {
-      final muted = Colors.white.withValues(alpha: 0.88);
-      final strong = Colors.white;
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  Widget _lineField(
+    BuildContext context,
+    String label,
+    TextEditingController ctrl,
+    String hint,
+    QuotationFormController c,
+  ) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Text(label, style: salesLineItemCaption(context)),
+      const SizedBox(height: 4),
+      TextField(
+        controller: ctrl,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14),
+        decoration: salesOutlineField(context, hintText: hint),
+        onChanged: (_) => c.lines.refresh(),
+      ),
+    ]);
+  }
+
+  Widget _extraChargesCard(BuildContext context) {
+    final cs    = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Card(
+      margin: EdgeInsets.zero,
+      color: cs.surfaceContainer,
+      elevation: isDark ? 0 : 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: isDark ? cs.outlineVariant : Colors.grey.shade300),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
           children: [
-            Text(
-              label,
-              style: TextStyle(
-                fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
-                color: bold ? strong : muted,
-                fontSize: bold ? 15 : 14,
-              ),
+            salesSectionHeader(context, 'EXTRA CHARGES'),
+            salesTwoColRow(
+              context: context,
+              label1: 'Discount (₹)',
+              ctrl1: c.discountAmountCtrl,
+              label2: 'Shipping (₹)',
+              ctrl2: c.shippingAmountCtrl,
+              onChanged: () => c.lines.refresh(),
             ),
-            Text(
-              v.toStringAsFixed(2),
-              style: TextStyle(
-                fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
-                fontSize: bold ? 16 : 14,
-                color: bold ? kSalesAccent : Colors.white.withValues(alpha: 0.95),
-              ),
+            const SizedBox(height: 10),
+            salesTwoColRow(
+              context: context,
+              label1: 'Extra Discount (₹)',
+              ctrl1: c.extraDiscountCtrl,
+              label2: 'Round Off (₹)',
+              ctrl2: c.roundOffCtrl,
+              onChanged: () => c.lines.refresh(),
             ),
           ],
         ),
-      );
-    }
-    final labelColor = bold ? cs.onSurface : cs.onSurfaceVariant;
-    final valueColor = bold ? kSalesAccent : cs.onSurface;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
-              color: labelColor,
-              fontSize: bold ? 15 : 14,
-            ),
-          ),
-          Text(
-            v.toStringAsFixed(2),
-            style: TextStyle(
-              fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
-              fontSize: bold ? 16 : 14,
-              color: valueColor,
-            ),
-          ),
-        ],
       ),
     );
   }
 
-  Future<void> _pickProduct(BuildContext context, QuotationFormController c, int lineIndex) async {
+  Widget _paymentCard(BuildContext context) {
+    final cs    = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Card(
+      margin: EdgeInsets.zero,
+      color: cs.surfaceContainer,
+      elevation: isDark ? 0 : 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: isDark ? cs.outlineVariant : Colors.grey.shade300),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            salesSectionHeader(context, 'PAYMENT'),
+            Obx(() => salesDropdownRow(
+                  context: context,
+                  label: 'Payment Terms',
+                  options: kPaymentTermsOptions,
+                  value: c.paymentTermsValue.value,
+                  onChanged: (v) => c.paymentTermsValue.value = v,
+                  hint: 'Select terms…',
+                )),
+            const SizedBox(height: 10),
+            Obx(() => salesDropdownRow(
+                  context: context,
+                  label: 'Payment Method',
+                  options: kPaymentMethodOptions,
+                  value: c.paymentMethodValue.value,
+                  onChanged: (v) => c.paymentMethodValue.value = v,
+                  hint: 'Select method…',
+                )),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickProduct(BuildContext context, int lineIndex) async {
     final picked = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
@@ -479,14 +511,8 @@ class _QuotationFormViewState extends State<QuotationFormView> {
                 children: [
                   Padding(
                     padding: const EdgeInsets.all(12),
-                    child: Text(
-                      'Pick product',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16,
-                        color: sheetCs.onSurface,
-                      ),
-                    ),
+                    child: Text('Pick product',
+                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: sheetCs.onSurface)),
                   ),
                   Expanded(
                     child: ListView.builder(

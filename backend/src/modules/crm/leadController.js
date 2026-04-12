@@ -19,7 +19,7 @@ export async function show(req, res) {
 export async function create(req, res) {
   try {
     if (!req.body.name) return res.status(400).json({ message: "Name is required" });
-    const lead = await model.createLead(req.body);
+    const lead = await model.createLead({ ...req.body, created_by: req.user?.id ?? null });
     res.status(201).json({ lead });
   } catch (err) { console.error(err); res.status(500).json({ message: "Internal server error" }); }
 }

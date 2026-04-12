@@ -194,6 +194,12 @@ class AppNavigationDrawer extends StatelessWidget {
                         selected: _selected(AppRoutes.hr),
                         onTap: () => _closeAndGo(AppRoutes.hr),
                       ),
+                      _DrawerTile(
+                        icon: Icons.support_agent_rounded,
+                        label: 'Sales executives',
+                        selected: false,
+                        onTap: () => _closeAndGo(AppRoutes.hr),
+                      ),
                     ],
                     const Divider(height: 1),
                     if (auth.hasPermission(AppPermissions.settings))

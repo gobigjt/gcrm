@@ -44,6 +44,11 @@ class CrmView extends GetView<CrmController> {
             onPressed: () => Get.toNamed(AppRoutes.crmLists),
           ),
           IconButton(
+            icon: const Icon(Icons.tune_rounded),
+            tooltip: 'Masters',
+            onPressed: () => Get.toNamed(AppRoutes.crmMasters),
+          ),
+          IconButton(
             icon: const Icon(Icons.filter_list_rounded),
             tooltip: 'Source filter',
             onPressed: () => _openSourceFilterSheet(context, controller),

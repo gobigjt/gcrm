@@ -15,7 +15,16 @@
       "Read(//c/dev/jeg/**)",
       "Bash(grep -l \"lead_sources\\\\|INSERT INTO lead_sources\" /c/dev/herd-projects/crm/backend/src/database/migrations/*.sql)",
       "Bash(grep -h \"INSERT INTO lead_sources\" /c/dev/herd-projects/crm/backend/src/database/migrations/*.sql)",
-      "Bash(tasklist /FI \"IMAGENAME eq node.exe\")"
+      "Bash(tasklist /FI \"IMAGENAME eq node.exe\")",
+      "Bash(git -C c:/dev/herd-projects/crm log --oneline -10)",
+      "Bash(git -C c:/dev/herd-projects/crm show --stat 7af8d76)",
+      "Bash(git -C c:/dev/herd-projects/crm show --stat 2ee1c74)",
+      "Bash(git -C c:/dev/herd-projects/crm diff 6a60aa3..HEAD -- frontend/src/pages/sales/Sales.jsx)",
+      "Bash(git -C c:/dev/herd-projects/crm diff 6a60aa3..HEAD -- frontend/src/pages/crm/CRM.jsx)",
+      "Bash(git -C c:/dev/herd-projects/crm diff 6a60aa3..HEAD -- frontend/src/pages/crm/CRMMastersPage.jsx)",
+      "Bash(git -C c:/dev/herd-projects/crm diff 6a60aa3..HEAD -- frontend/src/pages/crm/CRMRoutes.jsx)",
+      "Bash(grep -n \"CREATE TABLE leads\\\\|created_by\\\\|user_id\" c:/dev/herd-projects/crm/backend/src/database/migrations/*.sql)",
+      "Bash(grep -rn \"ALTER TABLE leads\\\\|created_by\" c:/dev/herd-projects/crm/backend/src/database/migrations/*.sql)"
     ]
   }
 }
