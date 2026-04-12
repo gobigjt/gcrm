@@ -6,6 +6,7 @@ import '../modules/auth/splash_view.dart';
 import '../modules/crm/crm_controller.dart';
 import '../modules/crm/crm_lead_detail_view.dart';
 import '../modules/crm/crm_lists_view.dart';
+import '../modules/crm/crm_masters_view.dart';
 import '../modules/crm/crm_view.dart';
 import '../modules/attendance/sales_attendance_controller.dart';
 import '../modules/attendance/sales_attendance_view.dart';
@@ -81,6 +82,11 @@ abstract class AppPages {
     GetPage(
       name: AppRoutes.crmLists,
       page: () => const CrmListsView(),
+      middlewares: [PermissionMiddleware(permission: AppPermissions.crm)],
+    ),
+    GetPage(
+      name: AppRoutes.crmMasters,
+      page: () => const CrmMastersView(),
       middlewares: [PermissionMiddleware(permission: AppPermissions.crm)],
     ),
     GetPage(

@@ -95,7 +95,9 @@ export class LeadsController {
   list(@Query() q: any, @CurrentUser() u: any) {
     return this.svc.list(q, u);
   }
-  @Post()  create(@Body() b: any)      { return this.svc.create(b); }
+  @Post()  create(@Body() b: any, @CurrentUser() u: any) {
+    return this.svc.create({ ...b, created_by: u?.id ?? null });
+  }
 
   @Get(':id')
   async show(@Param('id') id: string, @CurrentUser() u: any) {

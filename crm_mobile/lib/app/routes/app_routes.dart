@@ -5,7 +5,8 @@ abstract class AppRoutes {
   /// Sales Executive — daily check-in / check-out (`/hr/me/attendance/*`).
   static const attendance = '/attendance';
   static const crm = '/crm';
-  static const crmLists = '/crm/lists';
+  static const crmLists    = '/crm/lists';
+  static const crmMasters  = '/crm/masters';
   static const sales = '/sales';
   /// Full-screen quotation create/edit (named route avoids web Navigator/GlobalKey issues with `Get.to(() => …)`).
   static const quotationForm = '/quotation/form';

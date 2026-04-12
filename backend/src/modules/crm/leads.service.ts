@@ -91,8 +91,10 @@ export class LeadsService {
     const uid = Number(currentUser?.id);
     const forceOwn = this.isOwnAssignedScope(currentUser?.role) && Number.isInteger(uid) && uid > 0;
     if (forceOwn) {
-      conds.push(`l.assigned_to=$${i++}`);
+      // Show leads assigned to OR created by this sales executive
+      conds.push(`(l.assigned_to=$${i} OR l.created_by=$${i})`);
       vals.push(uid);
+      i++;
     }
     if (f.stage_id) {
       conds.push(`l.stage_id=$${i++}`);
@@ -205,9 +207,9 @@ export class LeadsService {
     const res = await this.db.query(
       `INSERT INTO leads (
          name,email,phone,company,source_id,stage_id,assigned_to,assigned_manager_id,notes,priority,custom_fields,
-         lead_segment,job_title,deal_size,website,address,tags,lead_score
+         lead_segment,job_title,deal_size,website,address,tags,lead_score,created_by
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::text[],$18) RETURNING *`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::text[],$18,$19) RETURNING *`,
       [
         data.name, data.email, data.phone, data.company, data.source_id,
         data.stage_id, data.assigned_to || null, data.assigned_manager_id || null, data.notes,
@@ -220,6 +222,7 @@ export class LeadsService {
         data.address ?? null,
         tags,
         data.lead_score != null ? Number(data.lead_score) : 0,
+        data.created_by ?? null,
       ],
     );
     const row = res.rows[0];

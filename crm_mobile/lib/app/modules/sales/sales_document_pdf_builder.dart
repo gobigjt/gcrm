@@ -345,11 +345,15 @@ class SalesDocumentPdfBuilder {
     List<Map<String, dynamic>> items,
     bool interstate,
   ) {
-    final total = parseDynamicNum(doc['total_amount']).toDouble();
+    final total    = parseDynamicNum(doc['total_amount']).toDouble();
+    final discAmt  = parseDynamicNum(doc['discount_amount']).toDouble();
+    final shipAmt  = parseDynamicNum(doc['shipping_amount']).toDouble();
+    final extraDisc = parseDynamicNum(doc['extra_discount']).toDouble();
+    final roundOff  = parseDynamicNum(doc['round_off']).toDouble();
     final w = <pw.Widget>[];
 
     if (kind == SalesDocumentKind.invoice) {
-      final sub = parseDynamicNum(doc['subtotal']).toDouble();
+      final sub  = parseDynamicNum(doc['subtotal']).toDouble();
       final cgst = parseDynamicNum(doc['cgst']).toDouble();
       final sgst = parseDynamicNum(doc['sgst']).toDouble();
       final igst = parseDynamicNum(doc['igst']).toDouble();
@@ -359,6 +363,10 @@ class SalesDocumentPdfBuilder {
       } else {
         w.add(_sumRow('Total CGST + SGST:', _money(cgst + sgst)));
       }
+      if (discAmt > 0)  w.add(_sumRow('Discount:', '-${_money(discAmt)}'));
+      if (shipAmt > 0)  w.add(_sumRow('Shipping:', _money(shipAmt)));
+      if (extraDisc > 0) w.add(_sumRow('Extra Discount:', '-${_money(extraDisc)}'));
+      if (roundOff != 0) w.add(_sumRow('Round Off:', _money(roundOff)));
       w.add(_sumRow('Total:', _money(total), bold: true));
       final bal = (total - _sumPayments(doc)).clamp(0, double.infinity);
       w.add(_sumRow('Balance Due:', _money(bal)));
@@ -366,13 +374,17 @@ class SalesDocumentPdfBuilder {
     }
 
     var taxable = 0.0;
-    var gst = 0.0;
+    var gst     = 0.0;
     for (final it in items) {
       taxable += parseDynamicNum(it['quantity']).toDouble() * parseDynamicNum(it['unit_price']).toDouble();
-      gst += _lineGst(it);
+      gst     += _lineGst(it);
     }
     w.add(_sumRow('Taxable value:', _money(taxable)));
     w.add(_sumRow('GST:', _money(gst)));
+    if (discAmt > 0)   w.add(_sumRow('Discount:', '-${_money(discAmt)}'));
+    if (shipAmt > 0)   w.add(_sumRow('Shipping:', _money(shipAmt)));
+    if (extraDisc > 0) w.add(_sumRow('Extra Discount:', '-${_money(extraDisc)}'));
+    if (roundOff != 0) w.add(_sumRow('Round Off:', _money(roundOff)));
     w.add(_sumRow('Grand total:', _money(total), bold: true));
     return w;
   }
