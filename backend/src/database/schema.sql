@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS users (
   password   TEXT NOT NULL,
   role       VARCHAR(50) NOT NULL DEFAULT 'Sales Executive',
   is_active  BOOLEAN NOT NULL DEFAULT TRUE,
+  avatar_url VARCHAR(500),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

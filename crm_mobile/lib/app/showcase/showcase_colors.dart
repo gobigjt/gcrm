@@ -22,7 +22,7 @@ class ShowcaseColors {
   static const purpleLight = Color(0xFFEEEDFE);
   static const purpleMid = Color(0xFF3C3489);
   static const inventory = Color(0xFFD85A30);
-  static const neutral = Color(0xFFB4B2A9);
+  static const neutral = Color(0xFF6E6C64);
 
   // ── Dark-mode pill variants ──────────────────────────────────────────────
   static const darkWonBg = Color(0xFF0B3525);

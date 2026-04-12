@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../core/utils/product_catalog.dart';
+
 /// Shared chrome for quotation / order / invoice forms (matches `QuotationFormView`).
 const Color kSalesAccent = Color(0xFF26A69A);
 const Color kSalesLightAppBarBg = Color(0xFF263238);
@@ -35,7 +37,7 @@ Widget salesRadioGroup({
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w700,
-            color: isDark ? cs.onSurfaceVariant : const Color(0xFF475569),
+            color: isDark ? cs.onSurfaceVariant : const Color(0xFF334155),
             letterSpacing: 0.3,
           )),
       const SizedBox(height: 6),
@@ -95,7 +97,7 @@ Widget salesSectionHeader(BuildContext context, String title) {
               fontSize: 11,
               fontWeight: FontWeight.w700,
               letterSpacing: 0.5,
-              color: isDark ? cs.onSurfaceVariant : const Color(0xFF475569),
+              color: isDark ? cs.onSurfaceVariant : const Color(0xFF334155),
             ),
           ),
         ),
@@ -365,7 +367,7 @@ InputDecoration salesOutlineField(
   final cs = Theme.of(context).colorScheme;
   final dark = Theme.of(context).brightness == Brightness.dark;
   final fill = cs.surfaceContainer;
-  final hintFg = dark ? cs.onSurfaceVariant.withValues(alpha: 0.92) : const Color(0xFF64748B);
+  final hintFg = dark ? cs.onSurfaceVariant.withValues(alpha: 0.95) : const Color(0xFF334155);
   return InputDecoration(
     hintText: hintText,
     hintStyle: TextStyle(color: hintFg, fontWeight: FontWeight.w500, fontSize: 14),
@@ -429,7 +431,7 @@ PreferredSizeWidget salesDocAppBar(
               backgroundColor: dark ? kSalesAccent : Colors.white,
               foregroundColor: dark ? Colors.white : kSalesLightAppBarBg,
               disabledBackgroundColor: dark ? kSalesAccent.withValues(alpha: 0.35) : Colors.white54,
-              disabledForegroundColor: dark ? Colors.white54 : kSalesLightAppBarBg.withValues(alpha: 0.5),
+              disabledForegroundColor: dark ? Colors.white70 : kSalesLightAppBarBg.withValues(alpha: 0.62),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               minimumSize: Size.zero,
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -450,5 +452,58 @@ PreferredSizeWidget salesDocAppBar(
           ),
         ),
     ],
+  );
+}
+
+/// “Fill from product” bottom sheet — [products] should already list in-stock rows only.
+Widget salesProductPickerSheet({
+  required BuildContext context,
+  required List<Map<String, dynamic>> products,
+  required ValueChanged<Map<String, dynamic>> onPick,
+}) {
+  final sheetCs = Theme.of(context).colorScheme;
+  return Material(
+    color: sheetCs.surfaceContainerHigh,
+    borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+    child: SafeArea(
+      child: SizedBox(
+        height: MediaQuery.of(context).size.height * 0.55,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                'Pick product (in stock)',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: sheetCs.onSurface),
+              ),
+            ),
+            Expanded(
+              child: products.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          'No products with available stock.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: sheetCs.onSurfaceVariant, fontSize: 14),
+                        ),
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: products.length,
+                      itemBuilder: (_, i) {
+                        final p = products[i];
+                        return ListTile(
+                          title: Text((p['name'] ?? '—').toString()),
+                          subtitle: Text(productPickerSubtitle(p)),
+                          onTap: () => onPick(p),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    ),
   );
 }

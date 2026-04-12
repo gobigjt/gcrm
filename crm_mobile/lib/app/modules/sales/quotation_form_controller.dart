@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/network/error_utils.dart';
+import '../../core/utils/product_catalog.dart';
 import '../../core/utils/ui_format.dart';
 import '../auth/auth_controller.dart';
 import 'sales_line_draft.dart';
@@ -26,8 +27,10 @@ class QuotationFormController extends GetxController {
 
   final customers = <Map<String, dynamic>>[].obs;
   final products  = <Map<String, dynamic>>[].obs;
+  final executives = <Map<String, dynamic>>[].obs;
 
   final selectedCustomerId = Rxn<int>();
+  final selectedCreatedById = Rxn<int>();
   final validUntilCtrl     = TextEditingController();
   final notesCtrl          = TextEditingController();
   final referenceNoCtrl    = TextEditingController();
@@ -87,7 +90,7 @@ class QuotationFormController extends GetxController {
     isLoading.value = true;
     errorMessage.value = '';
     try {
-      await Future.wait([_loadCustomers(), _loadProducts()]);
+      await Future.wait([_loadCustomers(), _loadProducts(), _loadExecutives()]);
       final sourceId = quotationId ?? copyFromId;
       if (sourceId != null && sourceId > 0) {
         await _loadQuotationIntoForm(sourceId);
@@ -95,6 +98,7 @@ class QuotationFormController extends GetxController {
           statusValue.value = 'draft';
         }
       } else {
+        _syncCreatedBySelection();
         if (lines.isEmpty) addLine();
       }
     } catch (e) {
@@ -123,10 +127,30 @@ class QuotationFormController extends GetxController {
   Future<void> _loadProducts() async {
     try {
       final res  = await _auth.authorizedRequest(method: 'GET', path: '/inventory/products');
-      final list = _extractProducts(res);
+      final list = productsWithAvailableStock(_extractProducts(res));
       products.assignAll(list);
     } catch (_) {
       products.clear();
+    }
+  }
+
+  Future<void> _loadExecutives() async {
+    try {
+      final res = await _auth.authorizedRequest(method: 'GET', path: '/sales/executives');
+      executives.assignAll(_extractExecutives(res));
+    } catch (_) {
+      executives.clear();
+    }
+  }
+
+  void _syncCreatedBySelection([int? preferred]) {
+    final uid = _auth.userId.value > 0 ? _auth.userId.value : null;
+    final p = preferred ?? selectedCreatedById.value ?? uid;
+    final ids = executives.map((e) => (e['id'] as num).toInt()).toSet();
+    if (p != null && ids.contains(p)) {
+      selectedCreatedById.value = p;
+    } else if (executives.isNotEmpty) {
+      selectedCreatedById.value = (executives.first['id'] as num).toInt();
     }
   }
 
@@ -140,6 +164,8 @@ class QuotationFormController extends GetxController {
     notesCtrl.text       = (q['notes'] ?? '').toString();
     referenceNoCtrl.text = (q['reference_no'] ?? '').toString();
     statusValue.value    = (q['status'] ?? 'draft').toString();
+    selectedCreatedById.value = (q['created_by'] as num?)?.toInt();
+    _syncCreatedBySelection(selectedCreatedById.value);
 
     // GST & tax type
     final hasIgst = parseDynamicNum(q['igst']) > 0;
@@ -180,6 +206,13 @@ class QuotationFormController extends GetxController {
     return [];
   }
 
+  static List<Map<String, dynamic>> _extractExecutives(dynamic res) {
+    if (res is List) {
+      return res.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    }
+    return [];
+  }
+
   void addLine() {
     lines.add(SalesLineDraft());
     lines.refresh();
@@ -209,9 +242,14 @@ class QuotationFormController extends GetxController {
       Get.snackbar('Missing customer', 'Select a customer.');
       return;
     }
+    if (selectedCreatedById.value == null) {
+      Get.snackbar('Sales executive', 'Select the sales executive for this document.');
+      return;
+    }
+    final interstate = isInterstate;
     final tt = taxTypeValue.value;
     final payloadLines = lines
-        .map((e) => e.toPayload(taxType: tt))
+        .map((e) => e.toPayload(taxType: tt, interstate: interstate))
         .where((p) => p['quantity'] != 0)
         .toList();
     if (payloadLines.isEmpty) {
@@ -231,6 +269,8 @@ class QuotationFormController extends GetxController {
         'status':           isEdit ? statusValue.value : 'draft',
         'gst_type':         gstTypeValue.value,
         'tax_type':         taxTypeValue.value,
+        'is_interstate':    interstate,
+        'created_by':       selectedCreatedById.value,
         'discount_amount':  double.tryParse(discountAmountCtrl.text) ?? 0,
         'shipping_amount':  double.tryParse(shippingAmountCtrl.text) ?? 0,
         'extra_discount':   double.tryParse(extraDiscountCtrl.text)  ?? 0,

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { resolveApiPublicUrl } from '../utils/publicAssetUrl';
 import { useModules } from '../context/ModuleContext';
 import { useTheme } from '../context/ThemeContext';
 
@@ -128,25 +129,6 @@ const roleColors = {
   default:       'bg-slate-100  text-slate-600  dark:bg-slate-700     dark:text-slate-300',
 };
 
-function resolveCompanyAsset(url) {
-  if (!url || typeof url !== 'string') return '';
-  if (/^https?:\/\//i.test(url)) return url;
-  const p = url.startsWith('/') ? url : `/${url}`;
-  const apiBase = String(api?.defaults?.baseURL || '').trim();
-  if (/^https?:\/\//i.test(apiBase)) {
-    try {
-      const u = new URL(apiBase);
-      return `${u.origin}${p}`;
-    } catch {
-      /* fall through */
-    }
-  }
-  if (typeof window !== 'undefined' && window.location?.origin) {
-    return `${window.location.origin}${p}`;
-  }
-  return p;
-}
-
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
   const { canAccess } = useModules();
@@ -165,7 +147,7 @@ export default function Layout({ children }) {
   }, []);
 
   useEffect(() => {
-    const href = resolveCompanyAsset(companyBranding?.favicon_url);
+    const href = resolveApiPublicUrl(companyBranding?.favicon_url);
     if (!href || typeof document === 'undefined') return;
     let link = document.querySelector("link[rel*='icon']");
     if (!link) {
@@ -235,7 +217,7 @@ export default function Layout({ children }) {
 
   const roleCls = roleColors[user?.role] || roleColors.default;
   const displayName = (user?.name || user?.email || 'User').toString().trim() || 'User';
-  const logoSrc = resolveCompanyAsset(companyBranding?.logo_url);
+  const logoSrc = resolveApiPublicUrl(companyBranding?.logo_url);
   const brandName = (companyBranding?.company_name || 'EzCRM Pro').toString();
   const pageKey = Object.keys(PAGE_META)
     .filter((p) => p === '/' || pathname.startsWith(p))

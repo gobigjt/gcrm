@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
+import { resolveApiPublicUrl } from '../../utils/publicAssetUrl';
 
 function fmtDate(dt) {
   if (!dt) return '—';
@@ -26,12 +27,16 @@ function Info({ label, value }) {
 }
 
 export default function ProfilePage() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [profile, setProfile] = useState(user || null);
   const [pwd, setPwd] = useState({ current_password: '', new_password: '', confirm_password: '' });
   const [pwdBusy, setPwdBusy] = useState(false);
   const [pwdMsg, setPwdMsg] = useState('');
   const [pwdErr, setPwdErr] = useState('');
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [avatarErr, setAvatarErr] = useState('');
+  const [avatarBust, setAvatarBust] = useState(0);
+  const [avatarImgBroken, setAvatarImgBroken] = useState(false);
 
   useEffect(() => {
     api.get('/auth/me')
@@ -42,6 +47,56 @@ export default function ProfilePage() {
   const name = profile?.name || user?.name || 'User';
   const email = profile?.email || user?.email || '—';
   const role = profile?.role || user?.role || '—';
+  const avatarUrl = profile?.avatar_url || user?.avatar_url || '';
+  const avatarSrc = resolveApiPublicUrl(avatarUrl);
+
+  useEffect(() => {
+    setAvatarImgBroken(false);
+  }, [avatarSrc, avatarBust]);
+
+  const onPickAvatar = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setAvatarErr('Choose an image file.');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setAvatarErr('Image must be 2 MB or smaller.');
+      return;
+    }
+    setAvatarErr('');
+    setAvatarBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      // Let Axios set multipart boundary — a bare `multipart/form-data` header breaks uploads.
+      await api.post('/auth/me/avatar', fd);
+      const u = await refreshUser();
+      setProfile(u || null);
+      setAvatarBust((k) => k + 1);
+    } catch (err) {
+      setAvatarErr(err?.response?.data?.message || 'Upload failed');
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
+  const removeAvatar = async () => {
+    setAvatarErr('');
+    setAvatarBusy(true);
+    try {
+      await api.delete('/auth/me/avatar');
+      const u = await refreshUser();
+      setProfile(u || null);
+      setAvatarBust((k) => k + 1);
+    } catch (err) {
+      setAvatarErr(err?.response?.data?.message || 'Remove failed');
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
 
   const setPwdField = (k) => (e) => setPwd((p) => ({ ...p, [k]: e.target.value }));
   const submitPwd = async (e) => {
@@ -83,13 +138,36 @@ export default function ProfilePage() {
       </div>
 
       <div className="bg-white dark:bg-[#1a1d2e] rounded-2xl shadow-card border border-slate-200/80 dark:border-slate-700/50 p-5">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-11 h-11 rounded-full bg-[#eeedfe] text-[#3c3489] flex items-center justify-center text-sm font-semibold">
-            {String(name)[0]?.toUpperCase() || 'U'}
+        <div className="flex flex-wrap items-center gap-3 mb-4">
+          <div className="w-14 h-14 shrink-0 rounded-full overflow-hidden border border-slate-200 dark:border-slate-600 bg-[#eeedfe]">
+            {avatarSrc && !avatarImgBroken ? (
+              <img
+                src={`${avatarSrc}${avatarSrc.includes('?') ? '&' : '?'}v=${avatarBust}`}
+                alt=""
+                className="w-14 h-14 object-cover"
+                onError={() => setAvatarImgBroken(true)}
+              />
+            ) : (
+              <div className="w-14 h-14 flex items-center justify-center text-lg font-semibold text-[#3c3489]">
+                {String(name)[0]?.toUpperCase() || 'U'}
+              </div>
+            )}
           </div>
-          <div>
+          <div className="min-w-0 flex-1">
             <div className="text-base font-semibold text-slate-800 dark:text-slate-100">{name}</div>
             <div className="text-xs text-slate-500 dark:text-slate-400">{email}</div>
+            {avatarErr ? <div className="text-xs text-red-600 dark:text-red-400 mt-1">{avatarErr}</div> : null}
+            <div className="flex flex-wrap gap-2 mt-2">
+              <label className="btn-wf-secondary cursor-pointer text-xs py-1.5 px-3">
+                {avatarBusy ? 'Uploading…' : avatarUrl ? 'Change photo' : 'Upload photo'}
+                <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={onPickAvatar} disabled={avatarBusy} />
+              </label>
+              {avatarUrl ? (
+                <button type="button" className="btn-wf-secondary text-xs py-1.5 px-3" onClick={removeAvatar} disabled={avatarBusy}>
+                  Remove photo
+                </button>
+              ) : null}
+            </div>
           </div>
         </div>
 

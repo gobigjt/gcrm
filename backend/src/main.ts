@@ -12,15 +12,24 @@ import * as morgan from 'morgan';
 async function bootstrap() {
   const uploadRoot = join(process.cwd(), 'uploads');
   const companyDir = join(uploadRoot, 'company');
+  const usersDir = join(uploadRoot, 'users');
   if (!existsSync(companyDir)) mkdirSync(companyDir, { recursive: true });
+  if (!existsSync(usersDir)) mkdirSync(usersDir, { recursive: true });
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
 
-  app.useStaticAssets(uploadRoot, { prefix: '/uploads/', index: false });
+  // CORS must apply to static `/uploads/*` (Flutter web loads profile images cross-origin).
+  app.enableCors();
+  app.useStaticAssets(uploadRoot, {
+    prefix: '/uploads/',
+    index: false,
+    setHeaders: (res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    },
+  });
 
   app.setGlobalPrefix('api');
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-  app.enableCors();
   app.use(morgan('dev'));
 
   // ── Swagger ──────────────────────────────────────────────

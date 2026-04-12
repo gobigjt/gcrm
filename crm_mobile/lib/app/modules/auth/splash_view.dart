@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
-import '../../core/auth/role_home_route.dart';
 import '../../routes/app_routes.dart';
 import '../../widgets/crm_suite_logo_mark.dart';
 import 'auth_controller.dart';
@@ -19,20 +18,24 @@ class SplashView extends GetView<AuthController> {
         return Scaffold(
           backgroundColor: _splashBlue,
           body: SafeArea(
-            child: Column(
+            child: Stack(
+              fit: StackFit.expand,
               children: [
-                const Spacer(),
-                _brandBlock(),
-                const Spacer(),
-                const SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.2,
-                    color: Colors.white54,
+                Center(child: _brandBlock()),
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 40),
+                    child: SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.2,
+                        color: Colors.white.withValues(alpha: 0.82),
+                      ),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 40),
               ],
             ),
           ),
@@ -40,15 +43,27 @@ class SplashView extends GetView<AuthController> {
       }
 
       if (controller.isLoggedIn.value) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          Get.offAllNamed(
-            resolveRoleHome(
-              roleName: controller.role.value,
-              hasPermission: controller.hasPermission,
+        // Navigation runs once from [AuthController.restoreSession] after bootstrap.
+        return Scaffold(
+          backgroundColor: _splashBlue,
+          body: SafeArea(
+            child: Stack(
+              fit: StackFit.expand,
+              children: const [
+                Center(
+                  child: SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.2,
+                      color: Colors.white70,
+                    ),
+                  ),
+                ),
+              ],
             ),
-          );
-        });
-        return const SizedBox.shrink();
+          ),
+        );
       }
 
       return Scaffold(
@@ -57,16 +72,19 @@ class SplashView extends GetView<AuthController> {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Spacer(),
-                _brandBlock(),
-                const SizedBox(height: 40),
-                Container(
-                  width: 10,
-                  height: 10,
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
+                Expanded(
+                  child: Center(child: _brandBlock()),
+                ),
+                Center(
+                  child: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 32),
@@ -104,11 +122,10 @@ class SplashView extends GetView<AuthController> {
                     'Already have an account? Sign in',
                     style: TextStyle(
                       fontSize: 11,
-                      color: Colors.white.withValues(alpha: 0.5),
+                      color: Colors.white.withValues(alpha: 0.75),
                     ),
                   ),
                 ),
-                const Spacer(),
               ],
             ),
           ),
@@ -118,34 +135,41 @@ class SplashView extends GetView<AuthController> {
   }
 
   Widget _brandBlock() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const CrmSuiteLogoMark(
-          size: 110,
-          preset: CrmSuiteLogoMarkPreset.splash,
-        ),
-        const SizedBox(height: 16),
-        const Text(
-          'EZ CRM',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.w800,
-            color: Colors.white,
-            letterSpacing: -0.3,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 320),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Center(
+            child: CrmSuiteLogoMark(
+              size: 132,
+              preset: CrmSuiteLogoMarkPreset.splash,
+            ),
           ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          "India's smartest sales\n& operations platform",
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 11,
-            height: 1.35,
-            color: Colors.white.withValues(alpha: 0.65),
+          const SizedBox(height: 16),
+          const Text(
+            'EzCRM',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+              letterSpacing: -0.3,
+            ),
           ),
-        ),
-      ],
+          const SizedBox(height: 6),
+          Text(
+            "India's smartest sales\n& operations platform",
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 11,
+              height: 1.35,
+              color: Colors.white.withValues(alpha: 0.82),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

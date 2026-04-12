@@ -60,8 +60,18 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
+  const refreshUser = useCallback(async () => {
+    const r = await api.get('/auth/me');
+    const u = r.data;
+    if (u) {
+      localStorage.setItem('user', JSON.stringify(u));
+      setUser(u);
+    }
+    return u;
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, login, logout }}>
+    <AuthContext.Provider value={{ user, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );
