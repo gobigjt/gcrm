@@ -3,7 +3,9 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import { inputCls, selectCls } from '../../components/FormField';
-import { useToast, ToastContainer } from '../../components/Toast';
+import { useToast } from '../../context/ToastContext';
+import { apiErrorMessage } from '../../utils/apiErrorMessage';
+import { promptDestructive } from '../../utils/promptDestructive';
 
 function canManageCrmFollowupTasks(role) {
   const r = String(role || '');
@@ -45,7 +47,7 @@ export default function CRMLeadDetailPage() {
   const { id } = useParams();
   const nav = useNavigate();
   const { user } = useAuth();
-  const { toasts, show: showToast } = useToast();
+  const { show: showToast } = useToast();
   const [lead, setLead] = useState(null);
   const [stages, setStages] = useState([]);
   const [users, setUsers] = useState([]);
@@ -77,8 +79,13 @@ export default function CRMLeadDetailPage() {
   }, [lead?.phone]);
 
   const changeStage = async (stage_id) => {
-    await api.patch(`/crm/leads/${id}`, { stage_id });
-    load();
+    try {
+      await api.patch(`/crm/leads/${id}`, { stage_id });
+      load();
+      showToast('Stage updated', 'success');
+    } catch (err) {
+      showToast(apiErrorMessage(err, 'Could not update stage'), 'error');
+    }
   };
 
   const logActivity = async (e) => {
@@ -88,6 +95,9 @@ export default function CRMLeadDetailPage() {
       await api.post(`/crm/leads/${id}/activities`, actForm);
       setActForm({ type: 'note', description: '' });
       load();
+      showToast('Activity added', 'success');
+    } catch (err) {
+      showToast(apiErrorMessage(err, 'Could not add activity'), 'error');
     } finally {
       setSaving(false);
     }
@@ -104,6 +114,8 @@ export default function CRMLeadDetailPage() {
       setFuForm({ due_date: '', description: '', assigned_to: '' });
       load();
       showToast('Task created successfully');
+    } catch (err) {
+      showToast(apiErrorMessage(err, 'Could not create task'), 'error');
     } finally {
       setSaving(false);
     }
@@ -135,29 +147,39 @@ export default function CRMLeadDetailPage() {
       });
       setFuEditId(null);
       load();
-      showToast('Task updated');
+      showToast('Task updated', 'success');
+    } catch (err) {
+      showToast(apiErrorMessage(err, 'Could not update task'), 'error');
     } finally {
       setSaving(false);
     }
   };
 
-  const deleteFollowup = async (fid) => {
-    if (!window.confirm('Delete this task?')) return;
-    setSaving(true);
-    try {
-      await api.delete(`/crm/leads/${id}/followups/${fid}`);
-      if (fuEditId === fid) setFuEditId(null);
-      load();
-      showToast('Task deleted');
-    } finally {
-      setSaving(false);
-    }
+  const deleteFollowup = (fid) => {
+    promptDestructive(showToast, {
+      message: 'Delete this task?',
+      onConfirm: async () => {
+        setSaving(true);
+        try {
+          await api.delete(`/crm/leads/${id}/followups/${fid}`);
+          if (fuEditId === fid) setFuEditId(null);
+          load();
+          showToast('Task deleted');
+        } finally {
+          setSaving(false);
+        }
+      },
+    });
   };
 
-  const onDelete = async () => {
-    if (!window.confirm('Delete this lead?')) return;
-    await api.delete(`/crm/leads/${id}`);
-    nav('/crm');
+  const onDelete = () => {
+    promptDestructive(showToast, {
+      message: 'Delete this lead?',
+      onConfirm: async () => {
+        await api.delete(`/crm/leads/${id}`);
+        nav('/crm');
+      },
+    });
   };
 
   const convertToCustomer = async () => {
@@ -172,7 +194,7 @@ export default function CRMLeadDetailPage() {
       );
       load();
     } catch (err) {
-      showToast(err?.response?.data?.message || err?.message || 'Could not convert lead');
+      showToast(err?.response?.data?.message || err?.message || 'Could not convert lead', 'error');
     } finally {
       setConverting(false);
     }
@@ -180,7 +202,6 @@ export default function CRMLeadDetailPage() {
 
   return (
     <div className="space-y-4 max-w-5xl">
-      <ToastContainer toasts={toasts} />
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-[16px] font-semibold text-slate-800 dark:text-slate-100">{leadDisplayTitle(lead) || 'Lead'}</h2>

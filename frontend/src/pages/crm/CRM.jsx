@@ -8,7 +8,9 @@ import { salesFromLeadPath } from '../../utils/salesFromLeadUrl';
 import Modal from '../../components/Modal';
 import Tabs  from '../../components/Tabs';
 import { Field, inputCls, selectCls, FormActions } from '../../components/FormField';
-import { useToast, ToastContainer } from '../../components/Toast';
+import { useToast } from '../../context/ToastContext';
+import { apiErrorMessage } from '../../utils/apiErrorMessage';
+import { promptDestructive } from '../../utils/promptDestructive';
 
 // ─── Helpers ─────────────────────────────────────────────────
 
@@ -203,6 +205,7 @@ function leadToForm(row) {
 }
 
 function LeadModal({ lead, stages, sources, users, onClose, onSaved }) {
+  const { show } = useToast();
   const [form, setForm] = useState(() => leadToForm(lead));
   const [loading, setLoading] = useState(false);
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
@@ -243,10 +246,14 @@ function LeadModal({ lead, stages, sources, users, onClose, onSaved }) {
       const body = buildPayload();
       if (lead) {
         await api.patch(`/crm/leads/${lead.id}`, body);
+        show('Lead updated', 'success');
       } else {
         await api.post('/crm/leads', body);
+        show('Lead created', 'success');
       }
       onSaved();
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not save lead'), 'error');
     } finally { setLoading(false); }
   };
 
@@ -336,7 +343,7 @@ function LeadModal({ lead, stages, sources, users, onClose, onSaved }) {
 
 function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManageTasks }) {
   const nav = useNavigate();
-  const { toasts: drawerToasts, show: showToast } = useToast();
+  const { show: showToast } = useToast();
   const [activities, setActivities] = useState([]);
   const [followups,  setFollowups]  = useState([]);
   const [actForm,    setActForm]    = useState({ type: 'note', description: '' });
@@ -357,8 +364,14 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
   useEffect(() => { reload(); }, [reload]);
 
   const changeStage = async (stage_id) => {
-    await api.patch(`/crm/leads/${lead.id}`, { stage_id });
-    reload(); onUpdated();
+    try {
+      await api.patch(`/crm/leads/${lead.id}`, { stage_id });
+      reload();
+      onUpdated();
+      showToast('Stage updated', 'success');
+    } catch (err) {
+      showToast(apiErrorMessage(err, 'Could not update stage'), 'error');
+    }
   };
 
   const logActivity = async (e) => {
@@ -368,6 +381,9 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
       await api.post(`/crm/leads/${lead.id}/activities`, actForm);
       setActForm({ type: 'note', description: '' });
       reload();
+      showToast('Activity added', 'success');
+    } catch (err) {
+      showToast(apiErrorMessage(err, 'Could not add activity'), 'error');
     } finally { setSaving(false); }
   };
 
@@ -381,7 +397,9 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
       });
       setFuForm({ due_date: '', description: '', assigned_to: '' });
       reload();
-      showToast('Task created successfully');
+      showToast('Task created successfully', 'success');
+    } catch (err) {
+      showToast(apiErrorMessage(err, 'Could not create task'), 'error');
     } finally { setSaving(false); }
   };
 
@@ -411,23 +429,29 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
       });
       setFuEditId(null);
       reload();
-      showToast('Task updated');
+      showToast('Task updated', 'success');
+    } catch (err) {
+      showToast(apiErrorMessage(err, 'Could not update task'), 'error');
     } finally {
       setSaving(false);
     }
   };
 
-  const deleteFollowup = async (fid) => {
-    if (!window.confirm('Delete this task?')) return;
-    setSaving(true);
-    try {
-      await api.delete(`/crm/leads/${lead.id}/followups/${fid}`);
-      if (fuEditId === fid) setFuEditId(null);
-      reload();
-      showToast('Task deleted');
-    } finally {
-      setSaving(false);
-    }
+  const deleteFollowup = (fid) => {
+    promptDestructive(showToast, {
+      message: 'Delete this task?',
+      onConfirm: async () => {
+        setSaving(true);
+        try {
+          await api.delete(`/crm/leads/${lead.id}/followups/${fid}`);
+          if (fuEditId === fid) setFuEditId(null);
+          reload();
+          showToast('Task deleted', 'success');
+        } finally {
+          setSaving(false);
+        }
+      },
+    });
   };
 
   const whatsappUrl = detail?.phone
@@ -473,12 +497,13 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
         data?.already_existed
           ? 'Customer already linked — see Sales → Customers.'
           : 'Customer created — see Sales → Customers.',
+        'success',
       );
       reload();
       onUpdated();
     } catch (err) {
       const msg = err?.response?.data?.message || err?.message || 'Could not convert lead';
-      showToast(msg);
+      showToast(msg, 'error');
     } finally {
       setSaving(false);
     }
@@ -495,7 +520,6 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
 
   return (
     <div className="fixed inset-0 z-40 flex">
-      <ToastContainer toasts={drawerToasts} />
       {/* Backdrop */}
       <div className="flex-1 bg-black/30 backdrop-blur-sm" onClick={onClose} />
 
@@ -951,6 +975,7 @@ function stageCountLike(stats, substr) {
 
 export default function CRM() {
   const { user } = useAuth();
+  const { show } = useToast();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const openedLeadFromUrl = useRef(null);
@@ -1105,12 +1130,17 @@ export default function CRM() {
     if (changed) setSearchParams(sp, { replace: true });
   }, [searchParams, setSearchParams]);
 
-  const handleDelete = async (id, e) => {
+  const handleDelete = (id, e) => {
     e.stopPropagation();
-    if (!confirm('Delete this lead?')) return;
-    await api.delete(`/crm/leads/${id}`);
-    loadStats();
-    loadLeads();
+    promptDestructive(show, {
+      message: 'Delete this lead?',
+      onConfirm: async () => {
+        await api.delete(`/crm/leads/${id}`);
+        loadStats();
+        loadLeads();
+        show('Lead deleted', 'success');
+      },
+    });
   };
 
   const openDrawer = (lead) => {
@@ -1140,7 +1170,6 @@ export default function CRM() {
           <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Search and filter your pipeline</p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <Link to="/crm/masters" className="btn-wf-secondary">Masters</Link>
           <button
             type="button"
             onClick={() => navigate('/crm/leads/new')}

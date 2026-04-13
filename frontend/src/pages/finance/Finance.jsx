@@ -2,6 +2,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
 import Table from '../../components/Table';
+import { useToast } from '../../context/ToastContext';
+import { apiErrorMessage } from '../../utils/apiErrorMessage';
 import Tabs  from '../../components/Tabs';
 
 /* ── helpers ─────────────────────────────────────── */
@@ -35,14 +37,20 @@ function StatCard({ label, value, sub, color = 'slate', icon }) {
 
 /* ── expense modal ───────────────────────────────── */
 function ExpenseModal({ accounts, onSave, onClose }) {
+  const { show } = useToast();
   const [form, setForm] = useState({ account_id: '', amount: '', expense_date: today(), category: '', description: '' });
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const CATS = ['Rent','Utilities','Salaries','Travel','Office Supplies','Marketing','Maintenance','Miscellaneous'];
 
   async function submit(e) {
     e.preventDefault();
-    await api.post('/finance/expenses', form);
-    onSave();
+    try {
+      await api.post('/finance/expenses', form);
+      show('Expense saved', 'success');
+      onSave();
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not save expense'), 'error');
+    }
   }
 
   return (
@@ -97,6 +105,7 @@ function ExpenseModal({ accounts, onSave, onClose }) {
 
 /* ── journal modal ───────────────────────────────── */
 function JournalModal({ accounts, onSave, onClose }) {
+  const { show } = useToast();
   const [form, setForm] = useState({ entry_date: today(), reference: '', description: '' });
   const [lines, setLines] = useState([
     { account_id: '', debit: '', credit: '', description: '' },
@@ -114,8 +123,13 @@ function JournalModal({ accounts, onSave, onClose }) {
   async function submit(e) {
     e.preventDefault();
     if (!balanced) return;
-    await api.post('/finance/journals', { ...form, lines });
-    onSave();
+    try {
+      await api.post('/finance/journals', { ...form, lines });
+      show('Journal entry saved', 'success');
+      onSave();
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not save journal'), 'error');
+    }
   }
 
   return (

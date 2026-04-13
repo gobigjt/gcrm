@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/client';
 import { Field, inputCls, FormActions } from '../../components/FormField';
+import { useToast } from '../../context/ToastContext';
+import { apiErrorMessage } from '../../utils/apiErrorMessage';
 
 const EMPTY = {
   name: '',
@@ -21,6 +23,7 @@ export default function InventoryProductForm() {
   const { id } = useParams();
   const isEdit = useMemo(() => Boolean(id), [id]);
   const nav = useNavigate();
+  const { show } = useToast();
   const [form, setForm] = useState(EMPTY);
   const [brands, setBrands] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -78,7 +81,10 @@ export default function InventoryProductForm() {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
       }
+      show(isEdit ? 'Product updated' : 'Product created', 'success');
       nav(`/inventory/products/${productId}`);
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not save product'), 'error');
     } finally {
       setLoading(false);
     }

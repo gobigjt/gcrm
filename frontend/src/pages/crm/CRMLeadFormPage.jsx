@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/client';
 import { Field, inputCls, selectCls } from '../../components/FormField';
+import { useToast } from '../../context/ToastContext';
+import { apiErrorMessage } from '../../utils/apiErrorMessage';
 
 const EMPTY = {
   name: '', email: '', phone: '', company: '', source_id: '', stage_id: '', assigned_to: '', assigned_manager_id: '', priority: 'warm', notes: '',
@@ -41,6 +43,7 @@ export default function CRMLeadFormPage() {
   const { id } = useParams();
   const isEdit = useMemo(() => Boolean(id), [id]);
   const nav = useNavigate();
+  const { show } = useToast();
   const [stages, setStages] = useState([]);
   const [sources, setSources] = useState([]);
   const [users, setUsers] = useState([]);
@@ -100,12 +103,16 @@ export default function CRMLeadFormPage() {
       const body = buildPayload();
       if (isEdit) {
         await api.patch(`/crm/leads/${id}`, body);
+        show('Lead updated', 'success');
         nav(`/crm/leads/${id}`);
       } else {
         const r = await api.post('/crm/leads', body);
         const lead = r.data?.lead || r.data;
+        show('Lead created', 'success');
         nav(lead?.id ? `/crm/leads/${lead.id}` : '/crm');
       }
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not save lead'), 'error');
     } finally {
       setLoading(false);
     }

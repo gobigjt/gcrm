@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
+import { apiErrorMessage } from '../../utils/apiErrorMessage';
 import { resolveApiPublicUrl } from '../../utils/publicAssetUrl';
 
 function fmtDate(dt) {
@@ -28,6 +30,7 @@ function Info({ label, value }) {
 
 export default function ProfilePage() {
   const { user, refreshUser } = useAuth();
+  const { show } = useToast();
   const [profile, setProfile] = useState(user || null);
   const [pwd, setPwd] = useState({ current_password: '', new_password: '', confirm_password: '' });
   const [pwdBusy, setPwdBusy] = useState(false);
@@ -76,8 +79,10 @@ export default function ProfilePage() {
       const u = await refreshUser();
       setProfile(u || null);
       setAvatarBust((k) => k + 1);
+      show('Profile photo updated', 'success');
     } catch (err) {
-      setAvatarErr(err?.response?.data?.message || 'Upload failed');
+      setAvatarErr(apiErrorMessage(err, 'Upload failed'));
+      show(apiErrorMessage(err, 'Upload failed'), 'error');
     } finally {
       setAvatarBusy(false);
     }
@@ -91,8 +96,10 @@ export default function ProfilePage() {
       const u = await refreshUser();
       setProfile(u || null);
       setAvatarBust((k) => k + 1);
+      show('Profile photo removed', 'success');
     } catch (err) {
-      setAvatarErr(err?.response?.data?.message || 'Remove failed');
+      setAvatarErr(apiErrorMessage(err, 'Remove failed'));
+      show(apiErrorMessage(err, 'Remove failed'), 'error');
     } finally {
       setAvatarBusy(false);
     }
@@ -122,9 +129,13 @@ export default function ProfilePage() {
         new_password: pwd.new_password,
       });
       setPwd({ current_password: '', new_password: '', confirm_password: '' });
-      setPwdMsg(r.data?.message || 'Password updated');
+      const okMsg = r.data?.message || 'Password updated';
+      setPwdMsg(okMsg);
+      show(okMsg, 'success');
     } catch (err) {
-      setPwdErr(err?.response?.data?.message || 'Failed to update password');
+      const errMsg = apiErrorMessage(err, 'Failed to update password');
+      setPwdErr(errMsg);
+      show(errMsg, 'error');
     } finally {
       setPwdBusy(false);
     }

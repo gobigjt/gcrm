@@ -2,6 +2,9 @@ import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
+import { apiErrorMessage } from '../../utils/apiErrorMessage';
+import { promptDestructive } from '../../utils/promptDestructive';
 import Table from '../../components/Table';
 import Modal from '../../components/Modal';
 import Tabs  from '../../components/Tabs';
@@ -217,6 +220,7 @@ function PermGrid({ allPerms, selected, onChange, readOnly = false }) {
 
 function ZonesTab() {
   const { user } = useAuth();
+  const { show } = useToast();
   const [zones, setZones] = useState([]);
   const [saving, setSaving] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -243,8 +247,9 @@ function ZonesTab() {
       setCreateOpen(false);
       setCForm({ name: '', code: '' });
       load();
+      show('Zone created', 'success');
     } catch (err) {
-      alert(err.response?.data?.message || 'Could not create zone');
+      show(apiErrorMessage(err, 'Could not create zone'), 'error');
     } finally {
       setSaving(false);
     }
@@ -257,21 +262,27 @@ function ZonesTab() {
       await api.patch(`/users/zones/${editZone.id}`, { name: eForm.name, code: eForm.code || null });
       setEditZone(null);
       load();
+      show('Zone updated', 'success');
     } catch (err) {
-      alert(err.response?.data?.message || 'Could not update zone');
+      show(apiErrorMessage(err, 'Could not update zone'), 'error');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = async (z) => {
-    if (!confirm(`Delete zone “${z.name}”? Users in this zone will have zone cleared.`)) return;
-    try {
-      await api.delete(`/users/zones/${z.id}`);
-      load();
-    } catch (err) {
-      alert(err.response?.data?.message || 'Could not delete zone');
-    }
+  const handleDelete = (z) => {
+    promptDestructive(show, {
+      message: `Delete zone “${z.name}”? Users in this zone will have zone cleared.`,
+      onConfirm: async () => {
+        try {
+          await api.delete(`/users/zones/${z.id}`);
+          load();
+          show('Zone deleted', 'success');
+        } catch (err) {
+          show(apiErrorMessage(err, 'Could not delete zone'), 'error');
+        }
+      },
+    });
   };
 
   return (
@@ -365,6 +376,7 @@ function ZonesTab() {
 
 function UsersTab({ allPerms, roles }) {
   const { user } = useAuth();
+  const { show } = useToast();
   const [users,  setUsers]  = useState([]);
   const [zones,  setZones]  = useState([]);
   const [saving, setSaving] = useState(false);
@@ -469,6 +481,9 @@ function UsersTab({ allPerms, roles }) {
         sales_manager_id: '',
       });
       load();
+      show('User created', 'success');
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not create user'), 'error');
     } finally {
       setSaving(false);
     }
@@ -494,6 +509,9 @@ function UsersTab({ allPerms, roles }) {
       await api.patch(`/users/${editModal.id}`, payload);
       setEditModal(null);
       load();
+      show('User updated', 'success');
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not update user'), 'error');
     } finally {
       setSaving(false);
     }
@@ -532,6 +550,9 @@ function UsersTab({ allPerms, roles }) {
       setAddExecutiveId('');
       await refreshSalesTeam();
       load();
+      show('Executive added to team', 'success');
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not add to team'), 'error');
     } finally {
       setSaving(false);
     }
@@ -544,6 +565,9 @@ function UsersTab({ allPerms, roles }) {
       await api.patch(`/users/${execId}`, { sales_manager_id: null });
       await refreshSalesTeam();
       load();
+      show('Executive removed from team', 'success');
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not remove from team'), 'error');
     } finally {
       setSaving(false);
     }
@@ -562,12 +586,22 @@ function UsersTab({ allPerms, roles }) {
     setSaving(true);
     try {
       await api.put(`/users/${permModal.user.id}/permissions`, { permission_ids: permModal.userPermIds });
-      setPermModal(null); load();
+      setPermModal(null);
+      load();
+      show('Permissions saved', 'success');
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not save permissions'), 'error');
     } finally { setSaving(false); }
   };
 
   const handleToggle = async (u) => {
-    await api.patch(`/users/${u.id}/toggle-status`); load();
+    try {
+      await api.patch(`/users/${u.id}/toggle-status`);
+      load();
+      show('User status updated', 'success');
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not update status'), 'error');
+    }
   };
 
   return (
@@ -845,6 +879,7 @@ function UsersTab({ allPerms, roles }) {
 
 function RolesTab({ allPerms, onReload }) {
   const { user } = useAuth();
+  const { show } = useToast();
   const [roles,  setRoles]  = useState([]);
   const [saving, setSaving] = useState(false);
   const [createModal,   setCreateModal]   = useState(false);
@@ -864,14 +899,32 @@ function RolesTab({ allPerms, onReload }) {
 
   const handleCreate = async (e) => {
     e.preventDefault(); setSaving(true);
-    try { await api.post('/users/roles', cForm); setCreateModal(false); setCForm({ name:'', description:'' }); load(); onReload(); }
-    finally { setSaving(false); }
+    try {
+      await api.post('/users/roles', cForm);
+      setCreateModal(false);
+      setCForm({ name:'', description:'' });
+      load();
+      onReload();
+      show('Role created', 'success');
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not create role'), 'error');
+    } finally { setSaving(false); }
   };
 
-  const handleDelete = async (role) => {
-    if (!confirm(`Delete role "${role.name}"?`)) return;
-    try { await api.delete(`/users/roles/${role.id}`); load(); onReload(); }
-    catch (e) { alert(e.response?.data?.message || 'Cannot delete role'); }
+  const handleDelete = (role) => {
+    promptDestructive(show, {
+      message: `Delete role "${role.name}"?`,
+      onConfirm: async () => {
+        try {
+          await api.delete(`/users/roles/${role.id}`);
+          load();
+          onReload();
+          show('Role deleted', 'success');
+        } catch (e) {
+          show(apiErrorMessage(e, 'Cannot delete role'), 'error');
+        }
+      },
+    });
   };
 
   const openEditPerms = async (role) => {
@@ -883,7 +936,11 @@ function RolesTab({ allPerms, onReload }) {
     setSaving(true);
     try {
       await api.put(`/users/roles/${editPermModal.role.id}/permissions`, { permission_ids: editPermModal.selectedIds });
-      setEditPermModal(null); load();
+      setEditPermModal(null);
+      load();
+      show('Role permissions saved', 'success');
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not save permissions'), 'error');
     } finally { setSaving(false); }
   };
 

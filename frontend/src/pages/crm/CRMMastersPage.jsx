@@ -3,7 +3,9 @@ import { Link } from 'react-router-dom';
 import api from '../../api/client';
 import Tabs from '../../components/Tabs';
 import { inputCls } from '../../components/FormField';
-import { useToast, ToastContainer } from '../../components/Toast';
+import { useToast } from '../../context/ToastContext';
+import { apiErrorMessage } from '../../utils/apiErrorMessage';
+import { promptDestructive } from '../../utils/promptDestructive';
 
 const TABS = ['Sources', 'Segments', 'Priority'];
 
@@ -26,7 +28,7 @@ const EMPTY_FORM = { name: '', color: '' };
 
 function MasterTab({ tabKey }) {
   const hasPriority = tabKey === 'Priority';
-  const { toasts, show: showToast } = useToast();
+  const { show: showToast } = useToast();
   const [items, setItems]       = useState([]);
   const [loading, setLoading]   = useState(false);
   const [form, setForm]         = useState(EMPTY_FORM);
@@ -67,31 +69,33 @@ function MasterTab({ tabKey }) {
       setForm(EMPTY_FORM);
       setEditId(null);
       load();
-    } catch {
-      showToast('Something went wrong', 'error');
+    } catch (err) {
+      showToast(apiErrorMessage(err, 'Something went wrong'), 'error');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this item?')) return;
-    setDeleting(id);
-    try {
-      await api.delete(`${API[tabKey]}/${id}`);
-      showToast('Deleted');
-      load();
-    } catch {
-      showToast('Could not delete', 'error');
-    } finally {
-      setDeleting(null);
-    }
+  const handleDelete = (delId) => {
+    promptDestructive(showToast, {
+      message: 'Delete this item?',
+      onConfirm: async () => {
+        setDeleting(delId);
+        try {
+          await api.delete(`${API[tabKey]}/${delId}`);
+          showToast('Deleted');
+          load();
+        } catch (err) {
+          showToast(apiErrorMessage(err, 'Could not delete'), 'error');
+        } finally {
+          setDeleting(null);
+        }
+      },
+    });
   };
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-      <ToastContainer toasts={toasts} />
-
       {/* Form */}
       <div className="xl:col-span-1">
         <div className="bg-white dark:bg-[#1a1d2e] rounded-2xl border border-slate-200/80 dark:border-slate-700/50 shadow-card p-5">

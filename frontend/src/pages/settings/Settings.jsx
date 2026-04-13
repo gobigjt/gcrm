@@ -1,6 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import api from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
+import { apiErrorMessage } from '../../utils/apiErrorMessage';
+import { promptDestructive } from '../../utils/promptDestructive';
 import { resolveApiPublicUrl } from '../../utils/publicAssetUrl';
 import Table from '../../components/Table';
 import Tabs  from '../../components/Tabs';
@@ -38,6 +41,7 @@ function letterIcon(text) {
 }
 
 function CompanyTab({ user }) {
+  const { show } = useToast();
   const [form,  setForm]  = useState({});
   const [saved, setSaved] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -51,9 +55,14 @@ function CompanyTab({ user }) {
 
   const handleSave = async (e) => {
     e.preventDefault();
-    await api.patch('/settings/company', form);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+    try {
+      await api.patch('/settings/company', form);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+      show('Company settings saved', 'success');
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not save settings'), 'error');
+    }
   };
 
   const handleLogoUpload = async (e) => {
@@ -66,8 +75,9 @@ function CompanyTab({ user }) {
       fd.append('file', file);
       const r = await api.post('/settings/company/logo', fd);
       setForm((f) => ({ ...f, ...(r.data || {}) }));
-    } catch {
-      /* toast optional */
+      show('Logo updated', 'success');
+    } catch (err) {
+      show(apiErrorMessage(err, 'Logo upload failed'), 'error');
     } finally {
       setUploadingLogo(false);
     }
@@ -78,6 +88,9 @@ function CompanyTab({ user }) {
     try {
       await api.patch('/settings/company', { logo_url: '' });
       setForm((f) => ({ ...f, logo_url: '' }));
+      show('Logo removed', 'success');
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not remove logo'), 'error');
     } finally {
       setUploadingLogo(false);
     }
@@ -93,8 +106,9 @@ function CompanyTab({ user }) {
       fd.append('file', file);
       const r = await api.post('/settings/company/favicon', fd);
       setForm((f) => ({ ...f, ...(r.data || {}) }));
-    } catch {
-      /* toast optional */
+      show('Favicon updated', 'success');
+    } catch (err) {
+      show(apiErrorMessage(err, 'Favicon upload failed'), 'error');
     } finally {
       setUploadingFavicon(false);
     }
@@ -105,6 +119,9 @@ function CompanyTab({ user }) {
     try {
       await api.patch('/settings/company', { favicon_url: '' });
       setForm((f) => ({ ...f, favicon_url: '' }));
+      show('Favicon removed', 'success');
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not remove favicon'), 'error');
     } finally {
       setUploadingFavicon(false);
     }
@@ -253,6 +270,7 @@ function CompanyTab({ user }) {
 // ─── Modules Tab ─────────────────────────────────────────────
 
 function ModulesTab() {
+  const { show } = useToast();
   const [modules,  setModules]  = useState([]);
   const [saving,   setSaving]   = useState(null); // module key being saved
 
@@ -267,6 +285,9 @@ function ModulesTab() {
     try {
       await api.patch(`/settings/modules/${mod.module}`, { is_enabled: !mod.is_enabled });
       load();
+      show('Module updated', 'success');
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not update module'), 'error');
     } finally { setSaving(null); }
   };
 
@@ -279,6 +300,9 @@ function ModulesTab() {
     try {
       await api.patch(`/settings/modules/${mod.module}`, { allowed_roles: next });
       load();
+      show('Module access updated', 'success');
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not update access'), 'error');
     } finally { setSaving(null); }
   };
 
@@ -411,6 +435,7 @@ export default function Settings() {
 // ─── Lead Platforms Tab ─────────────────────────────────────
 
 function LeadPlatformsTab() {
+  const { show } = useToast();
   const [pages,   setPages]   = useState([]);
   const [sheets,  setSheets]  = useState([]);
   const [sources, setSources] = useState([]);
@@ -599,32 +624,43 @@ function LeadPlatformsTab() {
     }
   };
 
-  const disconnect = async (id) => {
-    if (!confirm('Disconnect this Facebook page?')) return;
-    setSaving(true);
-    try {
-      await api.delete(`/crm/lead-platforms/facebook/pages/${id}`);
-      load();
-    } catch (e) {
-      setFbErr(errText(e));
-    } finally {
-      setSaving(false);
-    }
+  const disconnect = (id) => {
+    promptDestructive(show, {
+      message: 'Disconnect this Facebook page?',
+      confirmLabel: 'Disconnect',
+      onConfirm: async () => {
+        setSaving(true);
+        try {
+          await api.delete(`/crm/lead-platforms/facebook/pages/${id}`);
+          load();
+        } catch (e) {
+          setFbErr(errText(e));
+        } finally {
+          setSaving(false);
+        }
+      },
+    });
   };
 
-  const syncLeads = async (id) => {
-    if (!confirm('Sync leads from this Facebook Page now?')) return;
-    setSaving(true);
-    setSyncResult({ id: null, msg: '', isError: false });
-    try {
-      const { data } = await api.post(`/crm/lead-platforms/facebook/pages/${id}/sync-leads`);
-      setSyncResult({ id, msg: `${data.importedCount} new lead(s) imported`, isError: false });
-      load();
-    } catch (e) {
-      setSyncResult({ id, msg: errText(e), isError: true });
-    } finally {
-      setSaving(false);
-    }
+  const syncLeads = (id) => {
+    promptDestructive(show, {
+      message: 'Sync leads from this Facebook Page now?',
+      confirmLabel: 'Sync',
+      confirmVariant: 'primary',
+      onConfirm: async () => {
+        setSaving(true);
+        setSyncResult({ id: null, msg: '', isError: false });
+        try {
+          const { data } = await api.post(`/crm/lead-platforms/facebook/pages/${id}/sync-leads`);
+          setSyncResult({ id, msg: `${data.importedCount} new lead(s) imported`, isError: false });
+          load();
+        } catch (e) {
+          setSyncResult({ id, msg: errText(e), isError: true });
+        } finally {
+          setSaving(false);
+        }
+      },
+    });
   };
 
   const setSheet = (k) => (e) => setSheetForm((f) => ({ ...f, [k]: e.target.value }));
@@ -655,41 +691,52 @@ function LeadPlatformsTab() {
     }
   };
 
-  const syncSheetLeads = async (id) => {
-    if (!confirm('Sync leads from this Google Sheet now?')) return;
-    setSaving(true);
-    setSheetSyncResult({ id: null, msg: '', isError: false });
-    try {
-      const { data } = await api.post(
-        `/crm/lead-platforms/google-sheets/${id}/sync-leads`,
-        {},
-        { timeout: 180_000 },
-      );
-      const st = data?.stats || {};
-      const msg = `${data.importedCount || 0} saved (${st.createdRows ?? 0} new, ${st.updatedRows ?? 0} updated) · ${st.skippedRows || 0} skipped` +
-        ((st.skippedEmptyIdentity || st.skippedDuplicates)
-          ? ` (empty: ${st.skippedEmptyIdentity || 0}, duplicates: ${st.skippedDuplicates || 0})`
-          : '');
-      setSheetSyncResult({ id, msg, isError: false });
-      load();
-    } catch (e) {
-      setSheetSyncResult({ id, msg: errText(e), isError: true });
-    } finally {
-      setSaving(false);
-    }
+  const syncSheetLeads = (id) => {
+    promptDestructive(show, {
+      message: 'Sync leads from this Google Sheet now?',
+      confirmLabel: 'Sync',
+      confirmVariant: 'primary',
+      onConfirm: async () => {
+        setSaving(true);
+        setSheetSyncResult({ id: null, msg: '', isError: false });
+        try {
+          const { data } = await api.post(
+            `/crm/lead-platforms/google-sheets/${id}/sync-leads`,
+            {},
+            { timeout: 180_000 },
+          );
+          const st = data?.stats || {};
+          const msg = `${data.importedCount || 0} saved (${st.createdRows ?? 0} new, ${st.updatedRows ?? 0} updated) · ${st.skippedRows || 0} skipped` +
+            ((st.skippedEmptyIdentity || st.skippedDuplicates)
+              ? ` (empty: ${st.skippedEmptyIdentity || 0}, duplicates: ${st.skippedDuplicates || 0})`
+              : '');
+          setSheetSyncResult({ id, msg, isError: false });
+          load();
+        } catch (e) {
+          setSheetSyncResult({ id, msg: errText(e), isError: true });
+        } finally {
+          setSaving(false);
+        }
+      },
+    });
   };
 
-  const disconnectSheet = async (id) => {
-    if (!confirm('Disconnect this Google Sheet?')) return;
-    setSaving(true);
-    try {
-      await api.delete(`/crm/lead-platforms/google-sheets/${id}`);
-      load();
-    } catch (e) {
-      setSheetSyncResult({ id, msg: errText(e), isError: true });
-    } finally {
-      setSaving(false);
-    }
+  const disconnectSheet = (id) => {
+    promptDestructive(show, {
+      message: 'Disconnect this Google Sheet?',
+      confirmLabel: 'Disconnect',
+      onConfirm: async () => {
+        setSaving(true);
+        try {
+          await api.delete(`/crm/lead-platforms/google-sheets/${id}`);
+          load();
+        } catch (e) {
+          setSheetSyncResult({ id, msg: errText(e), isError: true });
+        } finally {
+          setSaving(false);
+        }
+      },
+    });
   };
 
   return (

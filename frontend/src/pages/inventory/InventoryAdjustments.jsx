@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../../api/client';
+import { useToast } from '../../context/ToastContext';
+import { apiErrorMessage } from '../../utils/apiErrorMessage';
 
 const EMPTY = {
   product_id: '',
@@ -10,6 +12,7 @@ const EMPTY = {
 };
 
 export default function InventoryAdjustmentsPage() {
+  const { show } = useToast();
   const [products, setProducts] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   const [movements, setMovements] = useState([]);
@@ -39,6 +42,9 @@ export default function InventoryAdjustmentsPage() {
       });
       setForm(EMPTY);
       load();
+      show('Stock adjustment saved', 'success');
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not save adjustment'), 'error');
     } finally {
       setLoading(false);
     }

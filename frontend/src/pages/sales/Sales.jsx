@@ -7,6 +7,9 @@ import { printSalesDocument, downloadSalesDocument } from './invoicePdf';
 import { SALES_FROM_LEAD_PARAM } from '../../utils/salesFromLeadUrl';
 import Modal from '../../components/Modal';
 import { Field, inputCls, selectCls, FormActions } from '../../components/FormField';
+import { useToast } from '../../context/ToastContext';
+import { apiErrorMessage } from '../../utils/apiErrorMessage';
+import { promptDestructive } from '../../utils/promptDestructive';
 
 // ─── Constants ───────────────────────────────────────────────
 
@@ -497,6 +500,7 @@ function customerFormFromLead(lead) {
 }
 
 function CustomerModal({ customer, crmLeadPrefill, onClose, onSaved }) {
+  const { show } = useToast();
   const [form, setForm] = useState(() => {
     if (customer) {
       return { name: customer.name, email: customer.email || '', phone: customer.phone || '', gstin: customer.gstin || '', address: customer.address || '' };
@@ -512,12 +516,16 @@ function CustomerModal({ customer, crmLeadPrefill, onClose, onSaved }) {
     try {
       if (customer) {
         await api.patch(`/sales/customers/${customer.id}`, form);
+        show('Customer updated', 'success');
       } else {
         const body = { ...form };
         if (crmLeadPrefill?.id) body.lead_id = crmLeadPrefill.id;
         await api.post('/sales/customers', body);
+        show('Customer created', 'success');
       }
       onSaved();
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not save customer'), 'error');
     } finally { setLoading(false); }
   };
 
@@ -546,6 +554,7 @@ const SALES_ORDER_STATUS_SET = new Set(SALES_ORDER_STATUS_LIST);
 
 function DocumentModal({ type, customers, products, initialCustomerId = '', existingId = null, onClose, onSaved, fullPage = false }) {
   const { user } = useAuth();
+  const { show } = useToast();
   const isQuote   = type === 'quotation';
   const isOrder   = type === 'order';
   const isInvoice = type === 'invoice';
@@ -793,7 +802,21 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
           items: lines,
         });
       }
+      const savedMsg = isEditQuote
+        ? 'Quotation updated'
+        : isEditInvoice
+          ? 'Invoice updated'
+          : isEditOrder
+            ? 'Order updated'
+            : isInvoice
+              ? 'Invoice created'
+              : isQuote
+                ? 'Quotation created'
+                : 'Order created';
+      show(savedMsg, 'success');
       onSaved();
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not save document'), 'error');
     } finally { setLoading(false); }
   };
 
@@ -1085,6 +1108,7 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
 // ─── Payment Modal ────────────────────────────────────────────
 
 function PaymentModal({ invoice, onClose, onSaved }) {
+  const { show } = useToast();
   const balance = Number(invoice.total_amount) - (invoice.payments || []).reduce((s, p) => s + Number(p.amount), 0);
   const [form, setForm] = useState({ amount: balance.toFixed(2), method: 'bank_transfer', payment_date: '', reference: '', notes: '' });
   const [loading, setLoading] = useState(false);
@@ -1094,7 +1118,10 @@ function PaymentModal({ invoice, onClose, onSaved }) {
     e.preventDefault(); setLoading(true);
     try {
       await api.post(`/sales/invoices/${invoice.id}/payments`, form);
+      show('Payment recorded', 'success');
       onSaved();
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not record payment'), 'error');
     } finally { setLoading(false); }
   };
 
@@ -1130,6 +1157,7 @@ const DETAIL_FULL_PAGE_TITLE = {
 };
 
 function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation, onEditInvoice, onEditOrder, fullPage = false }) {
+  const { show } = useToast();
   const [doc,     setDoc]     = useState(null);
   const [paying,  setPaying]  = useState(false);
 
@@ -1152,8 +1180,14 @@ function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation, onEditInv
   const changeStatus = async (status) => {
     const path = { quotation:'/sales/quotations', order:'/sales/orders' }[type];
     if (!path) return;
-    await api.patch(`${path}/${id}`, { status });
-    load(); onRefresh();
+    try {
+      await api.patch(`${path}/${id}`, { status });
+      load();
+      onRefresh();
+      show('Status updated', 'success');
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not update status'), 'error');
+    }
   };
 
   if (!doc) {
@@ -1516,6 +1550,7 @@ function leadBannerTitle(lead) {
 }
 
 export function SalesListPage({ segment }) {
+  const { show } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
   const [, setSearchParams] = useSearchParams();
@@ -1740,11 +1775,18 @@ export function SalesListPage({ segment }) {
         search={search.q}
         onSearch={search.setQ}
         selected={selected}
-        onDeleteSelected={async () => {
-          if (!confirm(`Delete ${selected.length} record(s)?`)) return;
+        onDeleteSelected={() => {
           const type = tabType[tab];
-          await Promise.all(selected.map(id => api.delete(`/sales/${type}s/${id}`)));
-          setSelected([]); loadData(); loadStats();
+          promptDestructive(show, {
+            message: `Delete ${selected.length} record(s)?`,
+            onConfirm: async () => {
+              await Promise.all(selected.map((rid) => api.delete(`/sales/${type}s/${rid}`)));
+              setSelected([]);
+              loadData();
+              loadStats();
+              show('Deleted', 'success');
+            },
+          });
         }}
       />
 
@@ -1797,10 +1839,16 @@ export function SalesListPage({ segment }) {
                           { icon: '👁', label: 'View in drawer', onClick: () => openDocDrawer(r) },
                           { icon: '↗', label: 'Open full page', onClick: () => navigate(viewTo) },
                           { icon: '✏️', label: 'Edit', onClick: () => navigate(`${salesEditPath(segment, r.id)}${location.search || ''}`) },
-                          { icon: '🗑', label: 'Delete', danger: true, onClick: async () => {
-                            if (!confirm('Delete this record?')) return;
-                            await api.delete(`/sales/${type}s/${r.id}`);
-                            loadData(); loadStats();
+                          { icon: '🗑', label: 'Delete', danger: true, onClick: () => {
+                            promptDestructive(show, {
+                              message: 'Delete this record?',
+                              onConfirm: async () => {
+                                await api.delete(`/sales/${type}s/${r.id}`);
+                                loadData();
+                                loadStats();
+                                show('Record deleted', 'success');
+                              },
+                            });
                           }},
                         ]} />
                       </td>
@@ -1851,10 +1899,16 @@ export function SalesListPage({ segment }) {
                         { icon: '👁', label: 'View in drawer', onClick: () => openDocDrawer(r) },
                         { icon: '↗', label: 'Open full page', onClick: () => navigate(viewTo) },
                         { icon: '✏️', label: 'Edit', onClick: () => navigate(`${salesEditPath(segment, r.id)}${location.search || ''}`) },
-                        { icon: '🗑', label: 'Delete', danger: true, onClick: async () => {
-                          if (!confirm('Delete this record?')) return;
-                          await api.delete(`/sales/${type}s/${r.id}`);
-                          loadData(); loadStats();
+                        { icon: '🗑', label: 'Delete', danger: true, onClick: () => {
+                          promptDestructive(show, {
+                            message: 'Delete this record?',
+                            onConfirm: async () => {
+                              await api.delete(`/sales/${type}s/${r.id}`);
+                              loadData();
+                              loadStats();
+                              show('Record deleted', 'success');
+                            },
+                          });
                         }},
                       ]} />
                     </td>
@@ -1911,6 +1965,7 @@ export function SalesListPage({ segment }) {
 // ─── Customers Page ───────────────────────────────────────────
 
 export function SalesCustomersPage() {
+  const { show } = useToast();
   const [customers, setCustomers] = useState([]);
   const [modal,     setModal]     = useState(null); // 'new' | 'edit'
   const [editCust,  setEditCust]  = useState(null);
@@ -1947,10 +2002,16 @@ export function SalesCustomersPage() {
         data={search.filtered} cols={cols} title="Customers"
         search={search.q} onSearch={search.setQ}
         selected={selected}
-        onDeleteSelected={async () => {
-          if (!confirm(`Delete ${selected.length} customer(s)?`)) return;
-          await Promise.all(selected.map(id => api.delete(`/sales/customers/${id}`)));
-          setSelected([]); load();
+        onDeleteSelected={() => {
+          promptDestructive(show, {
+            message: `Delete ${selected.length} customer(s)?`,
+            onConfirm: async () => {
+              await Promise.all(selected.map((cid) => api.delete(`/sales/customers/${cid}`)));
+              setSelected([]);
+              load();
+              show('Deleted', 'success');
+            },
+          });
         }}
       />
 
@@ -1987,10 +2048,15 @@ export function SalesCustomersPage() {
                   <td className="px-4 py-3 text-right">
                     <SettingsDropdown options={[
                       { icon: '✏️', label: 'Edit', onClick: () => { setEditCust(c); setModal('edit'); } },
-                      { icon: '🗑', label: 'Delete', danger: true, onClick: async () => {
-                        if (!confirm('Delete this customer?')) return;
-                        await api.delete(`/sales/customers/${c.id}`);
-                        load();
+                      { icon: '🗑', label: 'Delete', danger: true, onClick: () => {
+                        promptDestructive(show, {
+                          message: 'Delete this customer?',
+                          onConfirm: async () => {
+                            await api.delete(`/sales/customers/${c.id}`);
+                            load();
+                            show('Customer deleted', 'success');
+                          },
+                        });
                       }},
                     ]} />
                   </td>
@@ -2112,14 +2178,20 @@ export function SalesPaymentsPage() {
 // ─── Sale Returns Page ────────────────────────────────────────
 
 function ReturnPaymentModal({ ret, onClose, onSaved }) {
+  const { show } = useToast();
   const balance = Number(ret.total_amount) - Number(ret.paid_amount || 0);
   const [form, setForm] = useState({ amount: balance.toFixed(2), method: 'bank_transfer', payment_date: '', reference: '' });
   const [loading, setLoading] = useState(false);
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
   const handleSubmit = async (e) => {
     e.preventDefault(); setLoading(true);
-    try { await api.post(`/sales/returns/${ret.id}/payments`, form); onSaved(); }
-    finally { setLoading(false); }
+    try {
+      await api.post(`/sales/returns/${ret.id}/payments`, form);
+      show('Payment recorded', 'success');
+      onSaved();
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not record payment'), 'error');
+    } finally { setLoading(false); }
   };
   return (
     <Modal title="Make Payment (Return)" onClose={onClose}>
@@ -2144,6 +2216,7 @@ function ReturnPaymentModal({ ret, onClose, onSaved }) {
 }
 
 export function SalesReturnsPage() {
+  const { show } = useToast();
   const [returns,   setReturns]   = useState([]);
   const [customers, setCustomers] = useState([]);
   const [products,  setProducts]  = useState([]);
@@ -2204,6 +2277,9 @@ export function SalesReturnsPage() {
       setNewForm({ customer_id:'', return_date:'', reference_no:'', notes:'', is_interstate: false, discount_amount: 0, round_off: 0 });
       setNewItems([{ ...EMPTY_LINE }]);
       load();
+      show('Return created', 'success');
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not create return'), 'error');
     } finally { setSaving(false); }
   };
 
@@ -2228,10 +2304,16 @@ export function SalesReturnsPage() {
         data={search.filtered} cols={cols} title="Sale Returns"
         search={search.q} onSearch={search.setQ}
         selected={selected}
-        onDeleteSelected={async () => {
-          if (!confirm(`Delete ${selected.length} return(s)?`)) return;
-          await Promise.all(selected.map(id => api.delete(`/sales/returns/${id}`)));
-          setSelected([]); load();
+        onDeleteSelected={() => {
+          promptDestructive(show, {
+            message: `Delete ${selected.length} return(s)?`,
+            onConfirm: async () => {
+              await Promise.all(selected.map((rid) => api.delete(`/sales/returns/${rid}`)));
+              setSelected([]);
+              load();
+              show('Deleted', 'success');
+            },
+          });
         }}
       />
 
@@ -2269,10 +2351,15 @@ export function SalesReturnsPage() {
                   <td className="px-4 py-3 text-right">
                     <SettingsDropdown options={[
                       { icon: '₹', label: 'Record Payment', onClick: () => setModal({ type: 'pay', ret: r }) },
-                      { icon: '🗑', label: 'Delete', danger: true, onClick: async () => {
-                        if (!confirm('Delete this return?')) return;
-                        await api.delete(`/sales/returns/${r.id}`);
-                        load();
+                      { icon: '🗑', label: 'Delete', danger: true, onClick: () => {
+                        promptDestructive(show, {
+                          message: 'Delete this return?',
+                          onConfirm: async () => {
+                            await api.delete(`/sales/returns/${r.id}`);
+                            load();
+                            show('Return deleted', 'success');
+                          },
+                        });
                       }},
                     ]} />
                   </td>

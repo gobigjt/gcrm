@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import api from '../../api/client';
+import { useToast } from '../../context/ToastContext';
+import { apiErrorMessage } from '../../utils/apiErrorMessage';
 
 function imgSrc(path) {
   if (!path) return '';
@@ -11,6 +13,7 @@ function imgSrc(path) {
 }
 
 export default function InventoryProductDetail() {
+  const { show } = useToast();
   const { id } = useParams();
   const [product, setProduct] = useState(null);
   const [stockRows, setStockRows] = useState([]);
@@ -62,6 +65,9 @@ export default function InventoryProductDetail() {
       loadStock();
       const refreshed = await api.get(`/inventory/products/${id}`);
       setProduct(refreshed.data?.product || refreshed.data || null);
+      show('Stock updated', 'success');
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not update stock'), 'error');
     } finally {
       setAdjLoading(false);
     }

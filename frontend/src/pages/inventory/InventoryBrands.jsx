@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react';
 import api from '../../api/client';
 import Table from '../../components/Table';
+import { useToast } from '../../context/ToastContext';
+import { apiErrorMessage } from '../../utils/apiErrorMessage';
+import { promptDestructive } from '../../utils/promptDestructive';
 
 export default function InventoryBrandsPage() {
+  const { show } = useToast();
   const [items, setItems] = useState([]);
   const [name, setName] = useState('');
   const [editingId, setEditingId] = useState(null);
@@ -16,23 +20,42 @@ export default function InventoryBrandsPage() {
   const add = async (e) => {
     e.preventDefault();
     if (!name.trim()) return;
-    await api.post('/inventory/brands', { name: name.trim() });
-    setName('');
-    load();
+    try {
+      await api.post('/inventory/brands', { name: name.trim() });
+      setName('');
+      load();
+      show('Brand added', 'success');
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not add brand'), 'error');
+    }
   };
 
   const saveEdit = async (id) => {
     if (!editingName.trim()) return;
-    await api.patch(`/inventory/brands/${id}`, { name: editingName.trim() });
-    setEditingId(null);
-    setEditingName('');
-    load();
+    try {
+      await api.patch(`/inventory/brands/${id}`, { name: editingName.trim() });
+      setEditingId(null);
+      setEditingName('');
+      load();
+      show('Brand updated', 'success');
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not update brand'), 'error');
+    }
   };
 
-  const remove = async (id) => {
-    if (!window.confirm('Delete this brand?')) return;
-    await api.delete(`/inventory/brands/${id}`);
-    load();
+  const remove = (id) => {
+    promptDestructive(show, {
+      message: 'Delete this brand?',
+      onConfirm: async () => {
+        try {
+          await api.delete(`/inventory/brands/${id}`);
+          load();
+          show('Brand deleted', 'success');
+        } catch (err) {
+          show(apiErrorMessage(err, 'Could not delete brand'), 'error');
+        }
+      },
+    });
   };
 
   return (

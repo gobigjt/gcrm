@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react';
 import api from '../../api/client';
 import Table from '../../components/Table';
+import { useToast } from '../../context/ToastContext';
+import { apiErrorMessage } from '../../utils/apiErrorMessage';
+import { promptDestructive } from '../../utils/promptDestructive';
 
 export default function InventoryCategoriesPage() {
+  const { show } = useToast();
   const [items, setItems] = useState([]);
   const [name, setName] = useState('');
   const [editingId, setEditingId] = useState(null);
@@ -16,23 +20,42 @@ export default function InventoryCategoriesPage() {
   const add = async (e) => {
     e.preventDefault();
     if (!name.trim()) return;
-    await api.post('/inventory/categories', { name: name.trim() });
-    setName('');
-    load();
+    try {
+      await api.post('/inventory/categories', { name: name.trim() });
+      setName('');
+      load();
+      show('Category added', 'success');
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not add category'), 'error');
+    }
   };
 
   const saveEdit = async (id) => {
     if (!editingName.trim()) return;
-    await api.patch(`/inventory/categories/${id}`, { name: editingName.trim() });
-    setEditingId(null);
-    setEditingName('');
-    load();
+    try {
+      await api.patch(`/inventory/categories/${id}`, { name: editingName.trim() });
+      setEditingId(null);
+      setEditingName('');
+      load();
+      show('Category updated', 'success');
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not update category'), 'error');
+    }
   };
 
-  const remove = async (id) => {
-    if (!window.confirm('Delete this category?')) return;
-    await api.delete(`/inventory/categories/${id}`);
-    load();
+  const remove = (id) => {
+    promptDestructive(show, {
+      message: 'Delete this category?',
+      onConfirm: async () => {
+        try {
+          await api.delete(`/inventory/categories/${id}`);
+          load();
+          show('Category deleted', 'success');
+        } catch (err) {
+          show(apiErrorMessage(err, 'Could not delete category'), 'error');
+        }
+      },
+    });
   };
 
   return (
