@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider }   from './context/AuthContext';
 import { ThemeProvider }  from './context/ThemeContext';
 import { ModuleProvider } from './context/ModuleContext';
+import { ToastProvider } from './context/ToastContext';
 import PrivateRoute from './components/PrivateRoute';
 
 import Login    from './pages/auth/Login';
@@ -19,6 +20,7 @@ export default function App() {
     <ThemeProvider>
       <AuthProvider>
         <BrowserRouter>
+          <ToastProvider>
           <ModuleProvider>
             <Routes>
               <Route path="/login"    element={<Login />} />
@@ -33,6 +35,7 @@ export default function App() {
               <Route path="*"              element={<Navigate to="/" replace />} />
             </Routes>
           </ModuleProvider>
+          </ToastProvider>
         </BrowserRouter>
       </AuthProvider>
     </ThemeProvider>

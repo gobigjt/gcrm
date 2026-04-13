@@ -3,6 +3,9 @@ import api from '../../api/client';
 import Modal from '../../components/Modal';
 import Tabs  from '../../components/Tabs';
 import { Field, inputCls, selectCls, FormActions } from '../../components/FormField';
+import { useToast } from '../../context/ToastContext';
+import { apiErrorMessage } from '../../utils/apiErrorMessage';
+import { promptDestructive } from '../../utils/promptDestructive';
 
 // ─── Helpers ─────────────────────────────────────────────────
 
@@ -114,6 +117,7 @@ function POLineItems({ items, onChange, products }) {
 // ─── Vendor Modal ─────────────────────────────────────────────
 
 function VendorModal({ vendor, onClose, onSaved }) {
+  const { show } = useToast();
   const [form, setForm] = useState(vendor || { name:'', email:'', phone:'', gstin:'', address:'' });
   const [loading, setLoading] = useState(false);
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
@@ -123,7 +127,10 @@ function VendorModal({ vendor, onClose, onSaved }) {
     try {
       vendor ? await api.patch(`/purchase/vendors/${vendor.id}`, form)
              : await api.post('/purchase/vendors', form);
+      show(vendor ? 'Vendor updated' : 'Vendor created', 'success');
       onSaved();
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not save vendor'), 'error');
     } finally { setLoading(false); }
   };
 
@@ -146,6 +153,7 @@ function VendorModal({ vendor, onClose, onSaved }) {
 // ─── PO Modal ─────────────────────────────────────────────────
 
 function POModal({ vendors, products, onClose, onSaved }) {
+  const { show } = useToast();
   const [form,  setForm]  = useState({ vendor_id:'', order_date:'', expected_date:'', notes:'' });
   const [items, setItems] = useState([{ ...EMPTY_LINE }]);
   const [loading, setLoading] = useState(false);
@@ -159,7 +167,10 @@ function POModal({ vendors, products, onClose, onSaved }) {
         unit_price: Number(l.unit_price), gst_rate: Number(l.gst_rate), total: l.total,
       }));
       await api.post('/purchase/pos', { ...form, items: lines });
+      show('Purchase order created', 'success');
       onSaved();
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not create PO'), 'error');
     } finally { setLoading(false); }
   };
 
@@ -187,6 +198,7 @@ function POModal({ vendors, products, onClose, onSaved }) {
 // ─── GRN Modal ────────────────────────────────────────────────
 
 function GRNModal({ openPOs, products, onClose, onSaved }) {
+  const { show } = useToast();
   const [form,  setForm]  = useState({ po_id:'', notes:'' });
   const [items, setItems] = useState([{ product_id:'', quantity:1, warehouse_id:1 }]);
   const [warehouses, setWarehouses] = useState([]);
@@ -214,7 +226,10 @@ function GRNModal({ openPOs, products, onClose, onSaved }) {
     e.preventDefault(); setLoading(true);
     try {
       await api.post('/purchase/grns', { ...form, items });
+      show('GRN saved', 'success');
       onSaved();
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not save GRN'), 'error');
     } finally { setLoading(false); }
   };
 
@@ -265,11 +280,21 @@ function GRNModal({ openPOs, products, onClose, onSaved }) {
 // ─── PO Detail Drawer ─────────────────────────────────────────
 
 function PODrawer({ id, onClose, onRefresh }) {
+  const { show } = useToast();
   const [po, setPO] = useState(null);
   const load = useCallback(() => { api.get(`/purchase/pos/${id}`).then(r => setPO(r.data.po)); }, [id]);
   useEffect(() => { load(); }, [load]);
 
-  const changeStatus = async (status) => { await api.patch(`/purchase/pos/${id}`, { status }); load(); onRefresh(); };
+  const changeStatus = async (status) => {
+    try {
+      await api.patch(`/purchase/pos/${id}`, { status });
+      load();
+      onRefresh();
+      show('PO status updated', 'success');
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not update status'), 'error');
+    }
+  };
 
   if (!po) return (
     <div className="fixed inset-0 z-40 flex">
@@ -358,6 +383,7 @@ function PODrawer({ id, onClose, onRefresh }) {
 const TABS = ['Vendors', 'Purchase Orders', 'GRNs'];
 
 export default function Purchase() {
+  const { show } = useToast();
   const [tab,      setTab]      = useState('Vendors');
   const [data,     setData]     = useState([]);
   const [stats,    setStats]    = useState(null);
@@ -385,11 +411,17 @@ export default function Purchase() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const handleDelete = async (type, id, e) => {
+  const handleDelete = (type, id, e) => {
     e.stopPropagation();
-    if (!confirm('Delete this record?')) return;
-    await api.delete(`/purchase/${type}/${id}`);
-    loadData(); loadStats();
+    promptDestructive(show, {
+      message: 'Delete this record?',
+      onConfirm: async () => {
+        await api.delete(`/purchase/${type}/${id}`);
+        loadData();
+        loadStats();
+        show('Deleted', 'success');
+      },
+    });
   };
 
   const afterSave = () => {

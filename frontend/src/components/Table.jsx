@@ -1,4 +1,10 @@
-export default function Table({ cols, rows, empty = 'No records found' }) {
+export default function Table({
+  cols,
+  rows,
+  empty = 'No records found',
+  /** When true, last column allows wrapping (e.g. action button groups). */
+  relaxLastColumnWrap = false,
+}) {
   return (
     <div className="bg-white dark:bg-[#13152a] rounded-xl border border-slate-200 dark:border-slate-700/50 overflow-hidden">
       <div className="overflow-x-auto">
@@ -24,9 +30,16 @@ export default function Table({ cols, rows, empty = 'No records found' }) {
               </tr>
             ) : rows.map((row, i) => (
               <tr key={i} className="border-b border-slate-200/80 dark:border-slate-700/40 last:border-0 hover:bg-[#f5f4ef] dark:hover:bg-slate-800/30 transition-colors duration-100">
-                {row.map((cell, j) => (
-                  <td key={j} className="px-4 py-2.5 text-slate-800 dark:text-slate-200 whitespace-nowrap">{cell ?? '—'}</td>
-                ))}
+                {row.map((cell, j) => {
+                  const isLast = j === row.length - 1;
+                  const wrapCls =
+                    relaxLastColumnWrap && isLast ? 'whitespace-normal' : 'whitespace-nowrap';
+                  return (
+                    <td key={j} className={`px-4 py-2.5 text-slate-800 dark:text-slate-200 ${wrapCls}`}>
+                      {cell ?? '—'}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>

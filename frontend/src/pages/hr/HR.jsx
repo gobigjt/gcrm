@@ -4,6 +4,8 @@ import Table from '../../components/Table';
 import Tabs  from '../../components/Tabs';
 import Modal from '../../components/Modal';
 import { Field, inputCls, selectCls, FormActions } from '../../components/FormField';
+import { useToast } from '../../context/ToastContext';
+import { apiErrorMessage } from '../../utils/apiErrorMessage';
 
 const EMPTY = { employee_code:'', department:'', designation:'', phone:'', basic_salary:'', date_of_joining:'' };
 
@@ -61,6 +63,7 @@ const payBadge = s => {
 };
 
 export default function HR() {
+  const { show } = useToast();
   const [tab,       setTab]       = useState('Employees');
   const [employees, setEmployees] = useState([]);
   const [payroll,   setPayroll]   = useState([]);
@@ -102,8 +105,17 @@ export default function HR() {
 
   const handleSubmit = async (e) => {
     e.preventDefault(); setLoading(true);
-    try { await api.post('/hr/employees', form); setModal(false); setForm(EMPTY); loadEmp(); }
-    finally { setLoading(false); }
+    try {
+      await api.post('/hr/employees', form);
+      setModal(false);
+      setForm(EMPTY);
+      loadEmp();
+      show('Employee created', 'success');
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not create employee'), 'error');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const months = Array.from({length:12}, (_, i) => ({ v: i+1, l: new Date(0,i).toLocaleString('default',{month:'long'}) }));
