@@ -131,6 +131,29 @@ function displayRoleName(role) {
   return role === 'Super Admin' ? 'Admin' : role;
 }
 
+/** Remount when [src] changes so a failed image does not stick after a new URL is saved. */
+function TopBarAvatar({ src, initial }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <div className="w-7 h-7 rounded-full overflow-hidden bg-[#eeedfe] text-[#3c3489] flex items-center justify-center text-xs font-semibold relative">
+      {src && !failed ? (
+        <img
+          src={src}
+          alt="Profile"
+          className="absolute inset-0 w-full h-full object-cover"
+          onError={() => setFailed(true)}
+        />
+      ) : null}
+      <span
+        className={`w-full h-full flex items-center justify-center ${src && !failed ? 'opacity-0' : ''}`}
+        aria-hidden={Boolean(src && !failed)}
+      >
+        {initial}
+      </span>
+    </div>
+  );
+}
+
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
   const { canAccess } = useModules();
@@ -221,10 +244,6 @@ export default function Layout({ children }) {
   const roleCls = roleColors[roleLabel] || roleColors.default;
   const displayName = (user?.name || user?.email || 'User').toString().trim() || 'User';
   const avatarSrc = resolveApiPublicUrl(user?.avatar_url || user?.avatarUrl);
-  const [avatarFailed, setAvatarFailed] = useState(false);
-  useEffect(() => {
-    setAvatarFailed(false);
-  }, [avatarSrc]);
   const defaultLogoSrc = '/default-logo.png';
   const logoSrc = resolveApiPublicUrl(companyBranding?.logo_url) || defaultLogoSrc;
   const pageKey = Object.keys(PAGE_META)
@@ -362,23 +381,11 @@ export default function Layout({ children }) {
                 aria-haspopup="menu"
                 aria-expanded={userMenuOpen}
               >
-                <div className="w-7 h-7 rounded-full overflow-hidden bg-[#eeedfe] text-[#3c3489] flex items-center justify-center text-xs font-semibold relative">
-                  {avatarSrc && !avatarFailed ? (
-                    <img
-                      key={avatarSrc}
-                      src={avatarSrc}
-                      alt="Profile"
-                      className="absolute inset-0 w-full h-full object-cover"
-                      onError={() => setAvatarFailed(true)}
-                    />
-                  ) : null}
-                  <span
-                    className={`w-full h-full flex items-center justify-center ${avatarSrc && !avatarFailed ? 'opacity-0' : ''}`}
-                    aria-hidden={Boolean(avatarSrc && !avatarFailed)}
-                  >
-                    {displayName[0]?.toUpperCase() || 'U'}
-                  </span>
-                </div>
+                <TopBarAvatar
+                  key={`${user?.id ?? 'u'}-${avatarSrc || 'none'}`}
+                  src={avatarSrc}
+                  initial={displayName[0]?.toUpperCase() || 'U'}
+                />
                 <span className="max-w-[140px] truncate text-xs font-medium text-slate-700 dark:text-slate-200" title={displayName}>
                   {displayName}
                 </span>

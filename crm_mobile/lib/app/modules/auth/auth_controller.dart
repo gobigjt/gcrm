@@ -260,8 +260,36 @@ class AuthController extends GetxController {
     final newRefresh = refreshed['refresh_token'].toString();
     accessToken.value = newAccess;
     refreshToken.value = newRefresh;
-    final user = await _storage.readUser() ?? <String, dynamic>{'name': userName.value, 'role': role.value};
-    await _storage.saveSession(accessToken: newAccess, refreshToken: newRefresh, user: user);
+    // Re-fetch profile so `avatar_url` (and name/email) stay correct — do not reuse a stale
+    // `user_payload` from storage (token refresh runs often; Sales Manager CRM traffic triggers it).
+    // Avoid `_applySession` here: it clears `crmExecutiveScopeId` and reloads permissions.
+    try {
+      final me = await _api.me(newAccess);
+      final userMap = Map<String, dynamic>.from(me);
+      await _storage.saveSession(
+        accessToken: newAccess,
+        refreshToken: newRefresh,
+        user: userMap,
+      );
+      userAvatarUrl.value = _readAvatarUrlFromUser(userMap);
+      userName.value = (userMap['name'] ?? userName.value).toString();
+      userEmail.value = (userMap['email'] ?? userEmail.value).toString();
+      final newId = parseDynamicInt(userMap['id']);
+      if (newId > 0) userId.value = newId;
+    } catch (_) {
+      final user = await _storage.readUser() ??
+          <String, dynamic>{
+            'name': userName.value,
+            'role': role.value,
+            'email': userEmail.value,
+            'id': userId.value,
+          };
+      await _storage.saveSession(
+        accessToken: newAccess,
+        refreshToken: newRefresh,
+        user: user,
+      );
+    }
   }
 
   Future<void> _loadPermissionsFromServer(String access) async {

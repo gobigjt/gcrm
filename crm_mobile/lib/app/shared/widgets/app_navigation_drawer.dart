@@ -94,6 +94,15 @@ class AppNavigationDrawer extends StatelessWidget {
                       ),
                       const Divider(height: 1),
                       _DrawerTile(
+                        icon: Icons.person_outline,
+                        label: 'Profile',
+                        selected: _selected(AppRoutes.profile),
+                        onTap: () {
+                          Get.back();
+                          Get.toNamed(AppRoutes.profile);
+                        },
+                      ),
+                      _DrawerTile(
                         icon: Icons.settings_outlined,
                         label: 'Settings',
                         selected: _selected(AppRoutes.settings),
@@ -202,6 +211,15 @@ class AppNavigationDrawer extends StatelessWidget {
                       ),
                     ],
                     const Divider(height: 1),
+                    _DrawerTile(
+                      icon: Icons.person_outline,
+                      label: 'Profile',
+                      selected: _selected(AppRoutes.profile),
+                      onTap: () {
+                        Get.back();
+                        Get.toNamed(AppRoutes.profile);
+                      },
+                    ),
                     if (auth.hasPermission(AppPermissions.settings))
                       _DrawerTile(
                         icon: Icons.settings_outlined,
