@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../auth/auth_controller.dart';
+import '../../../core/auth/role_home_route.dart';
 import '../../../core/network/error_utils.dart';
 import '../../../core/utils/media_url.dart';
 import '../../../showcase/showcase_colors.dart';
@@ -66,7 +67,21 @@ class _ProfileViewState extends State<ProfileView> {
     final auth = Get.find<AuthController>();
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: Get.back),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () {
+            if (Navigator.of(context).canPop()) {
+              Get.back();
+            } else {
+              Get.offAllNamed(
+                resolveRoleHome(
+                  roleName: auth.role.value,
+                  hasPermission: auth.hasPermission,
+                ),
+              );
+            }
+          },
+        ),
         title: const Text('Profile'),
       ),
       body: ListView(
@@ -83,36 +98,46 @@ class _ProfileViewState extends State<ProfileView> {
                   Stack(
                     alignment: Alignment.center,
                     children: [
-                      CircleAvatar(
-                        radius: 36,
-                        backgroundColor: ShowcaseColors.accentLight,
-                        child: url.isEmpty
-                            ? Text(
-                                initial,
-                                style: const TextStyle(
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.w800,
-                                  color: ShowcaseColors.accentDark,
-                                ),
-                              )
-                            : ClipOval(
-                                child: Image.network(
+                      ClipOval(
+                        child: SizedBox(
+                          width: 72,
+                          height: 72,
+                          child: url.isEmpty
+                              ? ColoredBox(
+                                  color: ShowcaseColors.accentLight,
+                                  child: Center(
+                                    child: Text(
+                                      initial,
+                                      style: const TextStyle(
+                                        fontSize: 28,
+                                        fontWeight: FontWeight.w800,
+                                        color: ShowcaseColors.accentDark,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              : Image.network(
                                   url,
                                   key: ValueKey<String>(url),
                                   width: 72,
                                   height: 72,
                                   fit: BoxFit.cover,
                                   gaplessPlayback: true,
-                                  errorBuilder: (_, __, ___) => Text(
-                                    initial,
-                                    style: const TextStyle(
-                                      fontSize: 28,
-                                      fontWeight: FontWeight.w800,
-                                      color: ShowcaseColors.accentDark,
+                                  errorBuilder: (_, __, ___) => ColoredBox(
+                                    color: ShowcaseColors.accentLight,
+                                    child: Center(
+                                      child: Text(
+                                        initial,
+                                        style: const TextStyle(
+                                          fontSize: 28,
+                                          fontWeight: FontWeight.w800,
+                                          color: ShowcaseColors.accentDark,
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
+                        ),
                       ),
                       if (_avatarBusy)
                         const SizedBox(

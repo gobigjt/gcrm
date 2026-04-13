@@ -37,6 +37,7 @@ import '../modules/roles/super_admin/platform_summary_controller.dart';
 import '../modules/roles/super_admin/saas_billing_view.dart';
 import '../modules/roles/super_admin/tenants_list_view.dart';
 import 'app_routes.dart';
+import 'auth_middleware.dart';
 import 'permission_middleware.dart';
 import 'role_middleware.dart';
 import 'super_admin_middleware.dart';
@@ -236,7 +237,7 @@ abstract class AppPages {
     GetPage(
       name: AppRoutes.profile,
       page: () => const ProfileView(),
-      middlewares: [PermissionMiddleware(permission: AppPermissions.settings)],
+      middlewares: [AuthMiddleware()],
     ),
   ];
 }
