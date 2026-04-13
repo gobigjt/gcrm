@@ -220,7 +220,8 @@ export default function Layout({ children }) {
   const roleLabel = displayRoleName(user?.role);
   const roleCls = roleColors[roleLabel] || roleColors.default;
   const displayName = (user?.name || user?.email || 'User').toString().trim() || 'User';
-  const logoSrc = resolveApiPublicUrl(companyBranding?.logo_url);
+  const defaultLogoSrc = '/default-logo.png';
+  const logoSrc = resolveApiPublicUrl(companyBranding?.logo_url) || defaultLogoSrc;
   const pageKey = Object.keys(PAGE_META)
     .filter((p) => p === '/' || pathname.startsWith(p))
     .sort((a, b) => b.length - a.length)[0] || '/';
@@ -266,15 +267,11 @@ export default function Layout({ children }) {
       >
         <div className="h-[52px] border-b border-slate-200 dark:border-slate-700/50 px-3 flex items-center gap-2 w-full">
           <div className="flex items-center min-w-0 w-full justify-center md:justify-start">
-            {logoSrc ? (
-              <img
-                src={logoSrc}
-                alt="Company logo"
-                className="h-12 w-full max-w-[180px] rounded-md object-contain bg-white dark:bg-slate-900 p-0.5"
-              />
-            ) : (
-              <div className="h-12 w-full max-w-[180px] rounded-md bg-[#534ab7] flex items-center justify-center text-white text-xs font-bold">EZ</div>
-            )}
+            <img
+              src={logoSrc}
+              alt="Company logo"
+              className="h-12 w-full max-w-[180px] rounded-md object-contain bg-white dark:bg-slate-900 p-0.5"
+            />
           </div>
           <button
             type="button"
