@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import api from '../../api/client';
 
 function imgSrc(path) {
@@ -12,9 +12,7 @@ function imgSrc(path) {
 
 export default function InventoryProductDetail() {
   const { id } = useParams();
-  const nav = useNavigate();
   const [product, setProduct] = useState(null);
-  const [deleting, setDeleting] = useState(false);
   const [stockRows, setStockRows] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   const [adjLoading, setAdjLoading] = useState(false);
@@ -40,17 +38,6 @@ export default function InventoryProductDetail() {
       .then((r) => setWarehouses(r.data.warehouses || r.data || []))
       .catch(() => setWarehouses([]));
   }, [id]);
-
-  const remove = async () => {
-    if (!window.confirm('Delete this product? This cannot be undone.')) return;
-    setDeleting(true);
-    try {
-      await api.delete(`/inventory/products/${id}`);
-      nav('/inventory/products');
-    } finally {
-      setDeleting(false);
-    }
-  };
 
   if (!product) {
     return <div className="text-sm text-slate-500 dark:text-slate-300">Loading product...</div>;
@@ -89,9 +76,6 @@ export default function InventoryProductDetail() {
         </div>
         <div className="flex items-center gap-2">
           <Link className="btn-wf-secondary" to={`/inventory/products/${id}/edit`}>Edit</Link>
-          <button className="btn-wf-secondary text-red-600 dark:text-red-400" onClick={remove} disabled={deleting}>
-            {deleting ? 'Deleting…' : 'Delete'}
-          </button>
         </div>
       </div>
 

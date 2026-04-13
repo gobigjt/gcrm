@@ -141,17 +141,11 @@ function CompanyTab({ user }) {
           <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-3">Branding</h4>
           <Field label="Company logo">
           <div className="flex flex-wrap items-start gap-4">
-            {form.logo_url ? (
-              <img
-                src={resolveApiPublicUrl(form.logo_url)}
-                alt="Company logo"
-                className="max-h-20 max-w-[200px] object-contain rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 p-1"
-              />
-            ) : (
-              <div className="h-20 w-[120px] rounded-lg border border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center text-[11px] text-slate-400">
-                No logo
-              </div>
-            )}
+            <img
+              src={resolveApiPublicUrl(form.logo_url) || '/default-logo.png'}
+              alt="Company logo"
+              className="max-h-20 max-w-[200px] object-contain rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 p-1"
+            />
             <div className="flex flex-col gap-2">
               <label className="btn-wf-secondary text-xs cursor-pointer inline-block text-center">
                 {uploadingLogo ? 'Uploading…' : 'Upload image'}
