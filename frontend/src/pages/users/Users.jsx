@@ -40,19 +40,28 @@ const ACTION_META = {
 
 const OFF_CLS = 'bg-slate-100 text-slate-400 border-transparent dark:bg-slate-800 dark:text-slate-600';
 
+/** True when role string is Sales Executive (handles spacing / casing from roles API). */
+function isSalesExecutiveRole(role) {
+  return String(role || '').toLowerCase().replace(/[\s_-]+/g, '') === 'salesexecutive';
+}
+
 const ROLE_COLORS = {
-  'Super Admin': 'bg-gradient-to-r from-amber-100 to-orange-100 text-orange-700 dark:from-amber-900/30 dark:to-orange-900/30 dark:text-orange-300 ring-1 ring-orange-300 dark:ring-orange-700',
   Admin:         'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300',
+  'Sales Manager': 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-200',
   'Sales Executive': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
   HR:            'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300',
   default:       'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
 };
 
+function displayRoleName(role) {
+  return role === 'Super Admin' ? 'Admin' : role;
+}
+
 // ─── Helpers ────────────────────────────────────────────────
 
 const RoleBadge = ({ role }) => (
-  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${ROLE_COLORS[role] ?? ROLE_COLORS.default}`}>
-    {role}
+  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${ROLE_COLORS[displayRoleName(role)] ?? ROLE_COLORS.default}`}>
+    {displayRoleName(role)}
   </span>
 );
 
@@ -204,52 +213,340 @@ function PermGrid({ allPerms, selected, onChange, readOnly = false }) {
   );
 }
 
-// ─── Users Tab ───────────────────────────────────────────────
+// ─── Zones Tab ───────────────────────────────────────────────
 
-function UsersTab({ allPerms, roles }) {
+function ZonesTab() {
   const { user } = useAuth();
-  const [users,  setUsers]  = useState([]);
+  const [zones, setZones] = useState([]);
   const [saving, setSaving] = useState(false);
-
-  const [createModal, setCreateModal] = useState(false);
-  const [editModal,   setEditModal]   = useState(null);
-  const [permModal,   setPermModal]   = useState(null);
-
-  const [cForm, setCForm] = useState({ name:'', email:'', password:'', role:'Sales Executive' });
-  const [eForm, setEForm] = useState({ name:'', email:'', role:'Sales Executive', newPassword:'' });
-  const selectableRoles = roles.filter((r) => String(r?.name || '').toLowerCase() !== 'super admin');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editZone, setEditZone] = useState(null);
+  const [cForm, setCForm] = useState({ name: '', code: '' });
+  const [eForm, setEForm] = useState({ name: '', code: '' });
 
   const load = useCallback(() =>
-    api.get('/users').then(r => setUsers(r.data || [])).catch(() => {}), []);
+    api.get('/users/zones').then(r => setZones(r.data || [])).catch(() => {}), []);
 
   useEffect(() => {
     if (!user || !localStorage.getItem('access_token')) {
-      setUsers([]);
+      setZones([]);
       return;
     }
     load();
   }, [load, user]);
 
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await api.post('/users/zones', { name: cForm.name, code: cForm.code || null });
+      setCreateOpen(false);
+      setCForm({ name: '', code: '' });
+      load();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Could not create zone');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleEdit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await api.patch(`/users/zones/${editZone.id}`, { name: eForm.name, code: eForm.code || null });
+      setEditZone(null);
+      load();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Could not update zone');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (z) => {
+    if (!confirm(`Delete zone “${z.name}”? Users in this zone will have zone cleared.`)) return;
+    try {
+      await api.delete(`/users/zones/${z.id}`);
+      load();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Could not delete zone');
+    }
+  };
+
+  return (
+    <>
+      <div className="flex justify-end mb-4">
+        <button type="button" onClick={() => setCreateOpen(true)} className="btn-wf-primary">
+          + New Zone
+        </button>
+      </div>
+      <Table
+        cols={['Name', 'Code', 'Created', 'Actions']}
+        rows={zones.map(z => [
+          <span className="font-medium text-slate-800 dark:text-slate-100 text-sm">{z.name}</span>,
+          <span className="text-xs font-mono text-slate-500">{z.code || '—'}</span>,
+          z.created_at?.slice(0, 10) || '—',
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                setEditZone(z);
+                setEForm({ name: z.name, code: z.code || '' });
+              }}
+              className="px-2.5 py-1 text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700/60 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-all"
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDelete(z)}
+              className="px-2.5 py-1 text-xs font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 rounded-lg transition-all"
+            >
+              Delete
+            </button>
+          </div>,
+        ])}
+        empty="No zones yet"
+      />
+
+      {createOpen && (
+        <Modal title="New Zone" onClose={() => setCreateOpen(false)}>
+          <form onSubmit={handleCreate}>
+            <Field label="Name *">
+              <input
+                className={inputCls}
+                value={cForm.name}
+                onChange={e => setCForm(f => ({ ...f, name: e.target.value }))}
+                required
+                placeholder="North Region"
+              />
+            </Field>
+            <Field label="Code (optional)">
+              <input
+                className={inputCls}
+                value={cForm.code}
+                onChange={e => setCForm(f => ({ ...f, code: e.target.value }))}
+                placeholder="NR"
+              />
+            </Field>
+            <FormActions onCancel={() => setCreateOpen(false)} submitLabel="Create Zone" loading={saving} />
+          </form>
+        </Modal>
+      )}
+
+      {editZone && (
+        <Modal title={`Edit zone — ${editZone.name}`} onClose={() => setEditZone(null)}>
+          <form onSubmit={handleEdit}>
+            <Field label="Name *">
+              <input
+                className={inputCls}
+                value={eForm.name}
+                onChange={e => setEForm(f => ({ ...f, name: e.target.value }))}
+                required
+              />
+            </Field>
+            <Field label="Code (optional)">
+              <input
+                className={inputCls}
+                value={eForm.code}
+                onChange={e => setEForm(f => ({ ...f, code: e.target.value }))}
+              />
+            </Field>
+            <FormActions onCancel={() => setEditZone(null)} submitLabel="Save Zone" loading={saving} />
+          </form>
+        </Modal>
+      )}
+    </>
+  );
+}
+
+// ─── Users Tab ───────────────────────────────────────────────
+
+function UsersTab({ allPerms, roles }) {
+  const { user } = useAuth();
+  const [users,  setUsers]  = useState([]);
+  const [zones,  setZones]  = useState([]);
+  const [saving, setSaving] = useState(false);
+
+  const [createModal, setCreateModal] = useState(false);
+  const [editModal,   setEditModal]   = useState(null);
+  const [permModal,   setPermModal]   = useState(null);
+  const [salesTeam, setSalesTeam] = useState({ assigned: [], available: [] });
+  const [addExecutiveId, setAddExecutiveId] = useState('');
+  const [salesManagersList, setSalesManagersList] = useState([]);
+
+  const [cForm, setCForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+    role: 'Sales Executive',
+    zone_id: '',
+    sales_manager_id: '',
+  });
+  const [eForm, setEForm] = useState({
+    name: '',
+    email: '',
+    role: 'Sales Executive',
+    newPassword: '',
+    zone_id: '',
+    sales_manager_id: '',
+  });
+  const selectableRoles = roles.filter((r) => String(r?.name || '').toLowerCase() !== 'super admin');
+
+  const loadSalesManagersList = useCallback(() =>
+    api.get('/users/sales-managers').then(r => setSalesManagersList(r.data || [])).catch(() => setSalesManagersList([])),
+  []);
+
+  const load = useCallback(() =>
+    api.get('/users').then(r => setUsers(r.data || [])).catch(() => {}), []);
+
+  const loadZones = useCallback(() =>
+    api.get('/users/zones').then(r => setZones(r.data || [])).catch(() => {}), []);
+
+  useEffect(() => {
+    if (!user || !localStorage.getItem('access_token')) {
+      setUsers([]);
+      setZones([]);
+      return;
+    }
+    load();
+    loadZones();
+  }, [load, loadZones, user]);
+
+  useEffect(() => {
+    if (createModal || editModal) loadSalesManagersList();
+  }, [createModal, editModal, loadSalesManagersList]);
+
+  useEffect(() => {
+    if (!editModal || editModal.role !== 'Sales Manager') {
+      setSalesTeam({ assigned: [], available: [] });
+      setAddExecutiveId('');
+      return;
+    }
+    let cancel = false;
+    (async () => {
+      try {
+        const r = await api.get(`/users/managers/${editModal.id}/sales-team`);
+        if (!cancel) {
+          setSalesTeam({
+            assigned: r.data?.assigned || [],
+            available: r.data?.available || [],
+          });
+        }
+      } catch {
+        if (!cancel) setSalesTeam({ assigned: [], available: [] });
+      }
+    })();
+    return () => { cancel = true; };
+  }, [editModal]);
+
   const setC = k => e => setCForm(f => ({ ...f, [k]: e.target.value }));
   const setE = k => e => setEForm(f => ({ ...f, [k]: e.target.value }));
 
   const handleCreate = async (e) => {
-    e.preventDefault(); setSaving(true);
-    try { await api.post('/users', cForm); setCreateModal(false); setCForm({ name:'', email:'', password:'', role:'Sales Executive' }); load(); }
-    finally { setSaving(false); }
+    e.preventDefault();
+    setSaving(true);
+    const payload = {
+      name: cForm.name,
+      email: cForm.email,
+      password: cForm.password,
+      role: cForm.role,
+      zone_id: cForm.zone_id === '' || cForm.zone_id == null ? null : Number(cForm.zone_id),
+    };
+    if (isSalesExecutiveRole(cForm.role) && cForm.sales_manager_id !== '' && cForm.sales_manager_id != null) {
+      payload.sales_manager_id = Number(cForm.sales_manager_id);
+    }
+    try {
+      await api.post('/users', payload);
+      setCreateModal(false);
+      setCForm({
+        name: '',
+        email: '',
+        password: '',
+        role: 'Sales Executive',
+        zone_id: '',
+        sales_manager_id: '',
+      });
+      load();
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleEdit = async (e) => {
-    e.preventDefault(); setSaving(true);
-    const payload = { name: eForm.name, email: eForm.email, role: eForm.role };
+    e.preventDefault();
+    setSaving(true);
+    const payload = {
+      name: eForm.name,
+      email: eForm.email,
+      role: eForm.role,
+      zone_id: eForm.zone_id === '' || eForm.zone_id == null ? null : Number(eForm.zone_id),
+    };
     if (eForm.newPassword) payload.password = eForm.newPassword;
-    try { await api.patch(`/users/${editModal.id}`, payload); setEditModal(null); load(); }
-    finally { setSaving(false); }
+    if (isSalesExecutiveRole(eForm.role)) {
+      payload.sales_manager_id =
+        eForm.sales_manager_id === '' || eForm.sales_manager_id == null
+          ? null
+          : Number(eForm.sales_manager_id);
+    }
+    try {
+      await api.patch(`/users/${editModal.id}`, payload);
+      setEditModal(null);
+      load();
+    } finally {
+      setSaving(false);
+    }
   };
 
   const openEdit = (u) => {
-    setEForm({ name: u.name, email: u.email, role: u.role, newPassword: '' });
+    setEForm({
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      newPassword: '',
+      zone_id: u.zone_id ?? '',
+      sales_manager_id: u.sales_manager_id ?? '',
+    });
     setEditModal(u);
+  };
+
+  const refreshSalesTeam = async () => {
+    if (!editModal || editModal.role !== 'Sales Manager') return;
+    try {
+      const r = await api.get(`/users/managers/${editModal.id}/sales-team`);
+      setSalesTeam({
+        assigned: r.data?.assigned || [],
+        available: r.data?.available || [],
+      });
+    } catch {
+      setSalesTeam({ assigned: [], available: [] });
+    }
+  };
+
+  const handleAddExecutiveToTeam = async () => {
+    if (!addExecutiveId || !editModal) return;
+    setSaving(true);
+    try {
+      await api.patch(`/users/${addExecutiveId}`, { sales_manager_id: editModal.id });
+      setAddExecutiveId('');
+      await refreshSalesTeam();
+      load();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRemoveExecutiveFromTeam = async (execId) => {
+    if (!editModal) return;
+    setSaving(true);
+    try {
+      await api.patch(`/users/${execId}`, { sales_manager_id: null });
+      await refreshSalesTeam();
+      load();
+    } finally {
+      setSaving(false);
+    }
   };
 
   const openPerms = async (u) => {
@@ -282,7 +579,7 @@ function UsersTab({ allPerms, roles }) {
       </div>
 
       <Table
-        cols={['User', 'Role', 'Overrides', 'Status', 'Joined', 'Actions']}
+        cols={['User', 'Role', 'Zone', 'Overrides', 'Status', 'Joined', 'Actions']}
         rows={users.map(u => [
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">
@@ -291,9 +588,15 @@ function UsersTab({ allPerms, roles }) {
             <div>
               <p className="font-medium text-slate-800 dark:text-slate-100 text-sm">{u.name}</p>
               <p className="text-xs text-slate-400">{u.email}</p>
+              {u.role === 'Sales Executive' && u.sales_manager_name && (
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  Manager: {u.sales_manager_name}
+                </p>
+              )}
             </div>
           </div>,
           <RoleBadge role={u.role} />,
+          <span className="text-xs text-slate-600 dark:text-slate-300">{u.zone_name || '—'}</span>,
           <button onClick={() => openPerms(u)}
             className="flex items-center gap-1.5 text-xs text-brand-600 dark:text-brand-400 hover:underline font-medium">
             <span className="w-5 h-5 rounded-md bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center text-[10px] font-bold">
@@ -335,10 +638,46 @@ function UsersTab({ allPerms, roles }) {
                 <input className={inputCls} type="password" value={cForm.password} onChange={setC('password')} required minLength={6} placeholder="Min 6 characters" />
               </Field>
               <Field label="Role">
-                <select className={selectCls} value={cForm.role} onChange={setC('role')}>
+                <select
+                  className={selectCls}
+                  value={cForm.role}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setCForm((f) => ({
+                      ...f,
+                      role: v,
+                      sales_manager_id: isSalesExecutiveRole(v) ? f.sales_manager_id : '',
+                    }));
+                  }}
+                >
                   {selectableRoles.map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
                 </select>
               </Field>
+              <Field label="Zone">
+                <select className={selectCls} value={cForm.zone_id} onChange={setC('zone_id')}>
+                  <option value="">— None —</option>
+                  {zones.map(z => (
+                    <option key={z.id} value={z.id}>{z.name}</option>
+                  ))}
+                </select>
+              </Field>
+              {isSalesExecutiveRole(cForm.role) && (
+                <div className="col-span-2">
+                  <Field label="Sales manager (optional)">
+                    <select className={selectCls} value={cForm.sales_manager_id} onChange={setC('sales_manager_id')}>
+                      <option value="">— None —</option>
+                      {salesManagersList.map(m => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </select>
+                    {salesManagersList.length === 0 && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                        No Sales Manager users yet — create one first to assign here.
+                      </p>
+                    )}
+                  </Field>
+                </div>
+              )}
             </div>
             <FormActions onCancel={() => setCreateModal(false)} submitLabel="Create User" loading={saving} />
           </form>
@@ -357,14 +696,109 @@ function UsersTab({ allPerms, roles }) {
                 <input className={inputCls} type="email" value={eForm.email} onChange={setE('email')} required />
               </Field>
               <Field label="Role">
-                <select className={selectCls} value={eForm.role} onChange={setE('role')}>
+                <select
+                  className={selectCls}
+                  value={eForm.role}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setEForm((f) => ({
+                      ...f,
+                      role: v,
+                      sales_manager_id: isSalesExecutiveRole(v) ? f.sales_manager_id : '',
+                    }));
+                  }}
+                >
                   {selectableRoles.map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
                 </select>
               </Field>
               <Field label="New Password">
                 <input className={inputCls} type="password" value={eForm.newPassword} onChange={setE('newPassword')} placeholder="Leave blank to keep" minLength={6} />
               </Field>
+              <Field label="Zone">
+                <select className={selectCls} value={eForm.zone_id} onChange={setE('zone_id')}>
+                  <option value="">— None —</option>
+                  {zones.map(z => (
+                    <option key={z.id} value={z.id}>{z.name}</option>
+                  ))}
+                </select>
+              </Field>
+              {isSalesExecutiveRole(eForm.role) && (
+                <div className="col-span-2">
+                  <Field label="Sales manager (optional)">
+                    <select className={selectCls} value={eForm.sales_manager_id} onChange={setE('sales_manager_id')}>
+                      <option value="">— None —</option>
+                      {salesManagersList.filter(m => m.id !== editModal.id).map(m => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </select>
+                    {salesManagersList.length === 0 && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                        No Sales Manager users yet — create one first to assign here.
+                      </p>
+                    )}
+                  </Field>
+                </div>
+              )}
             </div>
+
+            {eForm.role === 'Sales Manager' && (
+              <div className="mt-5 pt-4 border-t border-slate-200 dark:border-slate-700/60 space-y-3">
+                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                  Sales executives on this team
+                </p>
+                {salesTeam.assigned.length === 0 ? (
+                  <p className="text-sm text-slate-500 dark:text-slate-400">No executives assigned yet.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {salesTeam.assigned.map(ex => (
+                      <li
+                        key={ex.id}
+                        className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm"
+                      >
+                        <span>
+                          <span className="font-medium text-slate-800 dark:text-slate-100">{ex.name}</span>
+                          <span className="text-slate-400 text-xs ml-2">{ex.email}</span>
+                          {ex.zone_name && (
+                            <span className="text-xs text-slate-500 block mt-0.5">Zone: {ex.zone_name}</span>
+                          )}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveExecutiveFromTeam(ex.id)}
+                          disabled={saving}
+                          className="px-2 py-1 text-xs font-medium text-red-600 bg-red-50 dark:bg-red-900/20 rounded-md hover:bg-red-100 disabled:opacity-50"
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="flex flex-wrap items-end gap-2 pt-1">
+                  <Field label="Add executive">
+                    <select
+                      className={`${selectCls} min-w-[200px]`}
+                      value={addExecutiveId}
+                      onChange={e => setAddExecutiveId(e.target.value)}
+                    >
+                      <option value="">— Select —</option>
+                      {salesTeam.available.map(ex => (
+                        <option key={ex.id} value={ex.id}>{ex.name}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <button
+                    type="button"
+                    onClick={handleAddExecutiveToTeam}
+                    disabled={saving || !addExecutiveId}
+                    className="btn-wf-secondary px-3 py-2 text-sm rounded-lg disabled:opacity-50"
+                  >
+                    Add to team
+                  </button>
+                </div>
+              </div>
+            )}
+
             <FormActions onCancel={() => setEditModal(null)} submitLabel="Save Changes" loading={saving} />
           </form>
         </Modal>
@@ -587,6 +1021,7 @@ function PermissionsTab({ allPerms }) {
 
 const USERS_TAB_BY_PARAM = {
   users: 'Users',
+  zones: 'Zones',
   roles: 'Roles',
   permissions: 'Permissions',
   rbac: 'Permissions',
@@ -628,9 +1063,10 @@ export default function Users() {
         </p>
       </div>
 
-      <Tabs tabs={['Users', 'Roles', 'Permissions']} active={tab} onChange={setTab} />
+      <Tabs tabs={['Users', 'Zones', 'Roles', 'Permissions']} active={tab} onChange={setTab} />
 
       {tab === 'Users'       && <UsersTab       key={`u-${loadKey}`} allPerms={allPerms} roles={roles} />}
+      {tab === 'Zones'       && <ZonesTab       key={`z-${loadKey}`} />}
       {tab === 'Roles'       && <RolesTab       key={`r-${loadKey}`} allPerms={allPerms} onReload={reload} />}
       {tab === 'Permissions' && <PermissionsTab allPerms={allPerms} />}
     </div>

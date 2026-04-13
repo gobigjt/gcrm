@@ -106,8 +106,8 @@ flutter_launcher_icons:
   android: true
   ios: true
   image_path: "assets/images/ez_crm_logo.png"
-  # Match app icon blues; after regen, re-point foreground to @drawable/ic_launcher_fg_inset for 5dp left inset.
   adaptive_icon_background: "#0C447C"
   adaptive_icon_foreground: "assets/images/ez_crm_logo.png"
-  adaptive_icon_foreground_inset: 0
+  # Foreground padding (%) for adaptive + legacy Android icons; avoids edge bleed.
+  adaptive_icon_foreground_inset: 18
   remove_alpha_ios: true

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { RedisService }    from '../../redis/redis.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -62,10 +62,54 @@ export class LeadsService {
     return dt.toISOString();
   }
 
+  /**
+   * For Sales Executive / Sales Manager list scope: user id whose `assigned_to`/`created_by` rows are visible.
+   * Sales Manager may pass `filters.assigned_to` = a reporting executive to narrow the pipeline.
+   */
+  private async resolveScopedLeadUserId(
+    filters: any,
+    currentUser?: { id?: unknown; role?: unknown },
+  ): Promise<number | null> {
+    const uid = Number(currentUser?.id);
+    if (!this.isOwnAssignedScope(currentUser?.role) || !Number.isInteger(uid) || uid <= 0) return null;
+
+    const roleStr = String(currentUser?.role || '').trim().toLowerCase();
+    if (roleStr === 'sales manager') {
+      const raw = filters?.assigned_to;
+      if (raw != null && String(raw).trim() !== '') {
+        const execId = Number(raw);
+        if (Number.isInteger(execId) && execId > 0 && execId !== uid) {
+          const v = await this.db.query(
+            `SELECT 1 FROM users
+              WHERE id = $1 AND role = 'Sales Executive' AND is_active = TRUE AND sales_manager_id = $2`,
+            [execId, uid],
+          );
+          if (v.rows[0]) return execId;
+        }
+      }
+    }
+    return uid;
+  }
+
+  /** Sales executives reporting to the current user (Sales Manager only; others get []). */
+  async reportingExecutives(currentUser?: { id?: unknown; role?: unknown }) {
+    const uid = Number(currentUser?.id);
+    const roleStr = String(currentUser?.role || '').trim().toLowerCase();
+    if (roleStr !== 'sales manager' || !Number.isInteger(uid) || uid <= 0) return [];
+    const res = await this.db.query(
+      `SELECT id, name, email FROM users
+        WHERE role = 'Sales Executive' AND is_active = TRUE AND sales_manager_id = $1
+       ORDER BY LOWER(name)`,
+      [uid],
+    );
+    return res.rows;
+  }
+
   /** Shared WHERE for lead list + count (`l` alias). Strips `page` / `page_size` / `limit` from filters. */
   private buildLeadListWhere(
     filters: any,
     currentUser?: { id?: unknown; role?: unknown },
+    scopedUserId: number | null = null,
   ): { where: string; vals: any[] } {
     const f = filters && typeof filters === 'object' ? { ...filters } : {};
     delete f.page;
@@ -90,10 +134,9 @@ export class LeadsService {
     }
     const uid = Number(currentUser?.id);
     const forceOwn = this.isOwnAssignedScope(currentUser?.role) && Number.isInteger(uid) && uid > 0;
-    if (forceOwn) {
-      // Show leads assigned to OR created by this sales executive
+    if (scopedUserId != null && scopedUserId > 0) {
       conds.push(`(l.assigned_to=$${i} OR l.created_by=$${i})`);
-      vals.push(uid);
+      vals.push(scopedUserId);
       i++;
     }
     if (f.stage_id) {
@@ -140,7 +183,8 @@ export class LeadsService {
    * With `page` (>=1): returns `{ data, total, page, page_size }`.
    */
   async list(filters: any, currentUser?: { id?: unknown; role?: unknown }) {
-    const { where, vals } = this.buildLeadListWhere(filters, currentUser);
+    const scopedUserId = await this.resolveScopedLeadUserId(filters, currentUser);
+    const { where, vals } = this.buildLeadListWhere(filters, currentUser, scopedUserId);
     const orderBy = `ORDER BY
          CASE l.priority WHEN 'hot' THEN 0 WHEN 'warm' THEN 1 ELSE 2 END,
          l.created_at DESC`;
@@ -186,9 +230,27 @@ export class LeadsService {
     const conds = ['l.id=$1'];
     const vals: any[] = [id];
     const uid = Number(currentUser?.id);
+    const roleStr = String(currentUser?.role || '').trim().toLowerCase();
     if (this.isOwnAssignedScope(currentUser?.role) && Number.isInteger(uid) && uid > 0) {
-      conds.push(`l.assigned_to=$2`);
-      vals.push(uid);
+      if (roleStr === 'sales manager') {
+        conds.push(`(
+          l.assigned_to = $2 OR l.created_by = $2
+          OR EXISTS (
+            SELECT 1 FROM users ex
+             WHERE ex.id = l.assigned_to AND ex.role = 'Sales Executive' AND ex.is_active = TRUE
+               AND ex.sales_manager_id = $2
+          )
+          OR EXISTS (
+            SELECT 1 FROM users ex
+             WHERE ex.id = l.created_by AND ex.role = 'Sales Executive' AND ex.is_active = TRUE
+               AND ex.sales_manager_id = $2
+          )
+        )`);
+        vals.push(uid);
+      } else {
+        conds.push(`(l.assigned_to=$2 OR l.created_by=$2)`);
+        vals.push(uid);
+      }
     }
     const res = await this.db.query(
       `SELECT l.*,ls.name AS stage,s.name AS source,u.name AS assigned_name, um.name AS assigned_manager_name
@@ -318,19 +380,23 @@ export class LeadsService {
   masterPriorities() { return this.masterCrud('crm_priorities'); }
 
   /** Per-source lead counts + total (for “All lists” mobile UI). */
-  async sourceCounts(currentUser?: { id?: unknown; role?: unknown }) {
-    const uid = Number(currentUser?.id);
-    const forceOwn = this.isOwnAssignedScope(currentUser?.role) && Number.isInteger(uid) && uid > 0;
-    const totalSql = forceOwn ? 'SELECT COUNT(*)::int AS total FROM leads WHERE assigned_to=$1' : 'SELECT COUNT(*)::int AS total FROM leads';
+  async sourceCounts(currentUser?: { id?: unknown; role?: unknown }, filters?: any) {
+    const scoped = await this.resolveScopedLeadUserId(filters ?? {}, currentUser);
+    const useScope = scoped != null && scoped > 0;
+    const scopeJoin = useScope ? 'AND (l.assigned_to = $1 OR l.created_by = $1)' : '';
+    const totalSql = useScope
+      ? 'SELECT COUNT(*)::int AS total FROM leads WHERE (assigned_to = $1 OR created_by = $1)'
+      : 'SELECT COUNT(*)::int AS total FROM leads';
+    const scopeArgs = useScope ? [scoped] : [];
     const [bySource, totalRow] = await Promise.all([
       this.db.query(`
         SELECT s.id, s.name, COUNT(l.id)::int AS lead_count
         FROM lead_sources s
-        LEFT JOIN leads l ON l.source_id = s.id ${forceOwn ? 'AND l.assigned_to = $1' : ''}
+        LEFT JOIN leads l ON l.source_id = s.id ${scopeJoin}
         GROUP BY s.id, s.name
         ORDER BY s.name
-      `, forceOwn ? [uid] : []),
-      this.db.query(totalSql, forceOwn ? [uid] : []),
+      `, scopeArgs),
+      this.db.query(totalSql, scopeArgs),
     ]);
     return {
       total: Number(totalRow.rows[0]?.total ?? 0),
@@ -354,11 +420,12 @@ export class LeadsService {
     return res.rows;
   }
 
-  async stats(currentUser?: { id?: unknown; role?: unknown }) {
-    const uid = Number(currentUser?.id);
-    const forceOwn = this.isOwnAssignedScope(currentUser?.role) && Number.isInteger(uid) && uid > 0;
-    const whereSql = forceOwn ? 'WHERE assigned_to=$1' : '';
-    const joinScopeSql = forceOwn ? 'AND l.assigned_to = $1' : '';
+  async stats(currentUser?: { id?: unknown; role?: unknown }, filters?: any) {
+    const scoped = await this.resolveScopedLeadUserId(filters ?? {}, currentUser);
+    const useScope = scoped != null && scoped > 0;
+    const whereSql = useScope ? 'WHERE (assigned_to = $1 OR created_by = $1)' : '';
+    const joinScopeSql = useScope ? 'AND (l.assigned_to = $1 OR l.created_by = $1)' : '';
+    const scopeArgs = useScope ? [scoped] : [];
     const [totals, byStage] = await Promise.all([
       this.db.query(`
         SELECT
@@ -369,14 +436,14 @@ export class LeadsService {
           COUNT(*) FILTER (WHERE is_converted=TRUE) AS converted
         FROM leads
         ${whereSql}
-      `, forceOwn ? [uid] : []),
+      `, scopeArgs),
       this.db.query(`
         SELECT ls.id, ls.name, ls.position, COUNT(l.id)::int AS count
           FROM lead_stages ls
           LEFT JOIN leads l ON l.stage_id = ls.id ${joinScopeSql}
          GROUP BY ls.id, ls.name, ls.position
          ORDER BY ls.position
-      `, forceOwn ? [uid] : []),
+      `, scopeArgs),
     ]);
     const t = totals.rows[0];
     return {
@@ -440,7 +507,12 @@ export class LeadsService {
     let i = 1;
     const uid = Number(currentUser?.id);
     const forceOwn = this.isOwnAssignedScope(currentUser?.role) && Number.isInteger(uid) && uid > 0;
-    if (forceOwn) { conds.push(`l.assigned_to=$${i++}`); vals.push(uid); }
+    const scoped = await this.resolveScopedLeadUserId(filters || {}, currentUser);
+    if (scoped != null && scoped > 0) {
+      conds.push(`(l.assigned_to=$${i} OR l.created_by=$${i})`);
+      vals.push(scoped);
+      i++;
+    }
     if (!forceOwn && filters.assigned_to) { conds.push(`f.assigned_to=$${i++}`); vals.push(filters.assigned_to); }
     const res = await this.db.query(
       `SELECT
@@ -462,11 +534,108 @@ export class LeadsService {
     return res.rows;
   }
 
-  async doneFollowup(fid: number) {
+  async doneFollowup(leadId: number, fid: number) {
     const res = await this.db.query(
-      'UPDATE lead_followups SET is_done=TRUE WHERE id=$1 RETURNING *', [fid],
+      'UPDATE lead_followups SET is_done=TRUE WHERE id=$1 AND lead_id=$2 RETURNING *',
+      [fid, leadId],
+    );
+    if (!res.rows[0]) throw new NotFoundException('Follow-up not found');
+    await this.invalidateDashboardCache();
+    return res.rows[0];
+  }
+
+  async updateFollowup(
+    leadId: number,
+    fid: number,
+    data: { due_date?: string; description?: string; assigned_to?: number | null },
+  ) {
+    const cur = await this.db.query(
+      'SELECT id FROM lead_followups WHERE id=$1 AND lead_id=$2',
+      [fid, leadId],
+    );
+    if (!cur.rows[0]) throw new NotFoundException('Follow-up not found');
+    const sets: string[] = [];
+    const vals: any[] = [];
+    let i = 1;
+    if (data.due_date !== undefined) {
+      sets.push(`due_date=$${i++}`);
+      vals.push(data.due_date);
+    }
+    if (data.description !== undefined) {
+      sets.push(`description=$${i++}`);
+      vals.push(data.description);
+    }
+    if (data.assigned_to !== undefined) {
+      sets.push(`assigned_to=$${i++}`);
+      vals.push(data.assigned_to);
+    }
+    if (!sets.length) {
+      const r = await this.db.query('SELECT * FROM lead_followups WHERE id=$1 AND lead_id=$2', [fid, leadId]);
+      return r.rows[0];
+    }
+    vals.push(fid, leadId);
+    const res = await this.db.query(
+      `UPDATE lead_followups SET ${sets.join(', ')} WHERE id=$${i++} AND lead_id=$${i} RETURNING *`,
+      vals,
     );
     await this.invalidateDashboardCache();
     return res.rows[0];
+  }
+
+  async deleteFollowup(leadId: number, fid: number) {
+    const res = await this.db.query(
+      'DELETE FROM lead_followups WHERE id=$1 AND lead_id=$2 RETURNING id',
+      [fid, leadId],
+    );
+    if (!res.rows[0]) throw new NotFoundException('Follow-up not found');
+    await this.invalidateDashboardCache();
+    return { deleted: true };
+  }
+
+  /**
+   * Create a sales `customers` row from the lead’s contact fields and link `lead_id`.
+   * Marks the lead `is_converted`. Idempotent if a customer already exists for this lead.
+   */
+  async convertLeadToCustomer(leadId: number, currentUser?: { id?: unknown; role?: unknown }) {
+    const lead = await this.get(leadId, currentUser);
+    if (!lead) throw new NotFoundException('Lead not found');
+
+    const dup = await this.db.query('SELECT * FROM customers WHERE lead_id=$1 LIMIT 1', [leadId]);
+    if (dup.rows[0]) {
+      await this.db.query(
+        'UPDATE leads SET is_converted=TRUE, updated_at=NOW() WHERE id=$1 AND is_converted=FALSE',
+        [leadId],
+      );
+      await this.cache.delPattern('leads:*');
+      return { customer: dup.rows[0], already_existed: true };
+    }
+
+    const nameRaw = String(lead.name || '').trim();
+    const company = String(lead.company || '').trim();
+    const name = nameRaw || company || `Lead #${leadId}`;
+    const email =
+      lead.email != null && String(lead.email).trim() ? String(lead.email).trim().slice(0, 255) : null;
+    const phone =
+      lead.phone != null && String(lead.phone).trim() ? String(lead.phone).trim().slice(0, 20) : null;
+    if (!email && !phone) {
+      throw new BadRequestException('Add an email or phone on the lead before converting to customer.');
+    }
+    const address =
+      lead.address != null && String(lead.address).trim() ? String(lead.address).trim() : null;
+
+    const customer = await this.db.transaction(async (client) => {
+      const ins = await client.query(
+        `INSERT INTO customers (name, email, phone, gstin, address, lead_id)
+         VALUES ($1, $2, $3, NULL, $4, $5) RETURNING *`,
+        [name, email, phone, address, leadId],
+      );
+      await client.query('UPDATE leads SET is_converted=TRUE, updated_at=NOW() WHERE id=$1', [leadId]);
+      return ins.rows[0];
+    });
+
+    await this.cache.delPattern('leads:*');
+    await this.cache.delPattern('customers:*');
+    await this.invalidateDashboardCache();
+    return { customer, already_existed: false };
   }
 }

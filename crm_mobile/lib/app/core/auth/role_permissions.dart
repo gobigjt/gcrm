@@ -2,8 +2,15 @@
 class AppRoles {
   static const admin = 'Admin';
   static const superAdmin = 'Super Admin';
+  static const salesManager = 'Sales Manager';
   static const salesExecutive = 'Sales Executive';
   static const hr = 'HR';
+}
+
+/// Create / edit / delete CRM follow-up tasks (not mark-done).
+bool canManageCrmFollowupTasks(String role) {
+  final r = role.trim();
+  return r == AppRoles.admin || r == AppRoles.superAdmin || r == AppRoles.salesManager;
 }
 
 class AppPermissions {

@@ -1,3 +1,5 @@
+import '../utils/ui_format.dart';
+
 class CrmLead {
   CrmLead({
     required this.id,
@@ -21,6 +23,8 @@ class CrmLead {
     this.sourceId,
     this.stageId,
     this.assignedTo,
+    this.assignedManagerId,
+    this.isConverted = false,
   });
 
   static final CrmLead placeholder = CrmLead(
@@ -36,6 +40,8 @@ class CrmLead {
     sourceId: null,
     stageId: null,
     assignedTo: null,
+    assignedManagerId: null,
+    isConverted: false,
   );
 
   final int id;
@@ -59,6 +65,8 @@ class CrmLead {
   final int? sourceId;
   final int? stageId;
   final int? assignedTo;
+  final int? assignedManagerId;
+  final bool isConverted;
 
   /// Primary line for list cards (name, else phone).
   String get displayTitle {
@@ -96,7 +104,7 @@ class CrmLead {
 
   factory CrmLead.fromJson(Map<String, dynamic> json) {
     return CrmLead(
-      id: (json['id'] as num? ?? 0).toInt(),
+      id: parseDynamicInt(json['id']),
       name: (json['name'] ?? 'Lead').toString(),
       company: (json['company'] ?? '').toString(),
       stage: (json['stage'] ?? 'Unassigned').toString(),
@@ -117,6 +125,8 @@ class CrmLead {
       sourceId: _nullableId(json['source_id']),
       stageId: _nullableId(json['stage_id']),
       assignedTo: _nullableId(json['assigned_to']),
+      assignedManagerId: _nullableId(json['assigned_manager_id']),
+      isConverted: json['is_converted'] == true,
     );
   }
 }
@@ -176,7 +186,7 @@ class CrmFollowupRow {
       description: (json['description'] ?? 'No description').toString(),
       leadName: (json['lead_name'] ?? json['leadName'])?.toString(),
       leadStage: (json['lead_stage'] ?? json['leadStage'])?.toString(),
-      leadScore: (json['lead_score'] as num?)?.toInt(),
+      leadScore: tryParseDynamicInt(json['lead_score']),
       dueDate: json['due_date'],
       isDone: json['is_done'] == true,
     );
@@ -191,7 +201,7 @@ class CrmLookupItem {
 
   factory CrmLookupItem.fromJson(Map<String, dynamic> json) {
     return CrmLookupItem(
-      id: (json['id'] as num).toInt(),
+      id: parseDynamicInt(json['id']),
       name: (json['name'] ?? '').toString(),
     );
   }

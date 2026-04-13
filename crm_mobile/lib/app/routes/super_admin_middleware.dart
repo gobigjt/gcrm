@@ -16,7 +16,7 @@ class SuperAdminMiddleware extends GetMiddleware {
       return const RouteSettings(name: AppRoutes.login);
     }
     if (ShowcaseRoles.fromBackendRole(auth.role.value) != ShowcaseRole.superAdmin) {
-      Get.snackbar('Access denied', 'Platform screens are for Super Admin only.');
+      Get.snackbar('Access denied', 'Platform screens are restricted.');
       return const RouteSettings(name: AppRoutes.dashboard);
     }
     return null;

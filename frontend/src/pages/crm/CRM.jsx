@@ -102,6 +102,29 @@ function potentialLabel(p) {
   return 'MED';
 }
 
+/** Admin, Sales Manager, and Super Admin may create, edit, or delete CRM follow-up tasks. */
+function canManageCrmFollowupTasks(role) {
+  const r = String(role || '');
+  return r === 'Admin' || r === 'Sales Manager' || r === 'Super Admin';
+}
+
+/** ISO / Postgres timestamp → value for `<input type="datetime-local" />`. */
+function toDatetimeLocalValue(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** `datetime-local` value (wall time in browser TZ) → UTC ISO for Postgres `TIMESTAMPTZ`. */
+function datetimeLocalInputToApiIso(localValue) {
+  if (!localValue || !String(localValue).trim()) return localValue;
+  const d = new Date(localValue);
+  if (Number.isNaN(d.getTime())) return localValue;
+  return d.toISOString();
+}
+
 function leadDisplayTitle(l) {
   if (!l) return '';
   const name = (l.name || '').trim();
@@ -311,13 +334,15 @@ function LeadModal({ lead, stages, sources, users, onClose, onSaved }) {
 
 // ─── Lead Drawer ─────────────────────────────────────────────
 
-function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
+function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManageTasks }) {
   const nav = useNavigate();
   const { toasts: drawerToasts, show: showToast } = useToast();
   const [activities, setActivities] = useState([]);
   const [followups,  setFollowups]  = useState([]);
   const [actForm,    setActForm]    = useState({ type: 'note', description: '' });
   const [fuForm,     setFuForm]     = useState({ due_date: '', description: '', assigned_to: '' });
+  const [fuEditId,   setFuEditId]   = useState(null);
+  const [fuEditForm, setFuEditForm] = useState({ due_date: '', description: '', assigned_to: '' });
   const [saving,     setSaving]     = useState(false);
   const [detail,     setDetail]     = useState(lead);
   const [copyLabel,    setCopyLabel]    = useState('');
@@ -350,7 +375,10 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.post(`/crm/leads/${lead.id}/followups`, fuForm);
+      await api.post(`/crm/leads/${lead.id}/followups`, {
+        ...fuForm,
+        due_date: datetimeLocalInputToApiIso(fuForm.due_date),
+      });
       setFuForm({ due_date: '', description: '', assigned_to: '' });
       reload();
       showToast('Task created successfully');
@@ -360,6 +388,46 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
   const markDone = async (fid) => {
     await api.patch(`/crm/leads/${lead.id}/followups/${fid}/done`);
     reload();
+  };
+
+  const openFuEdit = (f) => {
+    setFuEditId(f.id);
+    setFuEditForm({
+      due_date: toDatetimeLocalValue(f.due_date),
+      description: f.description || '',
+      assigned_to: f.assigned_to != null && f.assigned_to !== '' ? String(f.assigned_to) : '',
+    });
+  };
+
+  const saveFollowupEdit = async (e) => {
+    e.preventDefault();
+    if (fuEditId == null) return;
+    setSaving(true);
+    try {
+      await api.patch(`/crm/leads/${lead.id}/followups/${fuEditId}`, {
+        due_date: datetimeLocalInputToApiIso(fuEditForm.due_date),
+        description: fuEditForm.description,
+        assigned_to: fuEditForm.assigned_to === '' ? null : Number(fuEditForm.assigned_to),
+      });
+      setFuEditId(null);
+      reload();
+      showToast('Task updated');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteFollowup = async (fid) => {
+    if (!window.confirm('Delete this task?')) return;
+    setSaving(true);
+    try {
+      await api.delete(`/crm/leads/${lead.id}/followups/${fid}`);
+      if (fuEditId === fid) setFuEditId(null);
+      reload();
+      showToast('Task deleted');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const whatsappUrl = detail?.phone
@@ -391,6 +459,29 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
       setCopyAppLabel('Failed');
     }
     window.setTimeout(() => setCopyAppLabel(''), 2000);
+  };
+
+  const canConvertToCustomer = !detail?.is_converted
+    && (String(detail?.email || '').trim() || String(detail?.phone || '').trim());
+
+  const convertToCustomer = async () => {
+    if (!canConvertToCustomer) return;
+    setSaving(true);
+    try {
+      const { data } = await api.post(`/crm/leads/${lead.id}/convert-customer`);
+      showToast(
+        data?.already_existed
+          ? 'Customer already linked — see Sales → Customers.'
+          : 'Customer created — see Sales → Customers.',
+      );
+      reload();
+      onUpdated();
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.message || 'Could not convert lead';
+      showToast(msg);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const ACTIVITY_ICONS = {
@@ -452,6 +543,15 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
               {copyAppLabel || '📱 App link'}
             </button>
+            {canConvertToCustomer && (
+              <button
+                type="button"
+                disabled={saving}
+                onClick={convertToCustomer}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 text-xs font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors disabled:opacity-50">
+                {saving ? '…' : '👤 To customer'}
+              </button>
+            )}
             <button onClick={() => nav(`/crm/leads/${detail.id}/edit`)}
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-brand-50 dark:bg-brand-900/20 text-brand-600 dark:text-brand-400 text-xs font-medium hover:bg-brand-100 dark:hover:bg-brand-900/30 transition-colors ml-auto">
               ✏️ Edit
@@ -616,29 +716,65 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
 
             <div>
               <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Follow-ups</p>
-              <form onSubmit={addFollowup} className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3 space-y-2 mb-4">
-                <Field label="Due Date">
-                  <input type="datetime-local" className={inputCls}
-                    value={fuForm.due_date} onChange={e => setFuForm(f => ({ ...f, due_date: e.target.value }))}
-                    required />
-                </Field>
-                <Field label="Description">
-                  <input className={inputCls} placeholder="e.g. Follow up on proposal…"
-                    value={fuForm.description} onChange={e => setFuForm(f => ({ ...f, description: e.target.value }))} />
-                </Field>
-                <Field label="Assign To">
-                  <select className={selectCls} value={fuForm.assigned_to} onChange={e => setFuForm(f => ({ ...f, assigned_to: e.target.value }))}>
-                    <option value="">Assign to me</option>
-                    {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
-                </Field>
-                <div className="flex justify-end">
-                  <button type="submit" disabled={saving}
-                    className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg transition-colors disabled:opacity-50">
-                    {saving ? 'Saving…' : 'Add Task'}
-                  </button>
-                </div>
-              </form>
+              {!canManageTasks && (
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+                  Only admins and sales managers can add, edit, or delete tasks. You can still mark tasks done when assigned to you.
+                </p>
+              )}
+              {canManageTasks && fuEditId != null && (
+                <form onSubmit={saveFollowupEdit} className="bg-amber-50/80 dark:bg-amber-900/15 rounded-xl p-3 space-y-2 mb-4 border border-amber-200/60 dark:border-amber-800/30">
+                  <p className="text-xs font-semibold text-amber-800 dark:text-amber-200">Edit task</p>
+                  <Field label="Due Date">
+                    <input type="datetime-local" className={inputCls}
+                      value={fuEditForm.due_date} onChange={e => setFuEditForm(f => ({ ...f, due_date: e.target.value }))}
+                      required />
+                  </Field>
+                  <Field label="Description">
+                    <input className={inputCls} placeholder="e.g. Follow up on proposal…"
+                      value={fuEditForm.description} onChange={e => setFuEditForm(f => ({ ...f, description: e.target.value }))} />
+                  </Field>
+                  <Field label="Assign To">
+                    <select className={selectCls} value={fuEditForm.assigned_to} onChange={e => setFuEditForm(f => ({ ...f, assigned_to: e.target.value }))}>
+                      <option value="">Unassigned</option>
+                      {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                    </select>
+                  </Field>
+                  <div className="flex justify-end gap-2">
+                    <button type="button" onClick={() => setFuEditId(null)} className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-600">
+                      Cancel
+                    </button>
+                    <button type="submit" disabled={saving}
+                      className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg transition-colors disabled:opacity-50">
+                      {saving ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                </form>
+              )}
+              {canManageTasks && (
+                <form onSubmit={addFollowup} className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3 space-y-2 mb-4">
+                  <Field label="Due Date">
+                    <input type="datetime-local" className={inputCls}
+                      value={fuForm.due_date} onChange={e => setFuForm(f => ({ ...f, due_date: e.target.value }))}
+                      required />
+                  </Field>
+                  <Field label="Description">
+                    <input className={inputCls} placeholder="e.g. Follow up on proposal…"
+                      value={fuForm.description} onChange={e => setFuForm(f => ({ ...f, description: e.target.value }))} />
+                  </Field>
+                  <Field label="Assign To">
+                    <select className={selectCls} value={fuForm.assigned_to} onChange={e => setFuForm(f => ({ ...f, assigned_to: e.target.value }))}>
+                      <option value="">Assign to me</option>
+                      {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                    </select>
+                  </Field>
+                  <div className="flex justify-end">
+                    <button type="submit" disabled={saving}
+                      className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg transition-colors disabled:opacity-50">
+                      {saving ? 'Saving…' : 'Add Task'}
+                    </button>
+                  </div>
+                </form>
+              )}
 
               <div className="space-y-2">
                 {followups.length === 0 && (
@@ -664,6 +800,20 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated }) {
                         {formatDate(f.due_date)} {f.assigned_name ? `· ${f.assigned_name}` : ''}
                       </p>
                     </div>
+                    {canManageTasks && (
+                      <div className="flex flex-col gap-1 flex-shrink-0 items-end">
+                        {!f.is_done && (
+                          <button type="button" onClick={() => openFuEdit(f)}
+                            className="text-[11px] font-semibold text-brand-600 dark:text-brand-400 hover:underline">
+                            Edit
+                          </button>
+                        )}
+                        <button type="button" onClick={() => deleteFollowup(f.id)}
+                          className="text-[11px] font-semibold text-red-600 dark:text-red-400 hover:underline">
+                          Delete
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1337,6 +1487,7 @@ export default function CRM() {
           stages={stages} sources={sources} users={users}
           onClose={handleCloseDrawer}
           onUpdated={() => { loadLeads(); loadStats(); }}
+          canManageTasks={canManageCrmFollowupTasks(user?.role)}
         />
       )}
 

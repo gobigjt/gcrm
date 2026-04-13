@@ -1,3 +1,5 @@
+import '../utils/ui_format.dart';
+
 class DashboardStats {
   DashboardStats({
     required this.openLeads,
@@ -20,13 +22,13 @@ class DashboardStats {
 
   factory DashboardStats.fromJson(Map<String, dynamic> json) {
     return DashboardStats(
-      openLeads: (json['open_leads'] as num? ?? 0).toInt(),
-      revenue: (json['revenue'] as num? ?? 0).toDouble(),
-      activeOrders: (json['active_orders'] as num? ?? 0).toInt(),
-      totalEmployees: (json['total_employees'] as num? ?? 0).toInt(),
-      openLeadsNew7d: (json['open_leads_new_7d'] as num? ?? 0).toInt(),
-      overdueInvoices: (json['overdue_invoices'] as num? ?? 0).toInt(),
-      activeUsers: (json['active_users'] as num? ?? 0).toInt(),
+      openLeads: parseDynamicInt(json['open_leads']),
+      revenue: parseDynamicNum(json['revenue']).toDouble(),
+      activeOrders: parseDynamicInt(json['active_orders']),
+      totalEmployees: parseDynamicInt(json['total_employees']),
+      openLeadsNew7d: parseDynamicInt(json['open_leads_new_7d']),
+      overdueInvoices: parseDynamicInt(json['overdue_invoices']),
+      activeUsers: parseDynamicInt(json['active_users']),
     );
   }
 }

@@ -53,6 +53,31 @@ export class UsersController {
   @Get('permissions/grouped')
   listPermissionsGrouped() { return this.svc.listPermissions(); }
 
+  // ─── Zones (must stay before `:id` routes) ─────────────────
+  @Get('zones')
+  listZones() { return this.svc.listZones(); }
+
+  @Post('zones')
+  createZone(@CurrentUser() u: any, @Body() body: any) { return this.svc.createZone(body, u.id); }
+
+  @Patch('zones/:zoneId')
+  updateZone(@CurrentUser() u: any, @Param('zoneId') zoneId: string, @Body() body: any) {
+    return this.svc.updateZone(Number(zoneId), body, u.id);
+  }
+
+  @Delete('zones/:zoneId')
+  deleteZone(@CurrentUser() u: any, @Param('zoneId') zoneId: string) {
+    return this.svc.deleteZone(Number(zoneId), u.id);
+  }
+
+  @Get('managers/:managerId/sales-team')
+  salesTeamForManager(@Param('managerId') managerId: string) {
+    return this.svc.listSalesTeamForManager(Number(managerId));
+  }
+
+  @Get('sales-managers')
+  listSalesManagers() { return this.svc.listSalesManagers(); }
+
   @Patch(':id')
   updateUser(@CurrentUser() u: any, @Param('id') id: string, @Body() body: any) {
     return this.svc.updateUser(Number(id), body, u.id);

@@ -6,6 +6,7 @@ import '../../core/utils/ui_format.dart' show toYmd;
 import '../../shared/widgets/app_error_banner.dart';
 import '../../shared/widgets/app_navigation_drawer.dart';
 import '../../routes/app_routes.dart';
+import '../auth/auth_controller.dart';
 import '../../shared/widgets/role_aware_bottom_nav.dart';
 import '../../showcase/showcase_widgets.dart';
 import 'crm_add_lead_view.dart';
@@ -21,6 +22,7 @@ class CrmView extends GetView<CrmController> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = Get.find<AuthController>();
     return Scaffold(
       drawer: const AppNavigationDrawer(currentRoute: AppRoutes.crm),
       appBar: AppBar(
@@ -81,6 +83,57 @@ class CrmView extends GetView<CrmController> {
       bottomNavigationBar: const RoleAwareBottomNav(currentRoute: AppRoutes.crm),
       body: Column(
         children: [
+          Obx(() {
+            if (!controller.isSalesManager) return const SizedBox.shrink();
+            final scope = auth.crmExecutiveScopeId.value;
+            final scheme = Theme.of(context).colorScheme;
+            final dark = Theme.of(context).brightness == Brightness.dark;
+            return Material(
+              color: dark ? const Color(0xFF1B2E3B) : const Color(0xFFE3F2FD),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                child: Row(
+                  children: [
+                    Icon(Icons.groups_2_outlined, size: 20, color: scheme.primary),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Pipeline',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: scheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<int?>(
+                          isExpanded: true,
+                          value: scope,
+                          hint: const Text('My own'),
+                          items: [
+                            const DropdownMenuItem<int?>(
+                              value: null,
+                              child: Text('My own'),
+                            ),
+                            ...controller.reportingExecutives.map((e) {
+                              final raw = e['id'];
+                              final tid = raw is int ? raw : (raw as num).toInt();
+                              return DropdownMenuItem<int?>(
+                                value: tid,
+                                child: Text(e['name']?.toString() ?? 'Executive'),
+                              );
+                            }),
+                          ],
+                          onChanged: (v) => controller.setTeamExecutiveFilter(v),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
           Obx(() {
             final id = controller.selectedSourceId.value;
             if (id == null) return const SizedBox.shrink();

@@ -5,6 +5,7 @@ import '../../core/auth/role_permissions.dart';
 import '../../core/models/dashboard_stats.dart';
 import '../../core/models/crm_models.dart';
 import '../../core/network/error_utils.dart';
+import '../../core/utils/ui_format.dart' show parseDynamicInt, parseLocalCalendarDay;
 import '../attendance/sales_attendance_controller.dart';
 import '../auth/auth_controller.dart';
 
@@ -50,13 +51,6 @@ class DashboardController extends GetxController {
     _ensureSalesAttendanceController();
   }
 
-  DateTime? _parseDue(dynamic v) {
-    if (v == null) return null;
-    final s = v.toString();
-    final datePart = s.length >= 10 ? s.substring(0, 10) : s;
-    return DateTime.tryParse(datePart);
-  }
-
   Future<void> refreshStats() async {
     _ensureSalesAttendanceController();
     isLoading.value = true;
@@ -98,7 +92,7 @@ class DashboardController extends GetxController {
       employees.value = stats.totalEmployees;
       openLeadsNew7d.value = stats.openLeadsNew7d;
       overdueInvoices.value = stats.overdueInvoices;
-      unreadNotifications.value = ((unread as Map)['count'] as num? ?? 0).toInt();
+      unreadNotifications.value = parseDynamicInt((unread as Map)['count']);
 
       if (followupsRaw != null) {
         final followups = followupsRaw
@@ -109,7 +103,7 @@ class DashboardController extends GetxController {
         final today = DateTime(now.year, now.month, now.day);
 
         final overdue = followups.where((f) {
-          final d = _parseDue(f.dueDate);
+          final d = parseLocalCalendarDay(f.dueDate);
           return d != null && d.isBefore(today) && !f.isDone;
         }).toList();
 
@@ -119,14 +113,14 @@ class DashboardController extends GetxController {
         // Showcase shows a mixed list under "Today's tasks" (overdue + due today).
         final preview = followups
             .where((f) {
-              final d = _parseDue(f.dueDate);
+              final d = parseLocalCalendarDay(f.dueDate);
               if (d == null || f.isDone) return false;
               return d.isBefore(today.add(const Duration(days: 1))) || d.isAtSameMomentAs(today);
             })
             .toList()
           ..sort((a, b) {
-            final da = _parseDue(a.dueDate) ?? today;
-            final db = _parseDue(b.dueDate) ?? today;
+            final da = parseLocalCalendarDay(a.dueDate) ?? today;
+            final db = parseLocalCalendarDay(b.dueDate) ?? today;
             return da.compareTo(db);
           });
 

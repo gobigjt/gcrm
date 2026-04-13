@@ -2,6 +2,7 @@ import 'package:get/get.dart';
 
 import '../../core/models/notification_item.dart';
 import '../../core/network/error_utils.dart';
+import '../../core/utils/ui_format.dart';
 import '../auth/auth_controller.dart';
 
 class NotificationsController extends GetxController {
@@ -26,7 +27,7 @@ class NotificationsController extends GetxController {
       final listRes = await _auth.authorizedRequest(method: 'GET', path: '/notifications');
       final unreadRes = await _auth.authorizedRequest(method: 'GET', path: '/notifications/unread-count');
       items.assignAll((listRes as List).map((e) => NotificationItem.fromJson(Map<String, dynamic>.from(e as Map))));
-      unreadCount.value = ((unreadRes as Map)['count'] as num? ?? 0).toInt();
+      unreadCount.value = parseDynamicInt((unreadRes as Map)['count']);
     } catch (e) {
       errorMessage.value = userFriendlyError(e);
     } finally {

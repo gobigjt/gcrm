@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../core/auth/role_permissions.dart';
 import '../../core/models/crm_models.dart';
-import '../../core/utils/ui_format.dart' show formatCurrencyInr, formatIsoDate, pickDateIntoController;
+import '../../core/network/error_utils.dart';
+import '../../core/utils/ui_format.dart'
+    show formatCurrencyInr, formatIsoDate, parseLocalCalendarDay, pickDateIntoController;
+import '../auth/auth_controller.dart';
 import '../../shared/widgets/app_error_banner.dart';
 import '../../showcase/showcase_widgets.dart';
 import 'crm_edit_lead_view.dart';
@@ -18,6 +22,86 @@ String _priorityShort(String p) {
     default:
       return 'MED';
   }
+}
+
+Future<void> _openEditFollowupSheet(
+  BuildContext context,
+  CrmLeadDetailController controller,
+  CrmFollowupRow f,
+) async {
+  final ymd = formatIsoDate(f.dueDate);
+  final dateCtrl = TextEditingController(text: ymd == '—' ? '' : ymd);
+  final descCtrl = TextEditingController(text: f.description);
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    builder: (_) => Padding(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 16,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: dateCtrl,
+            readOnly: true,
+            onTap: () => pickDateIntoController(context: context, controller: dateCtrl),
+            decoration: const InputDecoration(
+              labelText: 'Due Date',
+              suffixIcon: Icon(Icons.calendar_today_rounded),
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: descCtrl,
+            decoration: const InputDecoration(labelText: 'Description'),
+            minLines: 2,
+            maxLines: 4,
+          ),
+          const SizedBox(height: 12),
+          Obx(
+            () => FilledButton(
+              onPressed: controller.isSubmitting.value
+                  ? null
+                  : () async {
+                      if (dateCtrl.text.trim().isEmpty) return;
+                      await controller.updateFollowup(
+                        followupId: f.id,
+                        dueDate: dateCtrl.text.trim(),
+                        description: descCtrl.text.trim(),
+                      );
+                      if (context.mounted) Navigator.of(context).pop();
+                    },
+              child: const Text('Save changes'),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+Future<void> _confirmDeleteFollowupSheet(
+  BuildContext context,
+  CrmLeadDetailController controller,
+  CrmFollowupRow f,
+) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Delete task?'),
+      content: Text(f.description.isEmpty ? 'Remove this follow-up?' : 'Remove: ${f.description}?'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+      ],
+    ),
+  );
+  if (ok != true || !context.mounted) return;
+  await controller.deleteFollowup(f.id);
 }
 
 class CrmLeadDetailView extends StatelessWidget {
@@ -77,6 +161,32 @@ class CrmLeadDetailView extends StatelessWidget {
               icon: const Icon(Icons.edit_outlined),
               tooltip: 'Edit lead',
             ),
+            Obx(() {
+              final l = controller.lead.value;
+              if (l == null || l.isConverted) return const SizedBox.shrink();
+              final hasContact = l.email.trim().isNotEmpty || l.phone.trim().isNotEmpty;
+              if (!hasContact) return const SizedBox.shrink();
+              return IconButton(
+                tooltip: 'Convert to customer',
+                onPressed: controller.isSubmitting.value
+                    ? null
+                    : () async {
+                        try {
+                          final r = await controller.convertToCustomer();
+                          final existed = r?['already_existed'] == true;
+                          Get.snackbar(
+                            existed ? 'Customer exists' : 'Customer created',
+                            existed
+                                ? 'This lead is already linked to a customer in Sales.'
+                                : 'Contact saved under Sales → Customers.',
+                          );
+                        } catch (e) {
+                          Get.snackbar('Could not convert', userFriendlyError(e));
+                        }
+                      },
+                icon: const Icon(Icons.person_add_alt_1_outlined),
+              );
+            }),
             IconButton(onPressed: controller.load, icon: const Icon(Icons.refresh_rounded), tooltip: 'Refresh'),
           ],
         ),
@@ -328,7 +438,10 @@ class CrmLeadDetailView extends StatelessWidget {
                 child: ShowcaseSectionTitle('Follow-ups'),
               ),
             ),
-            _FollowupsSliver(controller: controller),
+            _FollowupsSliver(
+              controller: controller,
+              canManageTasks: canManageCrmFollowupTasks(Get.find<AuthController>().role.value),
+            ),
             const SliverToBoxAdapter(child: SizedBox(height: 88)),
           ],
         ),
@@ -344,6 +457,7 @@ class CrmLeadDetailView extends StatelessWidget {
   }
 
   void _openAddMenu(BuildContext context, CrmLeadDetailController controller) {
+    final canManage = canManageCrmFollowupTasks(Get.find<AuthController>().role.value);
     showModalBottomSheet<void>(
       context: context,
       builder: (ctx) => SafeArea(
@@ -358,14 +472,15 @@ class CrmLeadDetailView extends StatelessWidget {
                 _openAddActivity(context, controller);
               },
             ),
-            ListTile(
-              leading: const Icon(Icons.event_note_rounded),
-              title: const Text('Add follow-up'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _openAddFollowup(context, controller);
-              },
-            ),
+            if (canManage)
+              ListTile(
+                leading: const Icon(Icons.event_note_rounded),
+                title: const Text('Add follow-up'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _openAddFollowup(context, controller);
+                },
+              ),
           ],
         ),
       ),
@@ -605,16 +720,10 @@ class _ActivityTimelineSliver extends StatelessWidget {
 }
 
 class _FollowupsSliver extends StatelessWidget {
-  const _FollowupsSliver({required this.controller});
+  const _FollowupsSliver({required this.controller, required this.canManageTasks});
 
   final CrmLeadDetailController controller;
-
-  DateTime? _parseDue(dynamic v) {
-    if (v == null) return null;
-    final s = v.toString();
-    final datePart = s.length >= 10 ? s.substring(0, 10) : s;
-    return DateTime.tryParse(datePart);
-  }
+  final bool canManageTasks;
 
   @override
   Widget build(BuildContext context) {
@@ -633,16 +742,16 @@ class _FollowupsSliver extends StatelessWidget {
       final today = DateTime(now.year, now.month, now.day);
       final weekEnd = today.add(const Duration(days: 7));
 
-      final overdue = open.where((f) => (_parseDue(f.dueDate)?.isBefore(today) ?? false)).toList()
-        ..sort((a, b) => (_parseDue(a.dueDate) ?? today).compareTo(_parseDue(b.dueDate) ?? today));
+      final overdue = open.where((f) => (parseLocalCalendarDay(f.dueDate)?.isBefore(today) ?? false)).toList()
+        ..sort((a, b) => (parseLocalCalendarDay(a.dueDate) ?? today).compareTo(parseLocalCalendarDay(b.dueDate) ?? today));
 
       final todayItems = open.where((f) {
-        final d = _parseDue(f.dueDate);
+        final d = parseLocalCalendarDay(f.dueDate);
         return d != null && d.year == today.year && d.month == today.month && d.day == today.day;
       }).toList();
 
       final thisWeek = open.where((f) {
-        final d = _parseDue(f.dueDate);
+        final d = parseLocalCalendarDay(f.dueDate);
         if (d == null) return false;
         final isAfterToday = d.isAfter(today);
         final within = d.isBefore(weekEnd.add(const Duration(days: 1))) || d.isAtSameMomentAs(weekEnd);
@@ -696,9 +805,28 @@ class _FollowupsSliver extends StatelessWidget {
                           ],
                         ),
                       ),
-                      TextButton(
-                        onPressed: () => controller.markFollowupDone(f.id),
-                        child: const Text('Done'),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: controller.isSubmitting.value ? null : () => controller.markFollowupDone(f.id),
+                            child: const Text('Done'),
+                          ),
+                          if (canManageTasks && !f.isDone)
+                            TextButton(
+                              onPressed: controller.isSubmitting.value
+                                  ? null
+                                  : () => _openEditFollowupSheet(context, controller, f),
+                              child: const Text('Edit'),
+                            ),
+                          if (canManageTasks)
+                            TextButton(
+                              onPressed: controller.isSubmitting.value
+                                  ? null
+                                  : () => _confirmDeleteFollowupSheet(context, controller, f),
+                              child: Text('Delete', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                            ),
+                        ],
                       ),
                     ],
                   ),

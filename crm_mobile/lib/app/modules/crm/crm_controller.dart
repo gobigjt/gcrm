@@ -2,6 +2,7 @@ import 'package:get/get.dart';
 
 import '../../core/models/crm_models.dart';
 import '../../core/network/error_utils.dart';
+import '../../core/utils/ui_format.dart' show dueDateForTimestamptzApi;
 import '../auth/auth_controller.dart';
 
 class CrmController extends GetxController {
@@ -22,9 +23,46 @@ class CrmController extends GetxController {
   final createdFromYmd = Rx<String?>(null);
   final createdToYmd = Rx<String?>(null);
 
+  final reportingExecutives = <Map<String, dynamic>>[].obs;
+
   bool get _ownAssignedOnly {
     final role = _auth.role.value.trim().toLowerCase();
     return role == 'sales executive' || role == 'sales manager';
+  }
+
+  bool get _isSalesManager => _auth.role.value.trim().toLowerCase() == 'sales manager';
+
+  /// Public for CRM views (e.g. source-counts) to align with lead list scope.
+  bool get isSalesManager => _isSalesManager;
+
+  String _scopedLeadsQueryPrefix() {
+    if (!_ownAssignedOnly || _auth.userId.value <= 0) return '';
+    final uid = _auth.userId.value;
+    if (_isSalesManager && _auth.crmExecutiveScopeId.value != null) {
+      return 'assigned_to=${_auth.crmExecutiveScopeId.value}';
+    }
+    return 'assigned_to=$uid';
+  }
+
+  Future<void> setTeamExecutiveFilter(int? executiveUserId) async {
+    _auth.crmExecutiveScopeId.value = executiveUserId;
+    await loadInitial();
+    await applyFilters();
+  }
+
+  Future<void> _loadReportingExecutives() async {
+    if (!_isSalesManager) {
+      reportingExecutives.clear();
+      return;
+    }
+    try {
+      final res = await _auth.authorizedRequest(method: 'GET', path: '/crm/leads/reporting-executives');
+      reportingExecutives.assignAll(
+        (res as List).map((e) => Map<String, dynamic>.from(e as Map)).toList(),
+      );
+    } catch (_) {
+      reportingExecutives.clear();
+    }
   }
 
   @override
@@ -55,9 +93,9 @@ class CrmController extends GetxController {
     isLoading.value = true;
     errorMessage.value = '';
     try {
-      final scopedPath = _ownAssignedOnly && _auth.userId.value > 0
-          ? '/crm/leads?assigned_to=${_auth.userId.value}'
-          : '/crm/leads';
+      await _loadReportingExecutives();
+      final q = _scopedLeadsQueryPrefix();
+      final scopedPath = q.isEmpty ? '/crm/leads' : '/crm/leads?$q';
       final leadsRes = await _auth.authorizedRequest(method: 'GET', path: scopedPath);
       final stagesRes = await _auth.authorizedRequest(method: 'GET', path: '/crm/leads/stages');
       final sourcesRes = await _auth.authorizedRequest(method: 'GET', path: '/crm/leads/sources');
@@ -95,8 +133,9 @@ class CrmController extends GetxController {
       if (to != null && to.isNotEmpty) {
         query.add('created_to=${Uri.encodeComponent(to)}');
       }
-      if (_ownAssignedOnly && _auth.userId.value > 0) {
-        query.add('assigned_to=${_auth.userId.value}');
+      final scopeQ = _scopedLeadsQueryPrefix();
+      if (scopeQ.isNotEmpty) {
+        query.add(scopeQ);
       }
       final path = query.isEmpty ? '/crm/leads' : '/crm/leads?${query.join('&')}';
       final leadsRes = await _auth.authorizedRequest(method: 'GET', path: path);
@@ -121,6 +160,10 @@ class CrmController extends GetxController {
     String? phone,
     String? company,
     int? sourceId,
+    int? stageId,
+    int? assignedTo,
+    int? assignedManagerId,
+    String? priority,
     String? leadSegment,
     String? jobTitle,
     String? website,
@@ -132,14 +175,17 @@ class CrmController extends GetxController {
   }) async {
     isSubmitting.value = true;
     try {
+      final normalizedPriority = (priority ?? 'warm').trim();
       final body = <String, dynamic>{
         'name': name,
         'email': (email ?? '').trim().isEmpty ? null : email!.trim(),
         'phone': (phone ?? '').trim().isEmpty ? null : phone!.trim(),
         'company': (company ?? '').trim().isEmpty ? null : company!.trim(),
-        'priority': 'warm',
+        'priority': normalizedPriority.isEmpty ? 'warm' : normalizedPriority,
         if (sourceId != null) 'source_id': sourceId,
-        if (selectedStageId.value != null) 'stage_id': selectedStageId.value,
+        if (stageId != null) 'stage_id': stageId,
+        if (assignedTo != null) 'assigned_to': assignedTo,
+        if (assignedManagerId != null) 'assigned_manager_id': assignedManagerId,
         if (leadSegment != null && leadSegment.trim().isNotEmpty) 'lead_segment': leadSegment.trim(),
         if (jobTitle != null && jobTitle.trim().isNotEmpty) 'job_title': jobTitle.trim(),
         if (website != null && website.trim().isNotEmpty) 'website': website.trim(),
@@ -170,7 +216,7 @@ class CrmController extends GetxController {
       await _auth.authorizedRequest(
         method: 'POST',
         path: '/crm/leads/$leadId/followups',
-        body: {'due_date': dueDate, 'description': description},
+        body: {'due_date': dueDateForTimestamptzApi(dueDate), 'description': description},
       );
       await applyFilters();
     } finally {
