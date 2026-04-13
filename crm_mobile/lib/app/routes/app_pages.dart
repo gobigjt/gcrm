@@ -68,7 +68,7 @@ abstract class AppPages {
         }
       }),
       middlewares: [
-        RoleMiddleware(allowedRoles: [AppRoles.salesExecutive]),
+        RoleMiddleware(allowedRoles: [AppRoles.salesExecutive, AppRoles.salesManager]),
       ],
     ),
     GetPage(

@@ -38,9 +38,19 @@ export class LeadsService {
     }
   }
 
+  private isSalesManagerRole(role: unknown): boolean {
+    const r = String(role || '').trim().toLowerCase();
+    return r === 'sales manager' || r === 'manager';
+  }
+
+  private isSalesExecutiveRole(role: unknown): boolean {
+    const r = String(role || '').trim().toLowerCase();
+    return r === 'sales executive' || r === 'agent';
+  }
+
   private isOwnAssignedScope(role: unknown): boolean {
     const r = String(role || '').trim().toLowerCase();
-    return r === 'sales executive' || r === 'sales manager';
+    return r === 'sales executive' || this.isSalesManagerRole(role);
   }
 
   /** `YYYY-MM-DD` only; returns null if invalid. */
@@ -63,7 +73,7 @@ export class LeadsService {
   }
 
   /**
-   * For Sales Executive / Sales Manager list scope: user id whose `assigned_to`/`created_by` rows are visible.
+   * For Sales Executive: scoped rows are `assigned_to` only. For Sales Manager: own vs team scope applies.
    * Sales Manager may pass `filters.assigned_to` = a reporting executive to narrow the pipeline.
    */
   private async resolveScopedLeadUserId(
@@ -74,7 +84,7 @@ export class LeadsService {
     if (!this.isOwnAssignedScope(currentUser?.role) || !Number.isInteger(uid) || uid <= 0) return null;
 
     const roleStr = String(currentUser?.role || '').trim().toLowerCase();
-    if (roleStr === 'sales manager') {
+    if (this.isSalesManagerRole(roleStr)) {
       const raw = filters?.assigned_to;
       if (raw != null && String(raw).trim() !== '') {
         const execId = Number(raw);
@@ -95,7 +105,7 @@ export class LeadsService {
   async reportingExecutives(currentUser?: { id?: unknown; role?: unknown }) {
     const uid = Number(currentUser?.id);
     const roleStr = String(currentUser?.role || '').trim().toLowerCase();
-    if (roleStr !== 'sales manager' || !Number.isInteger(uid) || uid <= 0) return [];
+    if (!this.isSalesManagerRole(roleStr) || !Number.isInteger(uid) || uid <= 0) return [];
     const res = await this.db.query(
       `SELECT id, name, email FROM users
         WHERE role = 'Sales Executive' AND is_active = TRUE AND sales_manager_id = $1
@@ -133,9 +143,18 @@ export class LeadsService {
       vals.push(this.ymdNextDayUtcIso(createdToYmd));
     }
     const uid = Number(currentUser?.id);
+    const roleStr = String(currentUser?.role || '').trim().toLowerCase();
     const forceOwn = this.isOwnAssignedScope(currentUser?.role) && Number.isInteger(uid) && uid > 0;
     if (scopedUserId != null && scopedUserId > 0) {
-      conds.push(`(l.assigned_to=$${i} OR l.created_by=$${i})`);
+      const managerOwnScope = this.isSalesManagerRole(roleStr) && scopedUserId === uid;
+      const salesExecOwnScope = !managerOwnScope && this.isSalesExecutiveRole(roleStr);
+      conds.push(
+        managerOwnScope
+          ? `(l.assigned_manager_id=$${i})`
+          : salesExecOwnScope
+            ? `(l.assigned_to=$${i})`
+            : `(l.assigned_to=$${i} OR l.created_by=$${i})`,
+      );
       vals.push(scopedUserId);
       i++;
     }
@@ -232,23 +251,11 @@ export class LeadsService {
     const uid = Number(currentUser?.id);
     const roleStr = String(currentUser?.role || '').trim().toLowerCase();
     if (this.isOwnAssignedScope(currentUser?.role) && Number.isInteger(uid) && uid > 0) {
-      if (roleStr === 'sales manager') {
-        conds.push(`(
-          l.assigned_to = $2 OR l.created_by = $2
-          OR EXISTS (
-            SELECT 1 FROM users ex
-             WHERE ex.id = l.assigned_to AND ex.role = 'Sales Executive' AND ex.is_active = TRUE
-               AND ex.sales_manager_id = $2
-          )
-          OR EXISTS (
-            SELECT 1 FROM users ex
-             WHERE ex.id = l.created_by AND ex.role = 'Sales Executive' AND ex.is_active = TRUE
-               AND ex.sales_manager_id = $2
-          )
-        )`);
+      if (this.isSalesManagerRole(roleStr)) {
+        conds.push(`(l.assigned_manager_id = $2)`);
         vals.push(uid);
       } else {
-        conds.push(`(l.assigned_to=$2 OR l.created_by=$2)`);
+        conds.push(`(l.assigned_to=$2)`);
         vals.push(uid);
       }
     }
@@ -297,6 +304,22 @@ export class LeadsService {
   }
 
   async update(id: number, data: any) {
+    const intPatchKeys = ['assigned_to', 'assigned_manager_id', 'source_id', 'stage_id'] as const;
+    for (const key of intPatchKeys) {
+      if (!Object.prototype.hasOwnProperty.call(data, key)) continue;
+      let raw = data[key];
+      if (typeof raw === 'string') raw = raw.trim();
+      if (raw === null || raw === undefined || raw === '') {
+        data[key] = null;
+        continue;
+      }
+      const n = Number(raw);
+      if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) {
+        throw new BadRequestException(`Invalid ${String(key)}`);
+      }
+      data[key] = n;
+    }
+
     let prevAssignee: number | null | undefined;
     if (data.assigned_to !== undefined) {
       const cur = await this.get(id);
@@ -383,9 +406,23 @@ export class LeadsService {
   async sourceCounts(currentUser?: { id?: unknown; role?: unknown }, filters?: any) {
     const scoped = await this.resolveScopedLeadUserId(filters ?? {}, currentUser);
     const useScope = scoped != null && scoped > 0;
-    const scopeJoin = useScope ? 'AND (l.assigned_to = $1 OR l.created_by = $1)' : '';
+    const uid = Number(currentUser?.id);
+    const roleStr = String(currentUser?.role || '').trim().toLowerCase();
+    const managerOwnScope = useScope && this.isSalesManagerRole(roleStr) && scoped === uid;
+    const salesExecScope = useScope && !managerOwnScope && this.isSalesExecutiveRole(roleStr);
+    const scopeJoin = useScope
+      ? managerOwnScope
+        ? 'AND (l.assigned_manager_id = $1)'
+        : salesExecScope
+          ? 'AND (l.assigned_to = $1)'
+          : 'AND (l.assigned_to = $1 OR l.created_by = $1)'
+      : '';
     const totalSql = useScope
-      ? 'SELECT COUNT(*)::int AS total FROM leads WHERE (assigned_to = $1 OR created_by = $1)'
+      ? managerOwnScope
+        ? 'SELECT COUNT(*)::int AS total FROM leads l WHERE (l.assigned_manager_id = $1)'
+        : salesExecScope
+          ? 'SELECT COUNT(*)::int AS total FROM leads WHERE assigned_to = $1'
+          : 'SELECT COUNT(*)::int AS total FROM leads WHERE (assigned_to = $1 OR created_by = $1)'
       : 'SELECT COUNT(*)::int AS total FROM leads';
     const scopeArgs = useScope ? [scoped] : [];
     const [bySource, totalRow] = await Promise.all([
@@ -409,13 +446,16 @@ export class LeadsService {
   }
   async assignees() {
     const res = await this.db.query(`
-      SELECT id, name, role
-      FROM users
-      WHERE is_active=TRUE
-        AND LOWER(COALESCE(role, '')) <> 'super admin'
-      ORDER BY
-        CASE WHEN LOWER(COALESCE(role, '')) = 'manager' THEN 0 ELSE 1 END,
-        name
+      SELECT u.id, u.name, u.role
+        FROM users u
+       WHERE LOWER(COALESCE(u.role, '')) <> 'super admin'
+         AND (
+              u.is_active = TRUE
+           OR u.id IN (SELECT DISTINCT assigned_to FROM leads WHERE assigned_to IS NOT NULL)
+         )
+       ORDER BY
+         CASE WHEN LOWER(COALESCE(u.role, '')) = 'manager' THEN 0 ELSE 1 END,
+         u.name
     `);
     return res.rows;
   }
@@ -423,8 +463,24 @@ export class LeadsService {
   async stats(currentUser?: { id?: unknown; role?: unknown }, filters?: any) {
     const scoped = await this.resolveScopedLeadUserId(filters ?? {}, currentUser);
     const useScope = scoped != null && scoped > 0;
-    const whereSql = useScope ? 'WHERE (assigned_to = $1 OR created_by = $1)' : '';
-    const joinScopeSql = useScope ? 'AND (l.assigned_to = $1 OR l.created_by = $1)' : '';
+    const uid = Number(currentUser?.id);
+    const roleStr = String(currentUser?.role || '').trim().toLowerCase();
+    const managerOwnScope = useScope && this.isSalesManagerRole(roleStr) && scoped === uid;
+    const salesExecScope = useScope && !managerOwnScope && this.isSalesExecutiveRole(roleStr);
+    const whereSql = useScope
+      ? managerOwnScope
+        ? 'WHERE (assigned_manager_id = $1)'
+        : salesExecScope
+          ? 'WHERE assigned_to = $1'
+          : 'WHERE (assigned_to = $1 OR created_by = $1)'
+      : '';
+    const joinScopeSql = useScope
+      ? managerOwnScope
+        ? 'AND (l.assigned_manager_id = $1)'
+        : salesExecScope
+          ? 'AND (l.assigned_to = $1)'
+          : 'AND (l.assigned_to = $1 OR l.created_by = $1)'
+      : '';
     const scopeArgs = useScope ? [scoped] : [];
     const [totals, byStage] = await Promise.all([
       this.db.query(`
@@ -506,10 +562,19 @@ export class LeadsService {
     const vals: any[] = [];
     let i = 1;
     const uid = Number(currentUser?.id);
+    const roleStr = String(currentUser?.role || '').trim().toLowerCase();
     const forceOwn = this.isOwnAssignedScope(currentUser?.role) && Number.isInteger(uid) && uid > 0;
     const scoped = await this.resolveScopedLeadUserId(filters || {}, currentUser);
     if (scoped != null && scoped > 0) {
-      conds.push(`(l.assigned_to=$${i} OR l.created_by=$${i})`);
+      const managerOwnScope = this.isSalesManagerRole(roleStr) && scoped === uid;
+      const salesExecScope = !managerOwnScope && this.isSalesExecutiveRole(roleStr);
+      conds.push(
+        managerOwnScope
+          ? `(l.assigned_manager_id=$${i})`
+          : salesExecScope
+            ? `(l.assigned_to=$${i})`
+            : `(l.assigned_to=$${i} OR l.created_by=$${i})`,
+      );
       vals.push(scoped);
       i++;
     }

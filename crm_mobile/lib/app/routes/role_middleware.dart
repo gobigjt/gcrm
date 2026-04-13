@@ -23,7 +23,7 @@ class RoleMiddleware extends GetMiddleware {
     }
 
     if (!allowedRoles.contains(auth.role.value)) {
-      Get.snackbar('Access denied', 'This screen is only for sales executives.');
+      Get.snackbar('Access denied', 'This screen is restricted for your role.');
       return const RouteSettings(name: AppRoutes.dashboard);
     }
 

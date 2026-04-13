@@ -979,14 +979,21 @@ export class LeadPlatformsService {
   }
 
   private buildUserLookup(): Promise<Map<string, number>> {
-    return this.db.query(`SELECT id, name FROM users WHERE is_active=TRUE`).then((res) => {
-      const m = new Map<string, number>();
-      for (const row of res.rows) {
-        const k = String(row.name || '').trim().toLowerCase();
-        if (k && !m.has(k)) m.set(k, row.id);
-      }
-      return m;
-    });
+    return this.db
+      .query(`SELECT id, name, email FROM users WHERE is_active = TRUE`)
+      .then((res) => {
+        const m = new Map<string, number>();
+        for (const row of res.rows) {
+          const nk = String(row.name || '')
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, ' ');
+          if (nk && !m.has(nk)) m.set(nk, row.id);
+          const ek = String(row.email || '').trim().toLowerCase();
+          if (ek && !m.has(ek)) m.set(ek, row.id);
+        }
+        return m;
+      });
   }
 
   private buildSourceResolver(fallbackId: number | null): Promise<(raw: string) => number | null> {
@@ -1016,9 +1023,22 @@ export class LeadPlatformsService {
   }
 
   private userIdFromLookup(userByLower: Map<string, number>, raw: string): number | null {
-    const k = String(raw || '').trim().toLowerCase();
+    let k = String(raw || '')
+      .trim()
+      .replace(/^["']|["']$/g, '')
+      .toLowerCase()
+      .replace(/\s+/g, ' ');
     if (!k) return null;
-    return userByLower.get(k) ?? null;
+    const hit = userByLower.get(k);
+    if (hit != null) return hit;
+    // Sheet sometimes stores "Name <email@x.com>" or "email@x.com"
+    const emailLike = k.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i);
+    if (emailLike) {
+      const e = emailLike[0].toLowerCase();
+      const byEmail = userByLower.get(e);
+      if (byEmail != null) return byEmail;
+    }
+    return null;
   }
 
   private async syncGoogleSheetLeadsLegacy(
@@ -1221,7 +1241,8 @@ export class LeadPlatformsService {
 
       const stageId = this.stageIdFromLookup(stageByLower, statusRaw, defaultStageId);
       const sourceId = resolveSource(sourceRaw) ?? sourceFallback;
-      const assignedTo = this.userIdFromLookup(userByLower, salesPersonRaw);
+      const salesPersonTrimmed = String(salesPersonRaw || '').trim();
+      const assignedTo = salesPersonTrimmed ? this.userIdFromLookup(userByLower, salesPersonTrimmed) : null;
 
       const sheetMeta: Record<string, unknown> = {
         import_source: 'google_sheet',
@@ -1242,17 +1263,24 @@ export class LeadPlatformsService {
         const row0 = existingBySheetId.get(sheetLeadId);
         if (row0) {
           const merged = this.mergeSheetCustomFields(row0.custom_fields, sheetMeta);
+          // Preserve CRM assignee when the sheet leaves Sales person blank; if the cell has a value
+          // but lookup fails, keep the existing assignee instead of writing NULL.
           await this.db.query(
             `UPDATE leads SET
-               name=$1, email=$2, phone=$3, source_id=$4, stage_id=$5, assigned_to=$6,
-               address=$7, custom_fields=$8::jsonb, updated_at=NOW()
-             WHERE id=$9`,
+               name=$1, email=$2, phone=$3, source_id=$4, stage_id=$5,
+               assigned_to = CASE
+                 WHEN NULLIF(TRIM($6::text), '') IS NULL THEN assigned_to
+                 ELSE COALESCE($7::int, assigned_to)
+               END,
+               address=$8, custom_fields=$9::jsonb, updated_at=NOW()
+             WHERE id=$10`,
             [
               leadName,
               email,
               phone,
               sourceId,
               stageId,
+              salesPersonTrimmed,
               assignedTo,
               address,
               JSON.stringify(merged),

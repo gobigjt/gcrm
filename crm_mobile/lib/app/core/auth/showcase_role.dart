@@ -57,6 +57,8 @@ class ShowcaseRoles {
       case ShowcaseRole.companyAdmin:
         return const [
           RoleNavItem(route: AppRoutes.adminHome, label: 'Home', icon: Icons.home_rounded),
+          RoleNavItem(route: AppRoutes.crm, label: 'Leads', icon: Icons.people_alt_outlined),
+          RoleNavItem(route: AppRoutes.sales, label: 'Sales', icon: Icons.receipt_long_outlined),
           RoleNavItem(route: AppRoutes.users, label: 'Users', icon: Icons.group_outlined),
           RoleNavItem(route: AppRoutes.settings, label: 'Company', icon: Icons.business_outlined),
         ];
@@ -70,12 +72,16 @@ class ShowcaseRoles {
       case ShowcaseRole.hr:
         return const [
           RoleNavItem(route: AppRoutes.dashboard, label: 'Home', icon: Icons.home_rounded),
+          RoleNavItem(route: AppRoutes.crm, label: 'Leads', icon: Icons.people_alt_outlined),
+          RoleNavItem(route: AppRoutes.sales, label: 'Sales', icon: Icons.receipt_long_outlined),
           RoleNavItem(route: AppRoutes.hr, label: 'HR', icon: Icons.badge_outlined),
           RoleNavItem(route: AppRoutes.settings, label: 'Me', icon: Icons.person_outline_rounded),
         ];
       case ShowcaseRole.unknown:
         return const [
           RoleNavItem(route: AppRoutes.dashboard, label: 'Home', icon: Icons.home_rounded),
+          RoleNavItem(route: AppRoutes.crm, label: 'Leads', icon: Icons.people_alt_outlined),
+          RoleNavItem(route: AppRoutes.sales, label: 'Sales', icon: Icons.receipt_long_outlined),
           RoleNavItem(route: AppRoutes.settings, label: 'Me', icon: Icons.person_outline_rounded),
         ];
     }

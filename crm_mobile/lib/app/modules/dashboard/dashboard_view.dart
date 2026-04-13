@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 
 import '../../core/auth/role_permissions.dart';
 import '../../core/models/crm_models.dart';
+import '../../core/utils/media_url.dart';
 import '../../core/utils/ui_format.dart';
 import '../../routes/app_routes.dart';
 import '../../shared/widgets/app_error_banner.dart';
@@ -14,6 +15,7 @@ import '../crm/crm_lead_detail_view.dart';
 import 'dashboard_controller.dart';
 
 String _myLeadsHint(DashboardController c) {
+  if (c.isSalesManager) return 'Manager pipeline overview';
   final company7d = c.openLeadsNew7d.value;
   if (company7d > 0) return '$company7d new opens (7d) · company';
   final n = c.newLeadsThisWeek.value;
@@ -48,6 +50,7 @@ class DashboardView extends GetView<DashboardController> {
                 title: '${_greeting()}, ${auth.userName.value}',
                 subtitle: 'Your pipeline snapshot',
                 avatarInitial: auth.userName.value,
+                avatarUrl: resolveUploadsPublicUrl(auth.userAvatarUrl.value),
                 onOpenMenu: () => controller.scaffoldKey.currentState?.openDrawer(),
                 onRefresh: controller.refreshStats,
                 notificationBadgeCount: controller.unreadNotifications.value,
