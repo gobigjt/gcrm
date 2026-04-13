@@ -1,8 +1,29 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/client';
+import { useAuth } from '../../context/AuthContext';
 import { inputCls, selectCls } from '../../components/FormField';
 import { useToast, ToastContainer } from '../../components/Toast';
+
+function canManageCrmFollowupTasks(role) {
+  const r = String(role || '');
+  return r === 'Admin' || r === 'Sales Manager' || r === 'Super Admin';
+}
+
+function toDatetimeLocalValue(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function datetimeLocalInputToApiIso(localValue) {
+  if (!localValue || !String(localValue).trim()) return localValue;
+  const d = new Date(localValue);
+  if (Number.isNaN(d.getTime())) return localValue;
+  return d.toISOString();
+}
 
 function formatDate(dt) {
   if (!dt) return '—';
@@ -23,6 +44,7 @@ function leadDisplayTitle(l) {
 export default function CRMLeadDetailPage() {
   const { id } = useParams();
   const nav = useNavigate();
+  const { user } = useAuth();
   const { toasts, show: showToast } = useToast();
   const [lead, setLead] = useState(null);
   const [stages, setStages] = useState([]);
@@ -31,7 +53,13 @@ export default function CRMLeadDetailPage() {
   const [followups, setFollowups] = useState([]);
   const [actForm, setActForm] = useState({ type: 'note', description: '' });
   const [fuForm, setFuForm] = useState({ due_date: '', description: '', assigned_to: '' });
+  const [fuEditId, setFuEditId] = useState(null);
+  const [fuEditForm, setFuEditForm] = useState({ due_date: '', description: '', assigned_to: '' });
   const [saving, setSaving] = useState(false);
+  const [converting, setConverting] = useState(false);
+  const canManageTasks = canManageCrmFollowupTasks(user?.role);
+  const canConvertToCustomer = !lead?.is_converted
+    && (String(lead?.email || '').trim() || String(lead?.phone || '').trim());
 
   const load = useCallback(() => {
     api.get(`/crm/leads/${id}`).then((r) => setLead(r.data.lead || r.data)).catch(() => setLead(null));
@@ -69,7 +97,10 @@ export default function CRMLeadDetailPage() {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.post(`/crm/leads/${id}/followups`, fuForm);
+      await api.post(`/crm/leads/${id}/followups`, {
+        ...fuForm,
+        due_date: datetimeLocalInputToApiIso(fuForm.due_date),
+      });
       setFuForm({ due_date: '', description: '', assigned_to: '' });
       load();
       showToast('Task created successfully');
@@ -83,10 +114,68 @@ export default function CRMLeadDetailPage() {
     load();
   };
 
+  const openFuEdit = (f) => {
+    setFuEditId(f.id);
+    setFuEditForm({
+      due_date: toDatetimeLocalValue(f.due_date),
+      description: f.description || '',
+      assigned_to: f.assigned_to != null && f.assigned_to !== '' ? String(f.assigned_to) : '',
+    });
+  };
+
+  const saveFollowupEdit = async (e) => {
+    e.preventDefault();
+    if (fuEditId == null) return;
+    setSaving(true);
+    try {
+      await api.patch(`/crm/leads/${id}/followups/${fuEditId}`, {
+        due_date: datetimeLocalInputToApiIso(fuEditForm.due_date),
+        description: fuEditForm.description,
+        assigned_to: fuEditForm.assigned_to === '' ? null : Number(fuEditForm.assigned_to),
+      });
+      setFuEditId(null);
+      load();
+      showToast('Task updated');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteFollowup = async (fid) => {
+    if (!window.confirm('Delete this task?')) return;
+    setSaving(true);
+    try {
+      await api.delete(`/crm/leads/${id}/followups/${fid}`);
+      if (fuEditId === fid) setFuEditId(null);
+      load();
+      showToast('Task deleted');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const onDelete = async () => {
     if (!window.confirm('Delete this lead?')) return;
     await api.delete(`/crm/leads/${id}`);
     nav('/crm');
+  };
+
+  const convertToCustomer = async () => {
+    if (!canConvertToCustomer) return;
+    setConverting(true);
+    try {
+      const { data } = await api.post(`/crm/leads/${id}/convert-customer`);
+      showToast(
+        data?.already_existed
+          ? 'Customer already linked — see Sales → Customers.'
+          : 'Customer created — see Sales → Customers.',
+      );
+      load();
+    } catch (err) {
+      showToast(err?.response?.data?.message || err?.message || 'Could not convert lead');
+    } finally {
+      setConverting(false);
+    }
   };
 
   return (
@@ -97,7 +186,17 @@ export default function CRMLeadDetailPage() {
           <h2 className="text-[16px] font-semibold text-slate-800 dark:text-slate-100">{leadDisplayTitle(lead) || 'Lead'}</h2>
           <p className="text-[11px] text-slate-500 dark:text-slate-400">View lead details, timeline and follow-ups</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {canConvertToCustomer && (
+            <button
+              type="button"
+              disabled={converting}
+              onClick={convertToCustomer}
+              className="btn-wf-secondary"
+            >
+              {converting ? 'Converting…' : 'Convert to customer'}
+            </button>
+          )}
           <Link to={`/crm/leads/${id}/edit`} className="btn-wf-primary">Edit Lead</Link>
           <button type="button" onClick={onDelete} className="btn-wf-danger">Delete</button>
           <Link to="/crm" className="btn-wf-secondary">Back</Link>
@@ -196,23 +295,53 @@ export default function CRMLeadDetailPage() {
 
         <div className="bg-white dark:bg-[#1a1d2e] rounded-2xl border border-slate-200/80 dark:border-slate-700/50 shadow-card p-5">
           <h3 className="text-sm font-semibold mb-3">Follow-ups</h3>
-          <form onSubmit={addFollowup} className="space-y-2 mb-3">
-            <input type="datetime-local" className={inputCls} value={fuForm.due_date} onChange={(e) => setFuForm((f) => ({ ...f, due_date: e.target.value }))} required />
-            <input className={inputCls} value={fuForm.description} onChange={(e) => setFuForm((f) => ({ ...f, description: e.target.value }))} placeholder="Description" />
-            <select className={selectCls} value={fuForm.assigned_to} onChange={(e) => setFuForm((f) => ({ ...f, assigned_to: e.target.value }))}>
-              <option value="">Assign to me</option>
-              {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-            </select>
-            <button className="btn-wf-primary" disabled={saving}>{saving ? 'Saving…' : 'Add Follow-up'}</button>
-          </form>
+          {!canManageTasks && (
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
+              Only admins and sales managers can add, edit, or delete tasks. You can still mark tasks done.
+            </p>
+          )}
+          {canManageTasks && fuEditId != null && (
+            <form onSubmit={saveFollowupEdit} className="space-y-2 mb-3 p-3 rounded-lg border border-amber-200/70 dark:border-amber-800/40 bg-amber-50/50 dark:bg-amber-900/10">
+              <p className="text-xs font-semibold text-amber-800 dark:text-amber-200">Edit task</p>
+              <input type="datetime-local" className={inputCls} value={fuEditForm.due_date} onChange={(e) => setFuEditForm((f) => ({ ...f, due_date: e.target.value }))} required />
+              <input className={inputCls} value={fuEditForm.description} onChange={(e) => setFuEditForm((f) => ({ ...f, description: e.target.value }))} placeholder="Description" />
+              <select className={selectCls} value={fuEditForm.assigned_to} onChange={(e) => setFuEditForm((f) => ({ ...f, assigned_to: e.target.value }))}>
+                <option value="">Unassigned</option>
+                {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+              <div className="flex gap-2">
+                <button type="button" className="btn-wf-secondary" onClick={() => setFuEditId(null)}>Cancel</button>
+                <button className="btn-wf-primary" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+              </div>
+            </form>
+          )}
+          {canManageTasks && (
+            <form onSubmit={addFollowup} className="space-y-2 mb-3">
+              <input type="datetime-local" className={inputCls} value={fuForm.due_date} onChange={(e) => setFuForm((f) => ({ ...f, due_date: e.target.value }))} required />
+              <input className={inputCls} value={fuForm.description} onChange={(e) => setFuForm((f) => ({ ...f, description: e.target.value }))} placeholder="Description" />
+              <select className={selectCls} value={fuForm.assigned_to} onChange={(e) => setFuForm((f) => ({ ...f, assigned_to: e.target.value }))}>
+                <option value="">Assign to me</option>
+                {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+              <button className="btn-wf-primary" disabled={saving}>{saving ? 'Saving…' : 'Add Follow-up'}</button>
+            </form>
+          )}
           <div className="space-y-2">
             {followups.map((f) => (
-              <div key={f.id} className="flex items-center justify-between text-sm border rounded-lg border-slate-200 dark:border-slate-700 p-2">
-                <div>
+              <div key={f.id} className="flex items-center justify-between gap-2 text-sm border rounded-lg border-slate-200 dark:border-slate-700 p-2">
+                <div className="min-w-0 flex-1">
                   <div>{f.description || 'Follow up'}</div>
                   <div className="text-xs text-slate-500">{formatDate(f.due_date)}</div>
                 </div>
-                {!f.is_done && <button className="btn-wf-secondary" type="button" onClick={() => markDone(f.id)}>Mark done</button>}
+                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                  {!f.is_done && <button className="btn-wf-secondary" type="button" onClick={() => markDone(f.id)}>Mark done</button>}
+                  {canManageTasks && !f.is_done && (
+                    <button type="button" className="text-xs font-semibold text-brand-600 dark:text-brand-400" onClick={() => openFuEdit(f)}>Edit</button>
+                  )}
+                  {canManageTasks && (
+                    <button type="button" className="text-xs font-semibold text-red-600 dark:text-red-400" onClick={() => deleteFollowup(f.id)}>Delete</button>
+                  )}
+                </div>
               </div>
             ))}
             {followups.length === 0 && <p className="text-sm text-slate-500">No follow-ups</p>}

@@ -34,7 +34,18 @@ class _CrmListsViewState extends State<CrmListsView> {
       _error = null;
     });
     try {
-      final res = await _auth.authorizedRequest(method: 'GET', path: '/crm/leads/source-counts');
+      var path = '/crm/leads/source-counts';
+      final role = _auth.role.value.trim().toLowerCase();
+      final uid = _auth.userId.value;
+      if ((role == 'sales executive' || role == 'sales manager') && uid > 0) {
+        if (role == 'sales manager') {
+          final ex = _auth.crmExecutiveScopeId.value;
+          path += '?assigned_to=${ex ?? uid}';
+        } else {
+          path += '?assigned_to=$uid';
+        }
+      }
+      final res = await _auth.authorizedRequest(method: 'GET', path: path);
       final map = Map<String, dynamic>.from(res as Map);
       _total = (map['total'] as num?)?.toInt() ?? 0;
       final list = map['sources'] as List<dynamic>? ?? [];

@@ -76,7 +76,6 @@ const NAV_SECTIONS = [
       { to: '/users?tab=users', label: 'Users & Roles', icon: '◈', module: 'users' },
       { to: '/users?tab=permissions', label: 'Permissions', icon: '▦', module: 'users' },
       { to: '/settings', label: 'Settings', icon: '◌', module: 'settings' },
-      { to: '/settings#superadmin', label: 'Super Admin', icon: '★', module: null, roles: ['Super Admin'] },
     ],
   },
 ];
@@ -122,12 +121,15 @@ function navItemActive(pathname, search, hash, to) {
 }
 
 const roleColors = {
-  'Super Admin': 'bg-gradient-to-r from-amber-100 to-orange-100 text-orange-700 dark:from-amber-900/30 dark:to-orange-900/30 dark:text-orange-300 ring-1 ring-orange-300 dark:ring-orange-700',
   Admin:         'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
   'Sales Executive': 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
   HR:            'bg-amber-100  text-amber-700  dark:bg-amber-900/40  dark:text-amber-300',
   default:       'bg-slate-100  text-slate-600  dark:bg-slate-700     dark:text-slate-300',
 };
+
+function displayRoleName(role) {
+  return role === 'Super Admin' ? 'Admin' : role;
+}
 
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
@@ -215,10 +217,10 @@ export default function Layout({ children }) {
     [canAccess, user],
   );
 
-  const roleCls = roleColors[user?.role] || roleColors.default;
+  const roleLabel = displayRoleName(user?.role);
+  const roleCls = roleColors[roleLabel] || roleColors.default;
   const displayName = (user?.name || user?.email || 'User').toString().trim() || 'User';
   const logoSrc = resolveApiPublicUrl(companyBranding?.logo_url);
-  const brandName = (companyBranding?.company_name || 'EzCRM Pro').toString();
   const pageKey = Object.keys(PAGE_META)
     .filter((p) => p === '/' || pathname.startsWith(p))
     .sort((a, b) => b.length - a.length)[0] || '/';
@@ -349,7 +351,7 @@ export default function Layout({ children }) {
             {dark ? '☀️' : '🌙'}
           </button>
           <div className="hidden sm:flex items-center gap-2">
-            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${roleCls}`}>{user?.role}</span>
+            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${roleCls}`}>{roleLabel}</span>
             <div className="relative" ref={userMenuRef}>
               <button
                 type="button"

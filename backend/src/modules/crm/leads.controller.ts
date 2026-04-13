@@ -20,9 +20,10 @@ export class LeadsController {
 
   @Get('stages')    stages()    { return this.svc.stages(); }
   @Get('sources')   sources()   { return this.svc.sources(); }
-  @Get('source-counts') sourceCounts(@CurrentUser() u: any) { return this.svc.sourceCounts(u); }
+  @Get('source-counts') sourceCounts(@Query() q: any, @CurrentUser() u: any) { return this.svc.sourceCounts(u, q); }
   @Get('assignees') assignees() { return this.svc.assignees(); }
-  @Get('stats')     stats(@CurrentUser() u: any)     { return this.svc.stats(u); }
+  @Get('stats')     stats(@Query() q: any, @CurrentUser() u: any)     { return this.svc.stats(u, q); }
+  @Get('reporting-executives') reportingExecutives(@CurrentUser() u: any) { return this.svc.reportingExecutives(u); }
   @Get('followups') allFollowups(@Query() q: any, @CurrentUser() u: any) { return this.svc.allFollowups(q, u); }
 
   // ─── Masters ──────────────────────────────────────────────
@@ -113,6 +114,14 @@ export class LeadsController {
     return this.svc.update(leadId, b);
   }
 
+  @Post(':id/convert-customer')
+  @ApiOperation({ summary: 'Create a Sales customer from this lead (name, email, phone, address); sets lead is_converted' })
+  async convertToCustomer(@Param('id') id: string, @CurrentUser() u: any) {
+    const leadId = Number(id);
+    await this.assertLeadAccess(leadId, u);
+    return this.svc.convertLeadToCustomer(leadId, u);
+  }
+
   @UseGuards(RolesGuard) @Roles('Admin','Manager')
   @Delete(':id')
   async remove(@Param('id') id: string, @CurrentUser() u: any) {
@@ -140,6 +149,9 @@ export class LeadsController {
     await this.assertLeadAccess(leadId, u);
     return this.svc.followups(leadId);
   }
+
+  @UseGuards(RolesGuard)
+  @Roles('Admin', 'Sales Manager')
   @Post(':id/followups')
   async addFollowup(@Param('id') id: string, @Body() b: any, @CurrentUser() u: any) {
     const leadId = Number(id);
@@ -148,5 +160,36 @@ export class LeadsController {
   }
 
   @Patch(':id/followups/:fid/done')
-  doneFollowup(@Param('fid') fid: string) { return this.svc.doneFollowup(Number(fid)); }
+  async doneFollowup(@Param('id') id: string, @Param('fid') fid: string, @CurrentUser() u: any) {
+    const leadId = Number(id);
+    await this.assertLeadAccess(leadId, u);
+    return this.svc.doneFollowup(leadId, Number(fid));
+  }
+
+  @UseGuards(RolesGuard)
+  @Roles('Admin', 'Sales Manager')
+  @Patch(':id/followups/:fid')
+  async updateFollowup(
+    @Param('id') id: string,
+    @Param('fid') fid: string,
+    @Body() b: any,
+    @CurrentUser() u: any,
+  ) {
+    const leadId = Number(id);
+    await this.assertLeadAccess(leadId, u);
+    return this.svc.updateFollowup(leadId, Number(fid), {
+      due_date: b.due_date,
+      description: b.description,
+      assigned_to: b.assigned_to === undefined ? undefined : b.assigned_to,
+    });
+  }
+
+  @UseGuards(RolesGuard)
+  @Roles('Admin', 'Sales Manager')
+  @Delete(':id/followups/:fid')
+  async removeFollowup(@Param('id') id: string, @Param('fid') fid: string, @CurrentUser() u: any) {
+    const leadId = Number(id);
+    await this.assertLeadAccess(leadId, u);
+    return this.svc.deleteFollowup(leadId, Number(fid));
+  }
 }

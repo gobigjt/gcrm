@@ -7,6 +7,17 @@ num parseDynamicNum(dynamic value) {
   return num.tryParse(value.toString().trim()) ?? 0;
 }
 
+int parseDynamicInt(dynamic value) => parseDynamicNum(value).toInt();
+
+/// Nullable integers from JSON (e.g. optional foreign keys, NUMERIC columns); tolerates stringified numbers and decimals (`"7.50"` → `7`).
+int? tryParseDynamicInt(dynamic value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  final n = num.tryParse(value.toString().trim());
+  return n?.toInt();
+}
+
 String formatCurrencyInr(dynamic value, {int decimals = 0}) {
   final n = parseDynamicNum(value);
   return 'Rs ${n.toStringAsFixed(decimals)}';
@@ -18,10 +29,43 @@ String toYmd(DateTime d) {
   return '${d.year}-$mm-$dd';
 }
 
+/// Calendar date (local timezone) for bucketing overdue / today vs raw UTC `YYYY-MM-DD` substring.
+DateTime? parseLocalCalendarDay(dynamic value) {
+  if (value == null) return null;
+  final s = value.toString().trim();
+  if (s.isEmpty) return null;
+  final d = DateTime.tryParse(s);
+  if (d == null) {
+    if (s.length >= 10) {
+      final head = s.substring(0, 10);
+      final ymd = DateTime.tryParse(head);
+      if (ymd == null) return null;
+      return DateTime(ymd.year, ymd.month, ymd.day);
+    }
+    return null;
+  }
+  final local = d.isUtc ? d.toLocal() : d;
+  return DateTime(local.year, local.month, local.day);
+}
+
+/// `YYYY-MM-DD` or `datetime-local` style string → UTC ISO8601 for Postgres `TIMESTAMPTZ`.
+String dueDateForTimestamptzApi(String input) {
+  final t = input.trim();
+  if (t.isEmpty) return t;
+  final d = DateTime.tryParse(t);
+  if (d == null) return t;
+  final local = d.isUtc ? d.toLocal() : d;
+  return local.toUtc().toIso8601String();
+}
+
+/// Show `YYYY-MM-DD` in the user’s local calendar (fixes UTC strings showing wrong day in Asia).
 String formatIsoDate(dynamic value) {
   if (value == null) return '—';
-  final s = value.toString();
-  if (s.length >= 10) return s.substring(0, 10);
+  final s = value.toString().trim();
+  if (s.isEmpty) return '—';
+  final day = parseLocalCalendarDay(s);
+  if (day != null) return toYmd(day);
+  if (s.length >= 10 && RegExp(r'^\d{4}-\d{2}-\d{2}').hasMatch(s)) return s.substring(0, 10);
   return s;
 }
 

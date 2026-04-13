@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/models/crm_models.dart';
-import '../../core/utils/ui_format.dart';
+import '../../core/utils/ui_format.dart' show formatCurrencyInr, parseLocalCalendarDay;
 import '../../shared/widgets/app_error_banner.dart';
 import '../../shared/widgets/app_navigation_drawer.dart';
 import '../../routes/app_routes.dart';
@@ -47,25 +47,18 @@ class TasksView extends GetView<TasksController> {
                 return const Center(child: Text('No tasks yet'));
               }
 
-              DateTime? parseDue(dynamic v) {
-                if (v == null) return null;
-                final s = v.toString();
-                final datePart = s.length >= 10 ? s.substring(0, 10) : s;
-                return DateTime.tryParse(datePart);
-              }
-
               final now = DateTime.now();
               final today = DateTime(now.year, now.month, now.day);
               final weekEnd = today.add(const Duration(days: 7));
 
               final overdue = controller.items
-                  .where((f) => !f.isDone && (parseDue(f.dueDate)?.isBefore(today) ?? false))
+                  .where((f) => !f.isDone && (parseLocalCalendarDay(f.dueDate)?.isBefore(today) ?? false))
                   .toList()
-                ..sort((a, b) => (parseDue(a.dueDate) ?? today).compareTo(parseDue(b.dueDate) ?? today));
+                ..sort((a, b) => (parseLocalCalendarDay(a.dueDate) ?? today).compareTo(parseLocalCalendarDay(b.dueDate) ?? today));
 
               final todayItems = controller.items
                   .where((f) => !f.isDone && (() {
-                        final d = parseDue(f.dueDate);
+                        final d = parseLocalCalendarDay(f.dueDate);
                         if (d == null) return false;
                         return d.year == today.year && d.month == today.month && d.day == today.day;
                       })())
@@ -73,7 +66,7 @@ class TasksView extends GetView<TasksController> {
 
               final thisWeek = controller.items
                   .where((f) => !f.isDone && (() {
-                        final d = parseDue(f.dueDate);
+                        final d = parseLocalCalendarDay(f.dueDate);
                         if (d == null) return false;
                         final isAfterToday = d.isAfter(today);
                         final isWithin = d.isBefore(weekEnd.add(const Duration(days: 1))) || d.isAtSameMomentAs(weekEnd);

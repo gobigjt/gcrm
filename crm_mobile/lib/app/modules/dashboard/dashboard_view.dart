@@ -227,10 +227,7 @@ class _DashboardEmptyPlaceholder extends StatelessWidget {
 }
 
 bool _isOverdue(dynamic dueDate) {
-  if (dueDate == null) return false;
-  final s = dueDate.toString();
-  final datePart = s.length >= 10 ? s.substring(0, 10) : s;
-  final d = DateTime.tryParse(datePart);
+  final d = parseLocalCalendarDay(dueDate);
   if (d == null) return false;
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);

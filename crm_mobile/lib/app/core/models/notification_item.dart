@@ -1,3 +1,5 @@
+import '../utils/ui_format.dart';
+
 class NotificationItem {
   NotificationItem({
     required this.id,
@@ -22,7 +24,7 @@ class NotificationItem {
   factory NotificationItem.fromJson(Map<String, dynamic> json) {
     final rawLink = json['link'];
     return NotificationItem(
-      id: (json['id'] as num? ?? 0).toInt(),
+      id: parseDynamicInt(json['id']),
       title: (json['title'] ?? 'Notification').toString(),
       body: (json['body'] ?? '').toString(),
       type: (json['type'] ?? 'info').toString(),

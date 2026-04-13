@@ -38,7 +38,7 @@ class ShowcaseRoles {
     return switch (role) {
       ShowcaseRole.salesExecutive => 'Sales executive',
       ShowcaseRole.companyAdmin => 'Company admin',
-      ShowcaseRole.superAdmin => 'Super admin',
+      ShowcaseRole.superAdmin => 'Admin',
       ShowcaseRole.hr => 'HR',
       ShowcaseRole.unknown => 'User',
     };

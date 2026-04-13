@@ -9,6 +9,7 @@ import '../../core/network/api_client.dart';
 import '../../core/network/error_utils.dart';
 import '../../core/auth/role_permissions.dart';
 import '../../core/storage/secure_storage_service.dart';
+import '../../core/utils/ui_format.dart';
 import '../../core/auth/role_home_route.dart';
 import '../../routes/app_routes.dart';
 import '../attendance/sales_attendance_controller.dart';
@@ -41,6 +42,9 @@ class AuthController extends GetxController {
   final grantedPermissions = <String>{}.obs;
   final accessToken = ''.obs;
   final refreshToken = ''.obs;
+
+  /// Sales Manager: optional CRM pipeline scope (`assigned_to` on `/crm/leads`). Cleared on logout.
+  final crmExecutiveScopeId = Rxn<int>();
 
   bool get canSubmit => email.value.trim().isNotEmpty && password.value.length >= 6;
 
@@ -200,10 +204,11 @@ class AuthController extends GetxController {
     required String access,
     required String refresh,
   }) async {
+    crmExecutiveScopeId.value = null;
     userName.value = (user['name'] ?? 'User').toString();
     userEmail.value = (user['email'] ?? '').toString();
     userAvatarUrl.value = _readAvatarUrlFromUser(user);
-    userId.value = (user['id'] as num? ?? 0).toInt();
+    userId.value = parseDynamicInt(user['id']);
     role.value = (user['role'] ?? '').toString();
     accessToken.value = access;
     refreshToken.value = refresh;
@@ -310,6 +315,7 @@ class AuthController extends GetxController {
     accessToken.value = '';
     refreshToken.value = '';
     grantedPermissions.clear();
+    crmExecutiveScopeId.value = null;
     await _storage.clearSession();
   }
 

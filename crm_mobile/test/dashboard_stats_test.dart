@@ -31,4 +31,20 @@ void main() {
     expect(s.overdueInvoices, 0);
     expect(s.activeUsers, 0);
   });
+
+  test('DashboardStats tolerates stringified numbers from Postgres/JSON', () {
+    final s = DashboardStats.fromJson({
+      'open_leads': '252',
+      'revenue': '6642889.00',
+      'active_orders': '1',
+      'total_employees': '40',
+      'open_leads_new_7d': '248',
+      'overdue_invoices': '0',
+      'active_users': '12',
+    });
+    expect(s.openLeads, 252);
+    expect(s.revenue, 6642889.0);
+    expect(s.activeOrders, 1);
+    expect(s.openLeadsNew7d, 248);
+  });
 }

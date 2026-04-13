@@ -44,6 +44,7 @@ class _CrmEditLeadViewState extends State<CrmEditLeadView> {
   int? _sourceId;
   int? _stageId;
   int? _assignedTo;
+  int? _assignedManagerId;
   String _priority = 'warm';
 
   @override
@@ -113,6 +114,7 @@ class _CrmEditLeadViewState extends State<CrmEditLeadView> {
       _sourceId = lead.sourceId;
       _stageId = lead.stageId;
       _assignedTo = lead.assignedTo;
+      _assignedManagerId = lead.assignedManagerId;
       _priority = lead.priority;
     } catch (e) {
       _loadError = userFriendlyError(e);
@@ -133,6 +135,7 @@ class _CrmEditLeadViewState extends State<CrmEditLeadView> {
       'source_id': _sourceId,
       'stage_id': _stageId,
       'assigned_to': _assignedTo,
+      'assigned_manager_id': _assignedManagerId,
       'priority': _priority,
       'notes': _notes.text.trim().isEmpty ? null : _notes.text.trim(),
       'lead_segment': _segment.text.trim().isEmpty ? null : _segment.text.trim(),
@@ -148,8 +151,8 @@ class _CrmEditLeadViewState extends State<CrmEditLeadView> {
   }
 
   Future<void> _save() async {
-    if (_name.text.trim().isEmpty || _phone.text.trim().isEmpty) {
-      Get.snackbar('Missing data', 'Name and phone are required');
+    if (_name.text.trim().isEmpty) {
+      Get.snackbar('Missing data', 'Name is required');
       return;
     }
     setState(() => _saving = true);
@@ -289,6 +292,16 @@ class _CrmEditLeadViewState extends State<CrmEditLeadView> {
                               ..._assignees.map((u) => DropdownMenuItem<int?>(value: u.id, child: Text(u.name))),
                             ],
                             onChanged: _saving ? null : (v) => setState(() => _assignedTo = v),
+                          ),
+                          const SizedBox(height: 8),
+                          DropdownButtonFormField<int?>(
+                            value: _assignedManagerId,
+                            decoration: _dec(scheme, 'Assign Manager', null),
+                            items: [
+                              const DropdownMenuItem<int?>(value: null, child: Text('Unassigned')),
+                              ..._assignees.map((u) => DropdownMenuItem<int?>(value: u.id, child: Text(u.name))),
+                            ],
+                            onChanged: _saving ? null : (v) => setState(() => _assignedManagerId = v),
                           ),
                           const SizedBox(height: 8),
                           DropdownButtonFormField<String>(

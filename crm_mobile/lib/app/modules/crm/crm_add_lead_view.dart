@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../core/auth/role_permissions.dart';
 import '../../core/utils/ui_format.dart';
+import '../auth/auth_controller.dart';
 import 'crm_controller.dart';
 import 'crm_lead_detail_view.dart';
 
@@ -14,6 +16,7 @@ class CrmAddLeadView extends StatefulWidget {
 
 class _CrmAddLeadViewState extends State<CrmAddLeadView> {
   final CrmController controller = Get.find<CrmController>();
+  final AuthController _auth = Get.find<AuthController>();
 
   final TextEditingController nameCtrl = TextEditingController();
   final TextEditingController companyCtrl = TextEditingController();
@@ -32,6 +35,34 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
   final TextEditingController dealSizeCtrl = TextEditingController();
   final TextEditingController scoreCtrl = TextEditingController();
   final RxnInt sourceId = RxnInt();
+  final RxnInt stageId = RxnInt();
+  final RxnInt assignedTo = RxnInt();
+  final RxnInt assignedManagerId = RxnInt();
+  final priority = 'warm'.obs;
+  final assignees = <Map<String, dynamic>>[].obs;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAssignees();
+  }
+
+  Future<void> _loadAssignees() async {
+    try {
+      final res = await _auth.authorizedRequest(method: 'GET', path: '/crm/leads/assignees');
+      assignees.assignAll(
+        (res as List).map((e) => Map<String, dynamic>.from(e as Map)).toList(),
+      );
+    } catch (_) {
+      assignees.clear();
+    }
+  }
+
+  String _assigneeLabel(Map<String, dynamic> u) {
+    final role = (u['role'] ?? '').toString().toLowerCase();
+    final name = (u['name'] ?? '').toString();
+    return role == 'manager' ? '$name (Manager)' : name;
+  }
 
   List<String> _parseTags(String raw) {
     return raw
@@ -61,8 +92,8 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
   }
 
   Future<void> _saveLeadOnly() async {
-    if (nameCtrl.text.trim().isEmpty || phoneCtrl.text.trim().isEmpty) {
-      Get.snackbar('Missing data', 'Contact name and phone are required');
+    if (nameCtrl.text.trim().isEmpty) {
+      Get.snackbar('Missing data', 'Contact name is required');
       return;
     }
     final createdLeadId = await controller.createLead(
@@ -75,6 +106,10 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
       jobTitle: jobTitleCtrl.text.trim().isEmpty ? null : jobTitleCtrl.text.trim(),
       website: websiteCtrl.text.trim().isEmpty ? null : websiteCtrl.text.trim(),
       address: addressCtrl.text.trim().isEmpty ? null : addressCtrl.text.trim(),
+      stageId: stageId.value,
+      assignedTo: assignedTo.value,
+      assignedManagerId: assignedManagerId.value,
+      priority: priority.value,
       notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
       tags: _parseTags(tagsCtrl.text),
       dealSize: double.tryParse(dealSizeCtrl.text.trim()),
@@ -100,8 +135,8 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
   }
 
   Future<void> _saveLeadAndTask() async {
-    if (nameCtrl.text.trim().isEmpty || phoneCtrl.text.trim().isEmpty) {
-      Get.snackbar('Missing data', 'Contact name and phone are required');
+    if (nameCtrl.text.trim().isEmpty) {
+      Get.snackbar('Missing data', 'Contact name is required');
       return;
     }
     if (dueDateCtrl.text.trim().isEmpty) {
@@ -118,6 +153,10 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
       jobTitle: jobTitleCtrl.text.trim().isEmpty ? null : jobTitleCtrl.text.trim(),
       website: websiteCtrl.text.trim().isEmpty ? null : websiteCtrl.text.trim(),
       address: addressCtrl.text.trim().isEmpty ? null : addressCtrl.text.trim(),
+      stageId: stageId.value,
+      assignedTo: assignedTo.value,
+      assignedManagerId: assignedManagerId.value,
+      priority: priority.value,
       notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
       tags: _parseTags(tagsCtrl.text),
       dealSize: double.tryParse(dealSizeCtrl.text.trim()),
@@ -150,6 +189,7 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
 
   @override
   Widget build(BuildContext context) {
+    final canManageTasks = canManageCrmFollowupTasks(Get.find<AuthController>().role.value);
     final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final border = OutlineInputBorder(
@@ -399,94 +439,116 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
                 ),
               ),
               const SizedBox(height: 12),
-              _sectionLabel(context, 'Lead source'),
-              const SizedBox(height: 8),
-              Obx(
-                () {
-                  final scheme = Theme.of(context).colorScheme;
-                  final isDark = Theme.of(context).brightness == Brightness.dark;
-                  final selectedBg = const Color(0xFFE6F1FB);
-                  final selectedFg = const Color(0xFF0C447C);
-                  final unselectedBg = isDark ? scheme.surfaceContainerHighest : const Color(0xFFF3F4F6);
-                  final unselectedFg = scheme.onSurfaceVariant;
-                  final selectedBorder = const Color(0xFFB7D6F2);
-                  final unselectedBorder = scheme.outline.withValues(alpha: 0.5);
-
-                  return SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: controller.sources
-                          .map(
-                            (s) {
-                              final selected = sourceId.value == s.id;
-                              return Padding(
-                                padding: const EdgeInsets.only(right: 6),
-                                child: ChoiceChip(
-                                  labelPadding: const EdgeInsets.symmetric(horizontal: 4),
-                                  visualDensity: const VisualDensity(horizontal: -2, vertical: -2),
-                                  label: Text(
-                                    s.name,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: selected ? selectedFg : unselectedFg,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  selected: selected,
-                                  selectedColor: selectedBg,
-                                  backgroundColor: unselectedBg,
-                                  side: BorderSide(color: selected ? selectedBorder : unselectedBorder),
-                                  onSelected: (_) => sourceId.value = s.id,
-                                ),
-                              );
-                            },
-                          )
-                          .toList(),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 12),
-              _sectionLabel(context, 'Task (optional)'),
+              _sectionLabel(context, 'Pipeline'),
               const SizedBox(height: 6),
               Theme(
                 data: Theme.of(context).copyWith(inputDecorationTheme: denseInput),
-                child: Column(
-                  children: [
-                    TextField(
-                      controller: dueDateCtrl,
-                      readOnly: true,
-                      onTap: () => pickDateIntoController(context: context, controller: dueDateCtrl),
-                      decoration: InputDecoration(
-                        labelText: 'Task Due Date',
-                        suffixIcon: Icon(Icons.calendar_today_rounded),
-                        floatingLabelBehavior: FloatingLabelBehavior.always,
-                        labelStyle: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: scheme.onSurfaceVariant,
-                        ),
+                child: Obx(
+                  () => Column(
+                    children: [
+                      DropdownButtonFormField<int?>(
+                        value: sourceId.value,
+                        decoration: const InputDecoration(labelText: 'Source'),
+                        items: [
+                          const DropdownMenuItem<int?>(value: null, child: Text('Select…')),
+                          ...controller.sources.map((s) => DropdownMenuItem<int?>(value: s.id, child: Text(s.name))),
+                        ],
+                        onChanged: (v) => sourceId.value = v,
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: taskDescCtrl,
-                      decoration: InputDecoration(
-                        labelText: 'Task Description',
-                        floatingLabelBehavior: FloatingLabelBehavior.always,
-                        labelStyle: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: scheme.onSurfaceVariant,
-                        ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<int?>(
+                        value: stageId.value,
+                        decoration: const InputDecoration(labelText: 'Stage'),
+                        items: [
+                          const DropdownMenuItem<int?>(value: null, child: Text('Select…')),
+                          ...controller.stages.map((s) => DropdownMenuItem<int?>(value: s.id, child: Text(s.name))),
+                        ],
+                        onChanged: (v) => stageId.value = v,
                       ),
-                      minLines: 2,
-                      maxLines: 3,
-                    ),
-                  ],
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<int?>(
+                        value: assignedTo.value,
+                        decoration: const InputDecoration(labelText: 'Assigned To'),
+                        items: [
+                          const DropdownMenuItem<int?>(value: null, child: Text('Unassigned')),
+                          ...assignees.map((u) => DropdownMenuItem<int?>(
+                                value: int.tryParse('${u['id']}'),
+                                child: Text(_assigneeLabel(u)),
+                              )),
+                        ],
+                        onChanged: (v) => assignedTo.value = v,
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<int?>(
+                        value: assignedManagerId.value,
+                        decoration: const InputDecoration(labelText: 'Assign Manager'),
+                        items: [
+                          const DropdownMenuItem<int?>(value: null, child: Text('Unassigned')),
+                          ...assignees.map((u) => DropdownMenuItem<int?>(
+                                value: int.tryParse('${u['id']}'),
+                                child: Text(_assigneeLabel(u)),
+                              )),
+                        ],
+                        onChanged: (v) => assignedManagerId.value = v,
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String>(
+                        value: priority.value,
+                        decoration: const InputDecoration(labelText: 'Priority'),
+                        items: const [
+                          DropdownMenuItem(value: 'hot', child: Text('Hot')),
+                          DropdownMenuItem(value: 'warm', child: Text('Warm')),
+                          DropdownMenuItem(value: 'cold', child: Text('Cold')),
+                        ],
+                        onChanged: (v) => priority.value = v ?? 'warm',
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 18),
+              if (canManageTasks) ...[
+                const SizedBox(height: 12),
+                _sectionLabel(context, 'Task (optional)'),
+                const SizedBox(height: 6),
+                Theme(
+                  data: Theme.of(context).copyWith(inputDecorationTheme: denseInput),
+                  child: Column(
+                    children: [
+                      TextField(
+                        controller: dueDateCtrl,
+                        readOnly: true,
+                        onTap: () => pickDateIntoController(context: context, controller: dueDateCtrl),
+                        decoration: InputDecoration(
+                          labelText: 'Task Due Date',
+                          suffixIcon: Icon(Icons.calendar_today_rounded),
+                          floatingLabelBehavior: FloatingLabelBehavior.always,
+                          labelStyle: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: taskDescCtrl,
+                        decoration: InputDecoration(
+                          labelText: 'Task Description',
+                          floatingLabelBehavior: FloatingLabelBehavior.always,
+                          labelStyle: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                        minLines: 2,
+                        maxLines: 3,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+              ],
               Obx(() {
                 final busy = controller.isSubmitting.value;
                 final loading = const SizedBox(
@@ -507,17 +569,19 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
                       ),
                       child: busy ? loading : const Text('Create lead'),
                     ),
-                    const SizedBox(height: 10),
-                    OutlinedButton(
-                      onPressed: busy ? null : _saveLeadAndTask,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF0C447C),
-                        side: BorderSide(color: Theme.of(context).dividerColor, width: 1),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    if (canManageTasks) ...[
+                      const SizedBox(height: 10),
+                      OutlinedButton(
+                        onPressed: busy ? null : _saveLeadAndTask,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF0C447C),
+                          side: BorderSide(color: Theme.of(context).dividerColor, width: 1),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        child: busy ? loading : const Text('Save & add task'),
                       ),
-                      child: busy ? loading : const Text('Save & add task'),
-                    ),
+                    ],
                   ],
                 );
               }),
