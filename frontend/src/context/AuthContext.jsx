@@ -70,6 +70,19 @@ export function AuthProvider({ children }) {
     return u;
   }, []);
 
+  // Keep header avatar in sync (e.g. after upload, or older cached `user` without `avatar_url`).
+  useEffect(() => {
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
+    void (async () => {
+      try {
+        await refreshUser();
+      } catch {
+        /* offline / expired token — keep existing session state */
+      }
+    })();
+  }, [refreshUser]);
+
   return (
     <AuthContext.Provider value={{ user, login, logout, refreshUser }}>
       {children}

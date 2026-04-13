@@ -8,10 +8,11 @@ import { Field, inputCls, selectCls, FormActions } from '../../components/FormFi
 
 // ─── Constants ───────────────────────────────────────────────
 
-const ALL_ROLES = ['Admin', 'Sales Executive', 'HR'];
+const ALL_ROLES = ['Admin', 'Sales Manager', 'Sales Executive', 'HR'];
 
 const ROLE_COLORS = {
   Admin:         'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300',
+  'Sales Manager': 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300',
   'Sales Executive': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
   HR:            'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300',
   default:       'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',

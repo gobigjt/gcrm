@@ -23,8 +23,8 @@ function leadToForm(row) {
     company: row.company || '',
     source_id: row.source_id ?? '',
     stage_id: row.stage_id ?? '',
-    assigned_to: row.assigned_to ?? '',
-    assigned_manager_id: row.assigned_manager_id ?? '',
+    assigned_to: row.assigned_to != null && row.assigned_to !== '' ? String(row.assigned_to) : '',
+    assigned_manager_id: row.assigned_manager_id != null && row.assigned_manager_id !== '' ? String(row.assigned_manager_id) : '',
     priority: row.priority || 'warm',
     notes: row.notes || '',
     lead_segment: row.lead_segment || '',
@@ -79,8 +79,8 @@ export default function CRMLeadFormPage() {
       company: form.company.trim() || null,
       source_id: form.source_id ? Number(form.source_id) : null,
       stage_id: form.stage_id ? Number(form.stage_id) : null,
-      assigned_to: form.assigned_to ? Number(form.assigned_to) : null,
-      assigned_manager_id: form.assigned_manager_id ? Number(form.assigned_manager_id) : null,
+      assigned_to: String(form.assigned_to ?? '').trim() === '' ? null : Number(String(form.assigned_to).trim()),
+      assigned_manager_id: String(form.assigned_manager_id ?? '').trim() === '' ? null : Number(String(form.assigned_manager_id).trim()),
       priority: form.priority,
       notes: form.notes.trim() || null,
       lead_segment: form.lead_segment.trim() || null,
@@ -147,13 +147,13 @@ export default function CRMLeadFormPage() {
                 <Field label="Assigned To">
                   <select className={selectCls} value={form.assigned_to} onChange={set('assigned_to')}>
                     <option value="">Unassigned</option>
-                    {users.map((u) => <option key={u.id} value={u.id}>{assigneeLabel(u)}</option>)}
+                    {users.map((u) => <option key={u.id} value={String(u.id)}>{assigneeLabel(u)}</option>)}
                   </select>
                 </Field>
                 <Field label="Assign Manager">
                   <select className={selectCls} value={form.assigned_manager_id} onChange={set('assigned_manager_id')}>
                     <option value="">Unassigned</option>
-                    {users.map((u) => <option key={u.id} value={u.id}>{assigneeLabel(u)}</option>)}
+                    {users.map((u) => <option key={u.id} value={String(u.id)}>{assigneeLabel(u)}</option>)}
                   </select>
                 </Field>
               </div>

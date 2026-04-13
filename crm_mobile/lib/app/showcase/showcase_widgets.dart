@@ -52,6 +52,7 @@ class ShowcaseHomeTopBar extends StatelessWidget {
     this.onRefresh,
     this.onLogout,
     this.avatarInitial,
+    this.avatarUrl,
   });
 
   final String title;
@@ -62,6 +63,7 @@ class ShowcaseHomeTopBar extends StatelessWidget {
   final VoidCallback? onRefresh;
   final VoidCallback? onLogout;
   final String? avatarInitial;
+  final String? avatarUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -240,15 +242,36 @@ class ShowcaseHomeTopBar extends StatelessWidget {
                     ]
                   : null,
             ),
-            child: Center(
-              child: Text(
-                initial,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                ),
-              ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(11),
+              child: (avatarUrl != null && avatarUrl!.trim().isNotEmpty)
+                  ? Image.network(
+                      avatarUrl!.trim(),
+                      key: ValueKey<String>(avatarUrl!.trim()),
+                      width: 34,
+                      height: 34,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Center(
+                        child: Text(
+                          initial,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    )
+                  : Center(
+                      child: Text(
+                        initial,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
             ),
           ),
         ],

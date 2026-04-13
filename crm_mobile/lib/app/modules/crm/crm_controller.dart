@@ -27,20 +27,23 @@ class CrmController extends GetxController {
 
   bool get _ownAssignedOnly {
     final role = _auth.role.value.trim().toLowerCase();
-    return role == 'sales executive' || role == 'sales manager';
+    return role == 'sales executive';
   }
 
-  bool get _isSalesManager => _auth.role.value.trim().toLowerCase() == 'sales manager';
+  bool get _isSalesManager {
+    final r = _auth.role.value.trim().toLowerCase();
+    return r == 'sales manager' || r == 'manager';
+  }
 
   /// Public for CRM views (e.g. source-counts) to align with lead list scope.
   bool get isSalesManager => _isSalesManager;
 
   String _scopedLeadsQueryPrefix() {
-    if (!_ownAssignedOnly || _auth.userId.value <= 0) return '';
-    final uid = _auth.userId.value;
     if (_isSalesManager && _auth.crmExecutiveScopeId.value != null) {
       return 'assigned_to=${_auth.crmExecutiveScopeId.value}';
     }
+    if (!_ownAssignedOnly || _auth.userId.value <= 0) return '';
+    final uid = _auth.userId.value;
     return 'assigned_to=$uid';
   }
 

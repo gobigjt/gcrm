@@ -4,12 +4,15 @@ import { DatabaseService } from '../../database/database.service';
 @Injectable()
 export class HrService {
   constructor(private readonly db: DatabaseService) {}
+  private readonly attendanceTimezone = process.env.ATTENDANCE_TIMEZONE || 'Asia/Kolkata';
 
   /** Today’s attendance row for a CRM user (`attendance.user_id` → `users.id`). */
   async getTodayAttendanceByUserId(userId: number) {
     const r = await this.db.query(
-      `SELECT * FROM attendance WHERE user_id=$1 AND date = CURRENT_DATE`,
-      [userId],
+      `SELECT *
+       FROM attendance
+       WHERE user_id=$1 AND date = (NOW() AT TIME ZONE $2)::date`,
+      [userId, this.attendanceTimezone],
     );
     return r.rows[0] ?? null;
   }
@@ -17,14 +20,14 @@ export class HrService {
   async selfCheckIn(userId: number) {
     const res = await this.db.query(
       `INSERT INTO attendance AS a (user_id, date, check_in, status)
-       VALUES ($1, CURRENT_DATE, CURRENT_TIME::time(0), 'present')
+       VALUES ($1, (NOW() AT TIME ZONE $2)::date, (NOW() AT TIME ZONE $2)::time(0), 'present')
        ON CONFLICT (user_id, date)
        DO UPDATE SET
-         check_in = CURRENT_TIME::time(0),
+         check_in = (NOW() AT TIME ZONE $2)::time(0),
          status = 'present'
        WHERE a.check_in IS NULL
        RETURNING *`,
-      [userId],
+      [userId, this.attendanceTimezone],
     );
     if (!res.rows[0]) {
       throw new BadRequestException('You already checked in today.');
@@ -35,8 +38,10 @@ export class HrService {
   async selfCheckOut(userId: number) {
     const existing = (
       await this.db.query(
-        `SELECT id, check_in, check_out FROM attendance WHERE user_id=$1 AND date=CURRENT_DATE`,
-        [userId],
+        `SELECT id, check_in, check_out
+         FROM attendance
+         WHERE user_id=$1 AND date=(NOW() AT TIME ZONE $2)::date`,
+        [userId, this.attendanceTimezone],
       )
     ).rows[0];
     if (!existing || existing.check_in == null) {
@@ -46,8 +51,11 @@ export class HrService {
       throw new BadRequestException('You already checked out today.');
     }
     const upd = await this.db.query(
-      `UPDATE attendance SET check_out=CURRENT_TIME::time(0) WHERE id=$1 RETURNING *`,
-      [existing.id],
+      `UPDATE attendance
+       SET check_out=(NOW() AT TIME ZONE $2)::time(0)
+       WHERE id=$1
+       RETURNING *`,
+      [existing.id, this.attendanceTimezone],
     );
     return upd.rows[0];
   }

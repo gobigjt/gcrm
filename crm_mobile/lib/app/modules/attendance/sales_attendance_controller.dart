@@ -7,6 +7,8 @@ import '../auth/auth_controller.dart';
 /// Sales Executive self-service attendance (`/hr/me/attendance/*`).
 class SalesAttendanceController extends GetxController {
   final AuthController _auth = Get.find<AuthController>();
+  bool get _canUseSelfAttendance =>
+      _auth.role.value == AppRoles.salesExecutive || _auth.role.value == AppRoles.salesManager;
 
   final attendanceCheckIn = RxnString();
   final attendanceCheckOut = RxnString();
@@ -14,7 +16,7 @@ class SalesAttendanceController extends GetxController {
   final attendanceMessage = ''.obs;
 
   Future<void> refreshTodayAttendance() async {
-    if (_auth.role.value != AppRoles.salesExecutive) return;
+    if (!_canUseSelfAttendance) return;
     attendanceMessage.value = '';
     try {
       final res = Map<String, dynamic>.from(
@@ -59,7 +61,7 @@ class SalesAttendanceController extends GetxController {
   }
 
   Future<void> checkInNow() async {
-    if (_auth.role.value != AppRoles.salesExecutive) return;
+    if (!_canUseSelfAttendance) return;
     attendanceBusy.value = true;
     attendanceMessage.value = '';
     try {
@@ -79,7 +81,7 @@ class SalesAttendanceController extends GetxController {
   }
 
   Future<void> checkOutNow() async {
-    if (_auth.role.value != AppRoles.salesExecutive) return;
+    if (!_canUseSelfAttendance) return;
     attendanceBusy.value = true;
     attendanceMessage.value = '';
     try {

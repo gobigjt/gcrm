@@ -11,6 +11,16 @@ import '../auth/auth_controller.dart';
 
 class DashboardController extends GetxController {
   final AuthController _auth = Get.find<AuthController>();
+  bool get isSalesManager {
+    final r = _auth.role.value.trim().toLowerCase();
+    return r == 'sales manager' || r == 'manager';
+  }
+
+  /// Matches backend `isSalesExecutiveRole` — pipeline KPI should use scoped `/crm/leads`, not company settings.
+  bool get _isSalesExecutiveLike {
+    final r = _auth.role.value.trim().toLowerCase();
+    return r == 'sales executive' || r == 'agent';
+  }
 
   final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -72,20 +82,25 @@ class DashboardController extends GetxController {
       List<dynamic>? followupsRaw;
       List<dynamic>? leadsRaw;
       if (userId > 0) {
+        final followupsPath = isSalesManager
+            ? '/crm/leads/followups'
+            : '/crm/leads/followups?assigned_to=$userId';
+        final leadsPath = isSalesManager ? '/crm/leads' : '/crm/leads?assigned_to=$userId';
         followupsRaw = (await _auth.authorizedRequest(
           method: 'GET',
-          path: '/crm/leads/followups?assigned_to=$userId',
+          path: followupsPath,
         )) as List;
 
-        // "Recent leads": show recent unconverted leads. We'll fetch assigned leads and
-        // then client-side filter to keep backend changes minimal.
+        // "Recent leads": show recent unconverted leads in the role-scoped pipeline.
         leadsRaw = (await _auth.authorizedRequest(
           method: 'GET',
-          path: '/crm/leads?assigned_to=$userId',
+          path: leadsPath,
         )) as List;
       }
 
       final stats = DashboardStats.fromJson(Map<String, dynamic>.from(data as Map));
+      // Company-wide KPI from settings; for Sales Manager / Sales Executive we replace "My leads" from `/crm/leads`
+      // so it matches the CRM list (same API, no extra client filters).
       openLeads.value = stats.openLeads;
       revenue.value = stats.revenue;
       activeOrders.value = stats.activeOrders;
@@ -128,14 +143,15 @@ class DashboardController extends GetxController {
       }
 
       if (leadsRaw != null) {
-        final rawList = leadsRaw.where((e) {
-          final m = e as Map;
-          return m['is_converted'] != true;
-        }).toList();
-
-        final allAssigned =
-            rawList.map((e) => CrmLead.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+        // Same rows as CRM list (`/crm/leads`): do not drop converted leads here or home and list disagree.
+        final allAssigned = leadsRaw
+            .map((e) => CrmLead.fromJson(Map<String, dynamic>.from(e as Map)))
+            .toList();
         assignedLeadsCount.value = allAssigned.length;
+        if (isSalesManager || _isSalesExecutiveLike) {
+          // "My leads" must match the same scoped list as CRM / recent leads (not company-wide `/settings/dashboard`).
+          openLeads.value = allAssigned.length;
+        }
 
         final weekAgo = DateTime.now().subtract(const Duration(days: 7));
         newLeadsThisWeek.value = allAssigned.where((l) => !l.createdAt.isBefore(weekAgo)).length;

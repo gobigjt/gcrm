@@ -32,20 +32,20 @@ export class HrController {
 
   /** Sales Executive: today’s row + whether an employee profile exists (no HR screen access required). */
   @Get('me/attendance/today')
-  @Roles('Sales Executive')
+  @Roles('Sales Executive', 'Sales Manager')
   async myAttendanceToday(@CurrentUser() user: { id: number }) {
     const attendance = await this.svc.getTodayAttendanceByUserId(sessionUserId(user));
     return { employeeLinked: true, attendance };
   }
 
   @Post('me/attendance/check-in')
-  @Roles('Sales Executive')
+  @Roles('Sales Executive', 'Sales Manager')
   async myCheckIn(@CurrentUser() user: { id: number }) {
     return { attendance: await this.svc.selfCheckIn(sessionUserId(user)) };
   }
 
   @Post('me/attendance/check-out')
-  @Roles('Sales Executive')
+  @Roles('Sales Executive', 'Sales Manager')
   async myCheckOut(@CurrentUser() user: { id: number }) {
     return { attendance: await this.svc.selfCheckOut(sessionUserId(user)) };
   }
