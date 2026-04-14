@@ -117,6 +117,48 @@ export class SettingsController {
     return this.svc.setCompanyFaviconFromUpload(file.filename, u.id);
   }
 
+  @Post('company/invoice-logo')
+  @UseGuards(RolesGuard)
+  @Roles('Admin')
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+      required: ['file'],
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (_req, _file, cb) => {
+          const dir = join(process.cwd(), 'uploads', 'company');
+          if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+          cb(null, dir);
+        },
+        filename: (_req, file, cb) => {
+          const ext = extname(file.originalname || '').toLowerCase();
+          const allowed = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg'];
+          const safe = allowed.includes(ext) ? ext : '.png';
+          cb(null, `invoice-logo-${Date.now()}${safe}`);
+        },
+      }),
+      limits: { fileSize: 2 * 1024 * 1024 },
+      fileFilter: (_req, file, cb) => {
+        const ok =
+          /^image\/(jpeg|png|webp|gif)$/.test(file.mimetype) ||
+          file.mimetype === 'image/svg+xml';
+        cb(null, ok);
+      },
+    }),
+  )
+  uploadInvoiceLogo(@UploadedFile() file: Express.Multer.File | undefined, @CurrentUser() u: any) {
+    if (!file) {
+      throw new BadRequestException('Upload an image file (JPEG, PNG, WebP, GIF, or SVG), max 2 MB.');
+    }
+    return this.svc.setInvoiceLogoFromUpload(file.filename, u.id);
+  }
+
   @UseGuards(RolesGuard) @Roles('Admin')
   @Get('permissions')   listPermissions() { return this.svc.listPermissions(); }
 

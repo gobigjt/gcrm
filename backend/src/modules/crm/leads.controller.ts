@@ -28,6 +28,7 @@ export class LeadsController {
 
   // ─── Masters ──────────────────────────────────────────────
   @Get('masters/sources')  listMasterSources()  { return this.svc.masterSources().list(); }
+  @Get('masters/stages')   listMasterStages()   { return this.svc.masterStages().list(); }
   @Get('masters/segments') listSegments()       { return this.svc.masterSegments().list(); }
   @Get('masters/priorities') listPriorities()   { return this.svc.masterPriorities().list(); }
 
@@ -48,6 +49,32 @@ export class LeadsController {
   @UseGuards(RolesGuard) @Roles('Admin')
   @Delete('masters/sources/:id')
   removeMasterSource(@Param('id') id: string) { return this.svc.masterSources().remove(Number(id)); }
+
+  @UseGuards(RolesGuard) @Roles('Admin')
+  @Post('masters/stages')
+  createStage(@Body() b: any) {
+    if (!b.name?.trim()) throw new BadRequestException('Name is required');
+    return this.svc.masterStages().create(b.name.trim());
+  }
+
+  @UseGuards(RolesGuard) @Roles('Admin')
+  @Patch('masters/stages/:id')
+  updateStage(@Param('id') id: string, @Body() b: any) {
+    if (!b.name?.trim()) throw new BadRequestException('Name is required');
+    return this.svc.masterStages().update(Number(id), b.name.trim());
+  }
+
+  @UseGuards(RolesGuard) @Roles('Admin')
+  @Delete('masters/stages/:id')
+  removeStage(@Param('id') id: string) { return this.svc.masterStages().remove(Number(id)); }
+
+  @UseGuards(RolesGuard) @Roles('Admin')
+  @Patch('masters/stages/reorder')
+  reorderStages(@Body() b: any) {
+    const ids = Array.isArray(b?.ids) ? b.ids.map((v: any) => Number(v)).filter((n: number) => Number.isInteger(n) && n > 0) : [];
+    if (!ids.length) throw new BadRequestException('ids is required');
+    return this.svc.reorderStages(ids);
+  }
 
   @UseGuards(RolesGuard) @Roles('Admin')
   @Post('masters/segments')

@@ -14,6 +14,28 @@ export function escapeHtml(s) {
     .replace(/"/g, '&quot;');
 }
 
+function topAddressTwoLines(address) {
+  const raw = String(address || '').trim();
+  if (!raw) return [''];
+  const parts = raw
+    .split(/\r?\n|,/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (!parts.length) return [''];
+  if (parts.length === 1) return [parts[0]];
+  const first = parts.slice(0, Math.ceil(parts.length / 2)).join(', ');
+  const second = parts.slice(Math.ceil(parts.length / 2)).join(', ');
+  return [first, second].filter(Boolean);
+}
+
+function singleLineFooterText(text) {
+  return String(text || '')
+    .replace(/\r?\n/g, ', ')
+    .replace(/\s+/g, ' ')
+    .replace(/,\s*,/g, ', ')
+    .trim();
+}
+
 /** DD-MM-YYYY (matches common Indian invoice PDFs) */
 export function fmtInvoiceDate(dt) {
   if (!dt) return '—';
@@ -53,16 +75,29 @@ export function resolvePublicUrl(pathOrUrl) {
 
 /** Bank block for invoice: structured fields + optional free-text lines. */
 export function formatBankDetailsBlock(company) {
-  const co = (company.company_name || 'Company').trim();
-  const lines = [co];
+  const accountName = (company.company_name || '').trim();
+  const lines = [];
+  if (accountName) lines.push(`Account Name: ${accountName}`);
   if (company.bank_name?.trim()) lines.push(`Bank Name: ${company.bank_name.trim()}`);
-  if (company.bank_branch?.trim()) lines.push(`Branch: ${company.bank_branch.trim()}`);
   if (company.bank_account_number?.trim()) lines.push(`A/C No: ${company.bank_account_number.trim()}`);
   if (company.bank_ifsc?.trim()) lines.push(`IFSC Code: ${company.bank_ifsc.trim()}`);
+  if (company.bank_branch?.trim()) lines.push(`Branch: ${company.bank_branch.trim()}`);
   const extra = (company.invoice_bank_details || '').trim();
   if (extra) lines.push(extra);
   const text = lines.join('\n').trim();
-  return text || `${co}\n(Configure bank details in Settings → Company)`;
+  return text || 'Configure bank details in Settings -> Company';
+}
+
+function stripBankDetailsFromTerms(text) {
+  const src = String(text || '');
+  if (!src.trim()) return '';
+  const lines = src.split(/\r?\n/);
+  const keep = lines.filter((line) => {
+    const t = line.trim();
+    if (!t) return true;
+    return !/^(bank\s*name|bank|branch|a\/?c(\s*no)?|account(\s*number)?|ifsc(\s*code)?)[\s.:_-]/i.test(t);
+  });
+  return keep.join('\n').trim();
 }
 
 async function fetchImageAsDataUrlForPdf(logoUrl) {
@@ -169,13 +204,13 @@ function totalsForSalesDocument(doc, kind) {
 }
 
 function documentNoLabel(kind) {
-  if (kind === 'quotation') return 'Estimate No';
+  if (kind === 'quotation') return 'Quotation No';
   if (kind === 'order') return 'Order No';
   return 'Invoice No';
 }
 
 function documentDateLabel(kind) {
-  if (kind === 'quotation') return 'Estimate Date';
+  if (kind === 'quotation') return 'Quotation Date';
   if (kind === 'order') return 'Order Date';
   return 'Invoice Date';
 }
@@ -194,7 +229,7 @@ function pdfPageHeight(pdf) {
   return ps.height || 842;
 }
 
-function addPdfPageFooters(pdf, pageW) {
+function addPdfPageFooters(pdf, pageW, footerText = '') {
   const n = pdf.getNumberOfPages();
   const h = pdfPageHeight(pdf);
   for (let i = 1; i <= n; i += 1) {
@@ -202,14 +237,10 @@ function addPdfPageFooters(pdf, pageW) {
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(8);
     pdf.setTextColor(110, 110, 110);
-    pdf.text(`-- ${i} of ${n} --`, pageW / 2, h - 26, { align: 'center' });
+    pdf.text(footerText || `-- ${i} of ${n} --`, pageW / 2, h - 26, { align: 'center' });
   }
   pdf.setPage(n);
   pdf.setTextColor(0, 0, 0);
-}
-
-function statusLabel(doc) {
-  return String(doc?.status || 'DRAFT').toUpperCase();
 }
 
 function amountInWordsINR(n) {
@@ -277,9 +308,12 @@ export function buildSalesDocumentHtml(doc, company, logoDataUrl = null, kind = 
   const docNo = getSalesDocumentNumber(doc, kind);
   const t = totalsForSalesDocument(doc, kind);
   const interstate = isInterstateForDoc(doc, kind);
-  const title = kind === 'quotation' ? 'Estimate' : kind === 'order' ? 'Sales Order' : 'Tax Invoice';
+  const title = kind === 'quotation' ? 'Quotation' : kind === 'order' ? 'Sales Order' : 'Tax Invoice';
 
-  const rawLogo = (company.logo_url || '').trim();
+  const preferredLogo = kind === 'invoice' || kind === 'quotation' || kind === 'order'
+    ? (company.invoice_logo_url || company.logo_url || '')
+    : (company.logo_url || '');
+  const rawLogo = String(preferredLogo || '').trim();
   const useLogo = Boolean(rawLogo && !/^javascript:/i.test(rawLogo));
   const logoSrc = useLogo && logoDataUrl && String(logoDataUrl).startsWith('data:')
     ? logoDataUrl
@@ -294,23 +328,33 @@ export function buildSalesDocumentHtml(doc, company, logoDataUrl = null, kind = 
   const dueOrValid = doc.due_date ? fmtInvoiceDate(doc.due_date)
     : doc.valid_until ? fmtInvoiceDate(doc.valid_until) : null;
 
+  const salesExecutiveName = escapeHtml(
+    doc.sales_executive_name
+    || doc.sales_executive
+    || doc.sales_person_name
+    || doc.created_by_name
+    || '—'
+  );
+  const createdByName = escapeHtml(doc.created_by_name || doc.created_by || '—');
+  const bankDetails = formatBankDetailsBlock(company);
+
   const metaLeft = [
     [`${documentNoLabel(kind)}`, escapeHtml(docNo)],
     [documentDateLabel(kind), docDate],
     ...(dueOrValid ? [[kind === 'quotation' ? 'Valid Until' : 'Due Date', dueOrValid]] : []),
-    ['Sales Executive', escapeHtml(doc.created_by_name || '—')],
   ];
   const metaRight = [
     ...(doc.state_of_supply ? [['Place of Supply', escapeHtml(doc.state_of_supply)]] : []),
     ...(doc.reference_no    ? [['Reference No',    escapeHtml(doc.reference_no)]]    : []),
-    ['Status', `<strong>${escapeHtml(statusLabel(doc))}</strong>`],
+    ['Sales Executive', salesExecutiveName],
+    ['Created By', createdByName],
   ];
   // metaLeft and metaRight are rendered directly as separate column tables in the template
 
   // ── Totals ────────────────────────────────────────────────────
   const totalTax = (t.cgst || 0) + (t.sgst || 0) + (t.igst || 0);
   const subTotal  = t.subtotal != null ? t.subtotal : t.total - totalTax;
-  const terms     = [doc.notes || '', company.payment_terms || ''].filter(Boolean).join('\n');
+  const terms = stripBankDetailsFromTerms([doc.notes || '', company.payment_terms || ''].filter(Boolean).join('\n'));
 
   // shared border shorthand helpers (inline only — no global CSS collapse conflicts)
   const SB = 'border:1px solid #444';   // solid all sides
@@ -357,7 +401,17 @@ export function buildSalesDocumentHtml(doc, company, logoDataUrl = null, kind = 
     strong { font-weight:700; }
     .wrap { border:1px solid #444; width:100%; }
     .sec  { border-top:1px solid #444; width:100%; }
-    .sheet-footer { margin-top:12px; text-align:center; font-size:9px; color:#666; }
+    .sheet-footer { margin-top:12px; text-align:center; font-size:9px; color:#666; white-space:nowrap; width:100%; }
+    @media print {
+      body { padding-bottom:16mm; }
+      .sheet-footer {
+        position: fixed;
+        left: 12mm;
+        right: 12mm;
+        bottom: 8mm;
+        margin-top: 0;
+      }
+    }
   </style>
 </head>
 <body>
@@ -369,10 +423,10 @@ export function buildSalesDocumentHtml(doc, company, logoDataUrl = null, kind = 
       <td style="padding:10px 12px;vertical-align:middle;width:110px">
         ${logoSrc ? `<img src="${escapeHtml(logoSrc)}" alt="" style="max-width:100px;max-height:80px;object-fit:contain;display:block"/>` : ''}
       </td>
-      <td style="padding:10px 14px;vertical-align:top;text-align:right;border-left:1px solid #444">
-        <div style="font-size:20px;font-weight:700;letter-spacing:0.02em;line-height:1.2">${escapeHtml(company.company_name || 'Company')}</div>
-        <div style="font-size:10px;color:#333;line-height:1.6;margin-top:4px">
-          ${escapeHtml(company.address || '').replace(/\n/g, ', ')}
+      <td style="padding:8px 10px;vertical-align:top;text-align:right;border-left:1px solid #444">
+        <div style="font-size:18px;font-weight:700;letter-spacing:0.02em;line-height:1.2">${escapeHtml(company.company_name || 'Company')}</div>
+        <div style="font-size:10px;color:#333;line-height:1.5;margin-top:3px">
+          ${topAddressTwoLines(company.address).map((ln) => escapeHtml(ln)).join('<br/>')}
           ${company.gstin ? `<br/>GSTIN: ${escapeHtml(company.gstin)}` : ''}
         </div>
       </td>
@@ -380,7 +434,7 @@ export function buildSalesDocumentHtml(doc, company, logoDataUrl = null, kind = 
   </table>
 
   <!-- ① b DOCUMENT TITLE -->
-  <div class="sec" style="text-align:center;padding:6px 12px;font-size:14px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase">
+  <div class="sec" style="text-align:center;padding:6px 12px 12px;font-size:14px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase">
     ${kind === 'quotation' ? 'Quotation' : kind === 'order' ? 'Sales Order' : totalTax > 0 ? 'Tax Invoice' : 'Invoice'}
   </div>
 
@@ -413,17 +467,17 @@ export function buildSalesDocumentHtml(doc, company, logoDataUrl = null, kind = 
   <!-- ③ BILLING / DELIVERY ADDRESSES -->
   <table width="100%" style="border-collapse:collapse" class="sec">
     <tr>
-      <td style="width:50%;vertical-align:top;padding:0;border-right:1px solid #444">
-        <div style="background:#eaeaea;font-weight:700;padding:4px 10px;border-bottom:1px solid #ccc;font-size:11px">Billing Address</div>
-        <div style="padding:7px 10px;font-size:11px;line-height:1.6">
+      <td style="width:50%;vertical-align:top;padding:0;border-right:1px solid #444; ">
+        <div style="background:#eaeaea;font-weight:700;padding:4px 4px 10px 4px;border-bottom:1px solid #ccc;font-size:11px">Billing Address</div>
+        <div style="padding:7px 10px 18px;font-size:11px;line-height:1.6">
           <strong>${escapeHtml(doc.customer_name || '—')}</strong><br/>
           ${escapeHtml(doc.customer_address || '').replace(/\n/g, '<br/>')}
           ${doc.customer_gstin ? `<br/>GSTIN : ${escapeHtml(doc.customer_gstin)}` : ''}
         </div>
       </td>
-      <td style="width:50%;vertical-align:top;padding:0">
-        <div style="background:#eaeaea;font-weight:700;padding:4px 10px;border-bottom:1px solid #ccc;font-size:11px">Delivery Address</div>
-        <div style="padding:7px 10px;font-size:11px;line-height:1.6">
+      <td style="width:50%;vertical-align:top;padding:0;">
+        <div style="background:#eaeaea;font-weight:700;padding:4px 4px 10px 4px;border-bottom:1px solid #ccc;font-size:11px">Delivery Address</div>
+        <div style="padding:7px 10px 18px;font-size:11px;line-height:1.6">
           <strong>${escapeHtml(doc.customer_name || '—')}</strong><br/>
           ${escapeHtml(doc.customer_address || '').replace(/\n/g, '<br/>')}
           ${doc.customer_gstin ? `<br/>GSTIN : ${escapeHtml(doc.customer_gstin)}` : ''}
@@ -433,7 +487,7 @@ export function buildSalesDocumentHtml(doc, company, logoDataUrl = null, kind = 
   </table>
 
   <!-- ④ LINE ITEMS -->
-  <table width="100%" style="border-collapse:collapse;font-size:10px" class="sec">
+  <table width="100%" style="border-collapse:collapse;font-size:10px; min-height: 100px;" class="sec">
     <thead>
       <tr style="background:#eaeaea">
         <th style="padding:5px 4px 10px;text-align:center;vertical-align:middle;${BR};width:28px">#</th>
@@ -444,11 +498,11 @@ export function buildSalesDocumentHtml(doc, company, logoDataUrl = null, kind = 
         <th style="padding:5px 8px 10px;text-align:right;vertical-align:middle;width:90px">Amount</th>
       </tr>
     </thead>
-    <tbody>${itemRowsHtml}</tbody>
+    <tbody >${itemRowsHtml}</tbody>
   </table>
 
   <!-- ⑤ HSN / TAX SUMMARY -->
-  <table width="100%" style="border-collapse:collapse;font-size:10px" class="sec">
+  <table width="100%" style="border-collapse:collapse;font-size:10px margin-top: 10px;" class="sec">
     <thead>
       <tr style="background:#eaeaea">
         ${interstate
@@ -494,8 +548,8 @@ export function buildSalesDocumentHtml(doc, company, logoDataUrl = null, kind = 
             <td style="padding:5px 12px 10px;text-align:right;${BD};white-space:nowrap">&#8377; ${asMoney(totalTax)}</td>
           </tr>` : ''}
           <tr>
-            <td style="padding:6px 12px;font-weight:700;border-top:2px solid #444"><strong>Total</strong></td>
-            <td style="padding:6px 12px;text-align:right;font-weight:700;border-top:2px solid #444;white-space:nowrap"><strong>&#8377; ${asMoney(t.total)}</strong></td>
+            <td style="padding:6px 12px 12px;font-weight:700;border-top:2px solid #444"><strong>Total</strong></td>
+            <td style="padding:6px 12px 12px;text-align:right;font-weight:700;border-top:2px solid #444;white-space:nowrap"><strong>&#8377; ${asMoney(t.total)}</strong></td>
           </tr>
           ${t.balance != null ? `<tr>
             <td style="padding:5px 12px 10px;color:#c00;border-top:1px solid #ddd">Balance Due</td>
@@ -507,14 +561,27 @@ export function buildSalesDocumentHtml(doc, company, logoDataUrl = null, kind = 
   </table>
 
   <!-- ⑦ TERMS & CONDITIONS -->
-  ${terms ? `
-  <div class="sec" style="padding:8px 12px;font-size:10px;line-height:1.6">
-    <strong>Terms And Conditions:</strong><br/>
-    <span style="white-space:pre-wrap">${escapeHtml(terms)}</span>
-  </div>` : ''}
+  ${(terms || bankDetails) ? `
+  <table width="100%" style="border-collapse:collapse" class="sec">
+    <tr>
+      <td style="width:50%;vertical-align:top;padding:8px 12px 12px;border-right:1px solid #444;font-size:10px;line-height:1.6">
+        <strong>Terms And Conditions:</strong><br/>
+        <span style="white-space:pre-wrap">${escapeHtml(terms || '—')}</span>
+      </td>
+      <td style="width:50%;vertical-align:top;padding:8px 12px 12px;font-size:10px;line-height:1.6">
+        <strong>Bank Details:</strong><br/>
+        <span style="white-space:pre-wrap">${escapeHtml(bankDetails || '—')}</span>
+      </td>
+    </tr>
+  </table>` : ''}
+
+  <div class="sec" style="padding:8px 12px 12px;font-size:10px;line-height:1.8">
+    <div>Thanks for your business</div>
+    <div style="margin-top:25px"><strong>For ${escapeHtml(company.company_name || 'Company')},</strong></div>
+  </div>
 
 </div>
-${includeSheetFooter ? '<div class="sheet-footer">-- 1 of 1 --</div>' : ''}
+${includeSheetFooter ? `<div class="sheet-footer">Contact: ${escapeHtml(singleLineFooterText((company.address || '').trim() || company.company_name || ''))}</div>` : ''}
 </body>
 </html>`;
 }
@@ -524,7 +591,7 @@ export function buildTaxInvoiceHtml(doc, company, logoDataUrl = null, opts = {})
 }
 
 export async function openSalesDocumentPrintWindow(doc, company, kind = 'invoice') {
-  const logoDataUrl = await fetchImageAsDataUrlForPdf(company.logo_url);
+  const logoDataUrl = await fetchImageAsDataUrlForPdf(company.invoice_logo_url || company.logo_url);
   const html = buildSalesDocumentHtml(doc, company, logoDataUrl, kind);
   const w = window.open('', '_blank', 'width=900,height=1100');
   if (!w) return;
@@ -632,13 +699,14 @@ async function rasterSalesDocumentToPdf(doc, company, kind, docNo) {
     pageIdx += 1;
   }
 
+  const footerText = `Contact: ${singleLineFooterText((company.address || '').trim() || (company.company_name || '').trim() || '')}`;
   const n = pdf.getNumberOfPages();
   for (let i = 1; i <= n; i += 1) {
     pdf.setPage(i);
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(8);
     pdf.setTextColor(110, 110, 110);
-    pdf.text(`-- ${i} of ${n} --`, pageW / 2, pageH - 20, { align: 'center' });
+    pdf.text(footerText || `-- ${i} of ${n} --`, pageW / 2, pageH - 20, { align: 'center' });
   }
   pdf.setTextColor(0, 0, 0);
   pdf.save(`${docNo}.pdf`);
@@ -646,7 +714,7 @@ async function rasterSalesDocumentToPdf(doc, company, kind, docNo) {
 
 /** Vector fallback (no html2canvas) — Helvetica, limited ₹ shaping. */
 async function downloadSalesDocumentPdfVector(doc, company, kind, docNo) {
-  const title = kind === 'quotation' ? 'Estimate' : kind === 'order' ? 'Sales Order' : 'Tax Invoice';
+  const title = kind === 'quotation' ? 'Quotation' : kind === 'order' ? 'Sales Order' : 'Tax Invoice';
   const left = 34;
   const pageW = 595;
   const rightX = pageW - left;
@@ -657,7 +725,7 @@ async function downloadSalesDocumentPdfVector(doc, company, kind, docNo) {
   const bottomSafe = 42;
 
   let y = 36;
-  const logoData = await fetchImageAsDataUrlForPdf(company.logo_url);
+  const logoData = await fetchImageAsDataUrlForPdf(company.invoice_logo_url || company.logo_url);
   if (logoData) {
     const fmt = pdfFormatFromDataUrl(logoData);
     try {
@@ -668,11 +736,11 @@ async function downloadSalesDocumentPdfVector(doc, company, kind, docNo) {
   }
 
   pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(11);
+  pdf.setFontSize(10);
   pdf.text(company.company_name || 'Company', left, y);
   pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(10);
-  const coLines = pdf.splitTextToSize((company.address || '').trim(), 300);
+  pdf.setFontSize(9);
+  const coLines = topAddressTwoLines(company.address);
   pdf.text(coLines, left, y + 12);
   y += 12 + coLines.length * 11 + 4;
   if (company.gstin) {
@@ -692,8 +760,16 @@ async function downloadSalesDocumentPdfVector(doc, company, kind, docNo) {
   pdf.text(`${documentNoLabel(kind)} : ${docNo}`, left, y);
   pdf.text(`${documentDateLabel(kind)} : ${fmtInvoiceDate(doc.invoice_date || doc.order_date || doc.created_at)}`, rightX, y, { align: 'right' });
   y += 13;
-  pdf.text(`Status : ${statusLabel(doc)}`, left, y);
+  const salesExecutiveName = doc.sales_executive_name
+    || doc.sales_executive
+    || doc.sales_person_name
+    || doc.created_by_name
+    || '—';
+  const createdByName = doc.created_by_name || doc.created_by || '—';
+  pdf.text(`Sales Executive : ${salesExecutiveName}`, rightX, y, { align: 'right' });
   if (doc.valid_until) pdf.text(`Valid Until : ${fmtInvoiceDate(doc.valid_until)}`, rightX, y, { align: 'right' });
+  y += 14;
+  pdf.text(`Created By : ${createdByName}`, rightX, y, { align: 'right' });
   y += 14;
 
   const addrBody = customerAddressBlockText(doc);
@@ -701,9 +777,9 @@ async function downloadSalesDocumentPdfVector(doc, company, kind, docNo) {
     startY: y,
     body: [
       [{ content: 'Billing Address', styles: { fontStyle: 'bold', fontSize: 10 } }],
-      [{ content: addrBody, styles: { fontSize: 10 } }],
+      [{ content: addrBody, styles: { fontSize: 10, cellPadding: { top: 6, right: 6, bottom: 14, left: 6 } } }],
       [{ content: 'Delivery Address', styles: { fontStyle: 'bold', fontSize: 10 } }],
-      [{ content: addrBody, styles: { fontSize: 10 } }],
+      [{ content: addrBody, styles: { fontSize: 10, cellPadding: { top: 6, right: 6, bottom: 14, left: 6 } } }],
     ],
     theme: 'grid',
     styles: { fontSize: 10, cellPadding: 6, valign: 'top', lineColor: [17, 17, 17], lineWidth: 0.5 },
@@ -795,30 +871,59 @@ async function downloadSalesDocumentPdfVector(doc, company, kind, docNo) {
   pdf.setFont('helvetica', 'normal');
   y += 20;
 
-  const terms = [company.payment_terms || '', doc.notes || ''].filter(Boolean).join('\n');
-  if (terms) {
+  const terms = stripBankDetailsFromTerms([company.payment_terms || '', doc.notes || ''].filter(Boolean).join('\n'));
+  const bankDetails = formatBankDetailsBlock(company);
+  if (terms || bankDetails) {
+    const colGap = 12;
+    const halfWidth = (tableWidth - colGap) / 2;
+    const rightColStart = left + halfWidth + colGap;
     if (y + 24 > pageH - bottomSafe) {
       pdf.addPage();
       y = 40;
     }
+
+    let termsTopY = y;
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(10);
-    pdf.text('Terms And Conditions:', left, y);
-    y += 12;
+    pdf.text('Terms And Conditions:', left, termsTopY);
+    pdf.text('Bank Details:', rightColStart, termsTopY);
+
     pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(10);
-    const lines = pdf.splitTextToSize(terms, tableWidth);
-    for (let li = 0; li < lines.length; li += 1) {
-      if (y + lineH > pageH - bottomSafe) {
+    const termsLines = pdf.splitTextToSize(terms || '—', halfWidth);
+    const bankLines = pdf.splitTextToSize(bankDetails || '—', halfWidth);
+    const totalLines = Math.max(termsLines.length, bankLines.length);
+    let rowY = termsTopY + 12;
+    for (let li = 0; li < totalLines; li += 1) {
+      if (rowY + lineH > pageH - bottomSafe) {
         pdf.addPage();
-        y = 40;
+        termsTopY = 40;
+        rowY = termsTopY + 12;
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(10);
+        pdf.text('Terms And Conditions:', left, termsTopY);
+        pdf.text('Bank Details:', rightColStart, termsTopY);
+        pdf.setFont('helvetica', 'normal');
       }
-      pdf.text(lines[li], left, y);
-      y += lineH;
+      if (termsLines[li]) pdf.text(termsLines[li], left, rowY);
+      if (bankLines[li]) pdf.text(bankLines[li], rightColStart, rowY);
+      rowY += lineH;
     }
+    y = rowY + 8;
   }
 
-  addPdfPageFooters(pdf, pageW);
+  if (y + 26 > pageH - bottomSafe) {
+    pdf.addPage();
+    y = 40;
+  }
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(10);
+  pdf.text('Thanks for your business', left, y);
+  y += 24;
+  pdf.setFont('helvetica', 'bold');
+  pdf.text(`For ${company.company_name || 'Company'},`, left, y);
+
+  const footerText = `Contact: ${singleLineFooterText((company.address || '').trim() || (company.company_name || '').trim() || '')}`;
+  addPdfPageFooters(pdf, pageW, footerText);
   pdf.save(`${docNo}.pdf`);
 }
 

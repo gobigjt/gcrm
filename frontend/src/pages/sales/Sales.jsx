@@ -516,12 +516,12 @@ function CustomerModal({ customer, crmLeadPrefill, onClose, onSaved }) {
     try {
       if (customer) {
         await api.patch(`/sales/customers/${customer.id}`, form);
-        show('Customer updated', 'success');
+        show('Customer updated successfully', 'success');
       } else {
         const body = { ...form };
         if (crmLeadPrefill?.id) body.lead_id = crmLeadPrefill.id;
         await api.post('/sales/customers', body);
-        show('Customer created', 'success');
+        show('Customer created successfully', 'success');
       }
       onSaved();
     } catch (err) {
@@ -1118,7 +1118,7 @@ function PaymentModal({ invoice, onClose, onSaved }) {
     e.preventDefault(); setLoading(true);
     try {
       await api.post(`/sales/invoices/${invoice.id}/payments`, form);
-      show('Payment recorded', 'success');
+      show('Payment recorded successfully', 'success');
       onSaved();
     } catch (err) {
       show(apiErrorMessage(err, 'Could not record payment'), 'error');
@@ -1184,7 +1184,7 @@ function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation, onEditInv
       await api.patch(`${path}/${id}`, { status });
       load();
       onRefresh();
-      show('Status updated', 'success');
+      show('Status updated successfully', 'success');
     } catch (err) {
       show(apiErrorMessage(err, 'Could not update status'), 'error');
     }
@@ -1784,7 +1784,7 @@ export function SalesListPage({ segment }) {
               setSelected([]);
               loadData();
               loadStats();
-              show('Deleted', 'success');
+              show('Deleted successfully', 'success');
             },
           });
         }}
@@ -1846,7 +1846,7 @@ export function SalesListPage({ segment }) {
                                 await api.delete(`/sales/${type}s/${r.id}`);
                                 loadData();
                                 loadStats();
-                                show('Record deleted', 'success');
+                                show('Record deleted successfully', 'success');
                               },
                             });
                           }},
@@ -1906,7 +1906,7 @@ export function SalesListPage({ segment }) {
                               await api.delete(`/sales/${type}s/${r.id}`);
                               loadData();
                               loadStats();
-                              show('Record deleted', 'success');
+                              show('Record deleted successfully', 'success');
                             },
                           });
                         }},
@@ -2009,7 +2009,7 @@ export function SalesCustomersPage() {
               await Promise.all(selected.map((cid) => api.delete(`/sales/customers/${cid}`)));
               setSelected([]);
               load();
-              show('Deleted', 'success');
+              show('Deleted successfully', 'success');
             },
           });
         }}
@@ -2054,7 +2054,7 @@ export function SalesCustomersPage() {
                           onConfirm: async () => {
                             await api.delete(`/sales/customers/${c.id}`);
                             load();
-                            show('Customer deleted', 'success');
+                            show('Customer deleted successfully', 'success');
                           },
                         });
                       }},
@@ -2187,7 +2187,7 @@ function ReturnPaymentModal({ ret, onClose, onSaved }) {
     e.preventDefault(); setLoading(true);
     try {
       await api.post(`/sales/returns/${ret.id}/payments`, form);
-      show('Payment recorded', 'success');
+      show('Payment recorded successfully', 'success');
       onSaved();
     } catch (err) {
       show(apiErrorMessage(err, 'Could not record payment'), 'error');
@@ -2277,7 +2277,7 @@ export function SalesReturnsPage() {
       setNewForm({ customer_id:'', return_date:'', reference_no:'', notes:'', is_interstate: false, discount_amount: 0, round_off: 0 });
       setNewItems([{ ...EMPTY_LINE }]);
       load();
-      show('Return created', 'success');
+      show('Return created successfully', 'success');
     } catch (err) {
       show(apiErrorMessage(err, 'Could not create return'), 'error');
     } finally { setSaving(false); }
@@ -2311,7 +2311,7 @@ export function SalesReturnsPage() {
               await Promise.all(selected.map((rid) => api.delete(`/sales/returns/${rid}`)));
               setSelected([]);
               load();
-              show('Deleted', 'success');
+              show('Deleted successfully', 'success');
             },
           });
         }}
@@ -2357,7 +2357,7 @@ export function SalesReturnsPage() {
                           onConfirm: async () => {
                             await api.delete(`/sales/returns/${r.id}`);
                             load();
-                            show('Return deleted', 'success');
+                            show('Return deleted successfully', 'success');
                           },
                         });
                       }},

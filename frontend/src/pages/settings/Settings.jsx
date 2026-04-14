@@ -45,10 +45,27 @@ function CompanyTab({ user }) {
   const [form,  setForm]  = useState({});
   const [saved, setSaved] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingInvoiceLogo, setUploadingInvoiceLogo] = useState(false);
   const [uploadingFavicon, setUploadingFavicon] = useState(false);
+  const defaultBankDetails = {
+    bank_name: 'KVB Bank',
+    bank_branch: 'Srirangam',
+    bank_account_number: '12760100000000839',
+    bank_ifsc: 'KVBL0001276',
+  };
 
   useEffect(() => {
-    api.get('/settings/company').then(r => setForm(r.data || {})).catch(() => {});
+    api.get('/settings/company').then((r) => {
+      const data = r.data || {};
+      setForm({
+        ...defaultBankDetails,
+        ...data,
+        bank_name: String(data.bank_name || '').trim() || defaultBankDetails.bank_name,
+        bank_branch: String(data.bank_branch || '').trim() || defaultBankDetails.bank_branch,
+        bank_account_number: String(data.bank_account_number || '').trim() || defaultBankDetails.bank_account_number,
+        bank_ifsc: String(data.bank_ifsc || '').trim() || defaultBankDetails.bank_ifsc,
+      });
+    }).catch(() => setForm(defaultBankDetails));
   }, []);
 
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
@@ -59,7 +76,7 @@ function CompanyTab({ user }) {
       await api.patch('/settings/company', form);
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
-      show('Company settings saved', 'success');
+      show('Company settings saved successfully', 'success');
     } catch (err) {
       show(apiErrorMessage(err, 'Could not save settings'), 'error');
     }
@@ -75,7 +92,7 @@ function CompanyTab({ user }) {
       fd.append('file', file);
       const r = await api.post('/settings/company/logo', fd);
       setForm((f) => ({ ...f, ...(r.data || {}) }));
-      show('Logo updated', 'success');
+      show('Logo updated successfully', 'success');
     } catch (err) {
       show(apiErrorMessage(err, 'Logo upload failed'), 'error');
     } finally {
@@ -88,11 +105,42 @@ function CompanyTab({ user }) {
     try {
       await api.patch('/settings/company', { logo_url: '' });
       setForm((f) => ({ ...f, logo_url: '' }));
-      show('Logo removed', 'success');
+      show('Logo removed successfully', 'success');
     } catch (err) {
       show(apiErrorMessage(err, 'Could not remove logo'), 'error');
     } finally {
       setUploadingLogo(false);
+    }
+  };
+
+  const handleInvoiceLogoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploadingInvoiceLogo(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const r = await api.post('/settings/company/invoice-logo', fd);
+      setForm((f) => ({ ...f, ...(r.data || {}) }));
+      show('Invoice logo updated successfully', 'success');
+    } catch (err) {
+      show(apiErrorMessage(err, 'Invoice logo upload failed'), 'error');
+    } finally {
+      setUploadingInvoiceLogo(false);
+    }
+  };
+
+  const clearInvoiceLogo = async () => {
+    setUploadingInvoiceLogo(true);
+    try {
+      await api.patch('/settings/company', { invoice_logo_url: '' });
+      setForm((f) => ({ ...f, invoice_logo_url: '' }));
+      show('Invoice logo removed successfully', 'success');
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not remove invoice logo'), 'error');
+    } finally {
+      setUploadingInvoiceLogo(false);
     }
   };
 
@@ -106,7 +154,7 @@ function CompanyTab({ user }) {
       fd.append('file', file);
       const r = await api.post('/settings/company/favicon', fd);
       setForm((f) => ({ ...f, ...(r.data || {}) }));
-      show('Favicon updated', 'success');
+      show('Favicon updated successfully', 'success');
     } catch (err) {
       show(apiErrorMessage(err, 'Favicon upload failed'), 'error');
     } finally {
@@ -119,7 +167,7 @@ function CompanyTab({ user }) {
     try {
       await api.patch('/settings/company', { favicon_url: '' });
       setForm((f) => ({ ...f, favicon_url: '' }));
-      show('Favicon removed', 'success');
+      show('Favicon removed successfully', 'success');
     } catch (err) {
       show(apiErrorMessage(err, 'Could not remove favicon'), 'error');
     } finally {
@@ -221,6 +269,35 @@ function CompanyTab({ user }) {
             </div>
           </div>
           </Field>
+          <Field label="Invoice logo">
+          <div className="flex flex-wrap items-start gap-4 mt-3">
+            <img
+              src={resolveApiPublicUrl(form.invoice_logo_url || form.logo_url) || '/default-logo.png'}
+              alt="Invoice logo"
+              className="max-h-20 max-w-[200px] object-contain rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 p-1"
+            />
+            <div className="flex flex-col gap-2">
+              <label className="btn-wf-secondary text-xs cursor-pointer inline-block text-center">
+                {uploadingInvoiceLogo ? 'Uploading…' : 'Upload invoice logo'}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
+                  className="hidden"
+                  disabled={uploadingInvoiceLogo}
+                  onChange={handleInvoiceLogoUpload}
+                />
+              </label>
+              {form.invoice_logo_url && (
+                <button type="button" className="btn-wf-secondary text-xs" disabled={uploadingInvoiceLogo} onClick={clearInvoiceLogo}>
+                  Remove invoice logo
+                </button>
+              )}
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 max-w-[220px]">
+                Used only on quotation/order/invoice print and PDF. Falls back to Company logo if not set.
+              </p>
+            </div>
+          </div>
+          </Field>
         </section>
 
         <section className="rounded-xl border border-slate-200 dark:border-slate-700/50 p-4 h-full">
@@ -255,6 +332,27 @@ function CompanyTab({ user }) {
           </Field>
         </section>
 
+        <section className="rounded-xl border border-slate-200 dark:border-slate-700/50 p-4 h-full">
+          <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-3">Bank Details</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Field label="Account Name">
+              <input className={inputCls} value={form.company_name || ''} onChange={set('company_name')} placeholder="Igloo Tiles" />
+            </Field>
+            <Field label="Bank Name">
+              <input className={inputCls} value={form.bank_name || ''} onChange={set('bank_name')} placeholder="KVB Bank" />
+            </Field>
+            <Field label="Account Number">
+              <input className={inputCls} value={form.bank_account_number || ''} onChange={set('bank_account_number')} placeholder="12760100000000839" />
+            </Field>
+            <Field label="IFSC Code">
+              <input className={inputCls} value={form.bank_ifsc || ''} onChange={set('bank_ifsc')} placeholder="KVBL0001276" />
+            </Field>
+            <Field label="Branch">
+              <input className={inputCls} value={form.bank_branch || ''} onChange={set('bank_branch')} placeholder="Srirangam" />
+            </Field>
+          </div>
+        </section>
+
         {(user?.role === 'Admin' || user?.role === 'Super Admin') && (
           <div className="xl:col-span-2">
             <button type="submit" className="btn-wf-primary">
@@ -285,7 +383,7 @@ function ModulesTab() {
     try {
       await api.patch(`/settings/modules/${mod.module}`, { is_enabled: !mod.is_enabled });
       load();
-      show('Module updated', 'success');
+      show('Module updated successfully', 'success');
     } catch (err) {
       show(apiErrorMessage(err, 'Could not update module'), 'error');
     } finally { setSaving(null); }
@@ -300,7 +398,7 @@ function ModulesTab() {
     try {
       await api.patch(`/settings/modules/${mod.module}`, { allowed_roles: next });
       load();
-      show('Module access updated', 'success');
+      show('Module access updated successfully', 'success');
     } catch (err) {
       show(apiErrorMessage(err, 'Could not update access'), 'error');
     } finally { setSaving(null); }

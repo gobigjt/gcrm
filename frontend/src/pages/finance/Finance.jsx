@@ -46,7 +46,7 @@ function ExpenseModal({ accounts, onSave, onClose }) {
     e.preventDefault();
     try {
       await api.post('/finance/expenses', form);
-      show('Expense saved', 'success');
+      show('Expense saved successfully', 'success');
       onSave();
     } catch (err) {
       show(apiErrorMessage(err, 'Could not save expense'), 'error');
@@ -125,7 +125,7 @@ function JournalModal({ accounts, onSave, onClose }) {
     if (!balanced) return;
     try {
       await api.post('/finance/journals', { ...form, lines });
-      show('Journal entry saved', 'success');
+      show('Journal entry saved successfully', 'success');
       onSave();
     } catch (err) {
       show(apiErrorMessage(err, 'Could not save journal'), 'error');

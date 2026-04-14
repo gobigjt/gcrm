@@ -24,7 +24,7 @@ export default function InventoryBrandsPage() {
       await api.post('/inventory/brands', { name: name.trim() });
       setName('');
       load();
-      show('Brand added', 'success');
+      show('Brand added successfully', 'success');
     } catch (err) {
       show(apiErrorMessage(err, 'Could not add brand'), 'error');
     }
@@ -37,7 +37,7 @@ export default function InventoryBrandsPage() {
       setEditingId(null);
       setEditingName('');
       load();
-      show('Brand updated', 'success');
+      show('Brand updated successfully', 'success');
     } catch (err) {
       show(apiErrorMessage(err, 'Could not update brand'), 'error');
     }
@@ -50,7 +50,7 @@ export default function InventoryBrandsPage() {
         try {
           await api.delete(`/inventory/brands/${id}`);
           load();
-          show('Brand deleted', 'success');
+          show('Brand deleted successfully', 'success');
         } catch (err) {
           show(apiErrorMessage(err, 'Could not delete brand'), 'error');
         }

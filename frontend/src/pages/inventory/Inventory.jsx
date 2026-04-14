@@ -48,7 +48,7 @@ export default function InventoryProductsPage() {
               setProducts((list) =>
                 list.filter((p) => Number(p.id ?? p.product_id) !== Number(pid)),
               );
-              show('Product deleted', 'success');
+              show('Product deleted successfully', 'success');
     } catch (err) {
       show(apiErrorMessage(err, 'Could not delete product'), 'error');
             } finally {

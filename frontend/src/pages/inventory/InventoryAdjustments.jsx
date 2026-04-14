@@ -42,7 +42,7 @@ export default function InventoryAdjustmentsPage() {
       });
       setForm(EMPTY);
       load();
-      show('Stock adjustment saved', 'success');
+      show('Stock adjustment saved successfully', 'success');
     } catch (err) {
       show(apiErrorMessage(err, 'Could not save adjustment'), 'error');
     } finally {

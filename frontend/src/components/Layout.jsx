@@ -92,6 +92,7 @@ function navItemActive(pathname, search, hash, to) {
   const qi = rest.indexOf('?');
   const path = qi >= 0 ? rest.slice(0, qi) : rest;
   const want = new URLSearchParams(qi >= 0 ? rest.slice(qi + 1) : '');
+  const wantTab = want.get('tab');
   const salesNavRoots = ['/sales/quotes', '/sales/orders', '/sales/invoices', '/sales/payments', '/sales/returns', '/sales/customers'];
   if (salesNavRoots.includes(path)) {
     if (pathname === path || pathname.startsWith(`${path}/`)) {
@@ -100,13 +101,27 @@ function navItemActive(pathname, search, hash, to) {
     }
     return false;
   }
-  if (pathname !== path) return false;
+  const have = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
+  const hasQueryInNav = [...want].length > 0;
+
+  if (pathname !== path) {
+    // CRM detail/form routes live under /crm/* (e.g. /crm/leads/new) while sidebar
+    // items are query variants (/crm?tab=list|contacts|...). Keep only "Leads" active.
+    if (path === '/crm' && pathname.startsWith('/crm/')) {
+      return wantTab === 'list';
+    }
+    // Section roots without query/hash should stay active on nested child pages
+    // (e.g. /inventory/products -> /inventory/products/123/edit).
+    if (!hasQueryInNav && !wantHash && pathname.startsWith(`${path}/`)) {
+      return true;
+    }
+    return false;
+  }
   if (wantHash) {
     return (hash || '') === wantHash;
   }
-  const have = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
 
-  if ([...want].length === 0) {
+  if (!hasQueryInNav) {
     if (path === '/settings' && (hash || '') !== '') return false;
     return true;
   }
