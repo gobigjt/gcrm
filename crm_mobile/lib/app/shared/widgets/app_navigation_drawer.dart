@@ -6,6 +6,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/auth/role_permissions.dart';
 import '../../core/auth/showcase_role.dart';
+import '../../core/utils/media_url.dart';
 import '../../modules/auth/auth_controller.dart';
 import '../../routes/app_routes.dart';
 
@@ -264,6 +265,7 @@ class _DrawerHeader extends StatelessWidget {
       final email = auth.userEmail.value;
       final role = auth.role.value.isEmpty ? 'Member' : auth.role.value;
       final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
+      final avatarUrl = resolveUploadsPublicUrl(auth.userAvatarUrl.value);
 
       return Material(
         color: AppNavigationDrawer._headerBg,
@@ -277,16 +279,45 @@ class _DrawerHeader extends StatelessWidget {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    CircleAvatar(
-                      radius: 28,
-                      backgroundColor: Colors.white,
-                      child: Text(
-                        initial,
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                          color: AppNavigationDrawer._headerBg,
-                        ),
+                    SizedBox(
+                      width: 56,
+                      height: 56,
+                      child: ClipOval(
+                        child: avatarUrl.isEmpty
+                            ? ColoredBox(
+                                color: Colors.white,
+                                child: Center(
+                                  child: Text(
+                                    initial,
+                                    style: const TextStyle(
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w800,
+                                      color: AppNavigationDrawer._headerBg,
+                                    ),
+                                  ),
+                                ),
+                              )
+                            : Image.network(
+                                avatarUrl,
+                                key: ValueKey<String>(avatarUrl),
+                                width: 56,
+                                height: 56,
+                                fit: BoxFit.cover,
+                                gaplessPlayback: true,
+                                errorBuilder: (_, __, ___) => ColoredBox(
+                                  color: Colors.white,
+                                  child: Center(
+                                    child: Text(
+                                      initial,
+                                      style: const TextStyle(
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.w800,
+                                        color: AppNavigationDrawer._headerBg,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
                       ),
                     ),
                     const SizedBox(width: 14),
