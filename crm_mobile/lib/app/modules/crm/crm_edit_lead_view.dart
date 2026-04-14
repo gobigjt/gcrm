@@ -26,7 +26,7 @@ class _CrmEditLeadViewState extends State<CrmEditLeadView> {
 
   List<CrmLookupItem> _stages = [];
   List<CrmLookupItem> _sources = [];
-  List<CrmLookupItem> _assignees = [];
+  List<Map<String, dynamic>> _assignees = [];
 
   final _name = TextEditingController();
   final _company = TextEditingController();
@@ -72,6 +72,16 @@ class _CrmEditLeadViewState extends State<CrmEditLeadView> {
         .toList();
   }
 
+  List<CrmLookupItem> _salesExecutiveAssignees() {
+    return _assignees.where((u) {
+      final role = (u['role'] ?? '').toString().trim().toLowerCase();
+      return role == 'sales executive' || role == 'agent';
+    }).map((u) => CrmLookupItem(
+      id: int.tryParse('${u['id']}') ?? 0,
+      name: (u['name'] ?? '').toString(),
+    )).where((u) => u.id > 0).toList();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -94,7 +104,7 @@ class _CrmEditLeadViewState extends State<CrmEditLeadView> {
 
       _stages = (stagesRes as List).map((e) => CrmLookupItem.fromJson(Map<String, dynamic>.from(e as Map))).toList();
       _sources = (sourcesRes as List).map((e) => CrmLookupItem.fromJson(Map<String, dynamic>.from(e as Map))).toList();
-      _assignees = (assignRes as List).map((e) => CrmLookupItem.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+      _assignees = (assignRes as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
 
       _name.text = lead.name;
       _company.text = lead.company;
@@ -180,6 +190,8 @@ class _CrmEditLeadViewState extends State<CrmEditLeadView> {
 
   @override
   Widget build(BuildContext context) {
+    final role = _auth.role.value.trim().toLowerCase();
+    final isSalesManager = role == 'sales manager' || role == 'manager';
     final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final border = OutlineInputBorder(
@@ -286,23 +298,29 @@ class _CrmEditLeadViewState extends State<CrmEditLeadView> {
                           const SizedBox(height: 8),
                           DropdownButtonFormField<int?>(
                             value: _assignedTo,
-                            decoration: _dec(scheme, 'Assigned to', null),
+                            decoration: _dec(scheme, 'Assign to sales Executive', null),
                             items: [
                               const DropdownMenuItem<int?>(value: null, child: Text('Unassigned')),
-                              ..._assignees.map((u) => DropdownMenuItem<int?>(value: u.id, child: Text(u.name))),
+                              ..._salesExecutiveAssignees()
+                                  .map((u) => DropdownMenuItem<int?>(value: u.id, child: Text(u.name))),
                             ],
                             onChanged: _saving ? null : (v) => setState(() => _assignedTo = v),
                           ),
-                          const SizedBox(height: 8),
-                          DropdownButtonFormField<int?>(
-                            value: _assignedManagerId,
-                            decoration: _dec(scheme, 'Assign Manager', null),
-                            items: [
-                              const DropdownMenuItem<int?>(value: null, child: Text('Unassigned')),
-                              ..._assignees.map((u) => DropdownMenuItem<int?>(value: u.id, child: Text(u.name))),
-                            ],
-                            onChanged: _saving ? null : (v) => setState(() => _assignedManagerId = v),
-                          ),
+                          if (!isSalesManager) ...[
+                            const SizedBox(height: 8),
+                            DropdownButtonFormField<int?>(
+                              value: _assignedManagerId,
+                              decoration: _dec(scheme, 'Assign Manager', null),
+                              items: [
+                                const DropdownMenuItem<int?>(value: null, child: Text('Unassigned')),
+                                ..._assignees.map((u) => DropdownMenuItem<int?>(
+                                      value: int.tryParse('${u['id']}'),
+                                      child: Text((u['name'] ?? '').toString()),
+                                    )),
+                              ],
+                              onChanged: _saving ? null : (v) => setState(() => _assignedManagerId = v),
+                            ),
+                          ],
                           const SizedBox(height: 8),
                           DropdownButtonFormField<String>(
                             value: _priority,

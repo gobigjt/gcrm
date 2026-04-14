@@ -143,6 +143,12 @@ class AuthController extends GetxController {
 
   bool hasPermission(String permission) {
     if (role.value == AppRoles.superAdmin) return true;
+    final roleName = role.value.trim().toLowerCase();
+    final isSalesRole = roleName == 'sales manager' || roleName == 'manager' || roleName == 'sales executive' || roleName == 'agent';
+    if (isSalesRole &&
+        (permission == AppPermissions.users || permission == AppPermissions.settings)) {
+      return false;
+    }
     return grantedPermissions.contains(permission);
   }
 

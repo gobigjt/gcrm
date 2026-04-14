@@ -103,6 +103,25 @@ class SalesDocumentPdfBuilder {
     return lines.join('\n');
   }
 
+  static String _stripBankDetailsFromTerms(String input) {
+    final lines = input
+        .split('\n')
+        .map((e) => e.trimRight())
+        .where((e) => e.trim().isNotEmpty)
+        .toList();
+    final filtered = lines.where((line) {
+      final l = line.toLowerCase();
+      return !(l.contains('bank name') ||
+          l.contains('account name') ||
+          l.contains('a/c') ||
+          l.contains('account no') ||
+          l.contains('account number') ||
+          l.contains('ifsc') ||
+          l.contains('branch'));
+    }).toList();
+    return filtered.join('\n').trim();
+  }
+
   static List<Map<String, dynamic>> _items(Map<String, dynamic> d) {
     final raw = d['items'];
     if (raw is! List) return [];
@@ -181,6 +200,12 @@ class SalesDocumentPdfBuilder {
     final coName = (company['company_name'] ?? 'Company').toString();
     final tagline = (company['invoice_tagline'] ?? '').toString().trim();
     final payTerms = (company['payment_terms'] ?? '').toString().trim();
+    final notes = (doc['notes'] ?? '').toString().trim();
+    final termsText = _stripBankDetailsFromTerms(
+      [notes, payTerms].where((e) => e.isNotEmpty).join('\n'),
+    );
+    final bankDetails = _bankBlock(company);
+    final showTermsBlock = termsText.isNotEmpty || bankDetails.isNotEmpty;
 
     pdf.addPage(
       pw.MultiPage(
@@ -227,6 +252,29 @@ class SalesDocumentPdfBuilder {
               ),
             ],
           ),
+          pw.SizedBox(height: 10),
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Expanded(
+                child: _addressBlock(
+                  title: 'Billing Address',
+                  name: (doc['customer_name'] ?? '—').toString(),
+                  address: (doc['customer_address'] ?? '').toString(),
+                  gstin: (doc['customer_gstin'] ?? '').toString(),
+                ),
+              ),
+              pw.SizedBox(width: 8),
+              pw.Expanded(
+                child: _addressBlock(
+                  title: 'Delivery Address',
+                  name: (doc['customer_name'] ?? '—').toString(),
+                  address: (doc['customer_address'] ?? '').toString(),
+                  gstin: (doc['customer_gstin'] ?? '').toString(),
+                ),
+              ),
+            ],
+          ),
           pw.SizedBox(height: 12),
           pw.Table(
             border: pw.TableBorder.all(color: PdfColors.grey700, width: 0.4),
@@ -241,17 +289,17 @@ class SalesDocumentPdfBuilder {
             },
             children: tableRows,
           ),
-          if ((doc['notes'] ?? '').toString().trim().isNotEmpty) ...[
+          if (kind != SalesDocumentKind.quotation && notes.isNotEmpty) ...[
             pw.SizedBox(height: 10),
             pw.Text('Notes', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)),
             pw.SizedBox(height: 2),
-            pw.Text((doc['notes'] ?? '').toString(), style: const pw.TextStyle(fontSize: 8)),
+            pw.Text(notes, style: const pw.TextStyle(fontSize: 8)),
           ],
           pw.SizedBox(height: 12),
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
-              pw.Text('Thanks for your business.', style: pw.TextStyle(fontStyle: pw.FontStyle.italic, fontSize: 9)),
+              pw.Text('Thanks for your business', style: pw.TextStyle(fontStyle: pw.FontStyle.italic, fontSize: 9)),
               pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.end,
                 children: _totalsWidgets(doc, kind, items, interstate),
@@ -259,24 +307,40 @@ class SalesDocumentPdfBuilder {
             ],
           ),
           pw.SizedBox(height: 16),
-          pw.Text('For $coName', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
-          if (payTerms.isNotEmpty) ...[
+          pw.Text('For $coName,', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
+          if (showTermsBlock) ...[
             pw.SizedBox(height: 12),
-            pw.Text('Payment Terms', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)),
-            pw.SizedBox(height: 4),
-            pw.Text(payTerms, style: const pw.TextStyle(fontSize: 8)),
+            pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Expanded(
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text('Terms And Conditions:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)),
+                      pw.SizedBox(height: 4),
+                      pw.Text(termsText.isEmpty ? '—' : termsText, style: const pw.TextStyle(fontSize: 8)),
+                    ],
+                  ),
+                ),
+                pw.SizedBox(width: 16),
+                pw.Expanded(
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text('Bank Details:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)),
+                      pw.SizedBox(height: 4),
+                      pw.Text(bankDetails.isEmpty ? '—' : bankDetails, style: const pw.TextStyle(fontSize: 8)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ],
-          pw.SizedBox(height: 12),
-          pw.Text('OUR BANK DETAILS', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)),
-          pw.SizedBox(height: 4),
-          pw.Text(_bankBlock(company), style: const pw.TextStyle(fontSize: 8)),
           pw.SizedBox(height: 12),
           pw.Divider(color: PdfColors.grey400),
           pw.SizedBox(height: 6),
-          pw.Text(
-            _footerContact(company),
-            style: const pw.TextStyle(fontSize: 8),
-          ),
+          pw.Text(_footerContact(company), style: const pw.TextStyle(fontSize: 8)),
         ],
       ),
     );
@@ -301,9 +365,25 @@ class SalesDocumentPdfBuilder {
 
   static List<pw.Widget> _metaLines(Map<String, dynamic> doc, SalesDocumentKind kind) {
     final style = pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold);
+    final salesExecutiveName = (doc['sales_executive_name'] ??
+            doc['sales_executive'] ??
+            doc['sales_person_name'] ??
+            doc['created_by_name'] ??
+            '—')
+        .toString();
+    final createdByName = (doc['created_by_name'] ?? doc['created_by'] ?? '—').toString();
+    final stateOfSupply = (doc['state_of_supply'] ?? '').toString().trim();
+    final referenceNo = (doc['reference_no'] ?? '').toString().trim();
     return switch (kind) {
       SalesDocumentKind.quotation => [
-          pw.Text('SRN ${doc['id']}', style: style, textAlign: pw.TextAlign.right),
+          if (stateOfSupply.isNotEmpty) ...[
+            pw.Text('Place of Supply $stateOfSupply', style: style, textAlign: pw.TextAlign.right),
+            pw.SizedBox(height: 3),
+          ],
+          if (referenceNo.isNotEmpty) ...[
+            pw.Text('Reference No $referenceNo', style: style, textAlign: pw.TextAlign.right),
+            pw.SizedBox(height: 3),
+          ],
           pw.SizedBox(height: 3),
           if (formatIsoDate(doc['valid_until']) != '—')
             pw.Text('Valid Until ${formatIsoDate(doc['valid_until'])}', style: style, textAlign: pw.TextAlign.right)
@@ -311,9 +391,20 @@ class SalesDocumentPdfBuilder {
             pw.Text('Quote Date ${formatIsoDate(doc['created_at'])}', style: style, textAlign: pw.TextAlign.right),
           pw.SizedBox(height: 3),
           pw.Text('Quotation No. ${(doc['quotation_number'] ?? '').toString()}', style: style, textAlign: pw.TextAlign.right),
+          pw.SizedBox(height: 3),
+          pw.Text('Sales Executive $salesExecutiveName', style: style, textAlign: pw.TextAlign.right),
+          pw.SizedBox(height: 3),
+          pw.Text('Created By $createdByName', style: style, textAlign: pw.TextAlign.right),
         ],
       SalesDocumentKind.order => [
-          pw.Text('SRN ${doc['id']}', style: style, textAlign: pw.TextAlign.right),
+          if (stateOfSupply.isNotEmpty) ...[
+            pw.Text('Place of Supply $stateOfSupply', style: style, textAlign: pw.TextAlign.right),
+            pw.SizedBox(height: 3),
+          ],
+          if (referenceNo.isNotEmpty) ...[
+            pw.Text('Reference No $referenceNo', style: style, textAlign: pw.TextAlign.right),
+            pw.SizedBox(height: 3),
+          ],
           pw.SizedBox(height: 3),
           pw.Text(
             'Order Date ${formatIsoDate(doc['order_date'] ?? doc['created_at'])}',
@@ -322,9 +413,20 @@ class SalesDocumentPdfBuilder {
           ),
           pw.SizedBox(height: 3),
           pw.Text('Order No. ${(doc['order_number'] ?? '').toString()}', style: style, textAlign: pw.TextAlign.right),
+          pw.SizedBox(height: 3),
+          pw.Text('Sales Executive $salesExecutiveName', style: style, textAlign: pw.TextAlign.right),
+          pw.SizedBox(height: 3),
+          pw.Text('Created By $createdByName', style: style, textAlign: pw.TextAlign.right),
         ],
       SalesDocumentKind.invoice => [
-          pw.Text('SRN ${doc['id']}', style: style, textAlign: pw.TextAlign.right),
+          if (stateOfSupply.isNotEmpty) ...[
+            pw.Text('Place of Supply $stateOfSupply', style: style, textAlign: pw.TextAlign.right),
+            pw.SizedBox(height: 3),
+          ],
+          if (referenceNo.isNotEmpty) ...[
+            pw.Text('Reference No $referenceNo', style: style, textAlign: pw.TextAlign.right),
+            pw.SizedBox(height: 3),
+          ],
           pw.SizedBox(height: 3),
           pw.Text(
             'Invoice Date ${formatIsoDate(doc['invoice_date'] ?? doc['created_at'])}',
@@ -335,8 +437,47 @@ class SalesDocumentPdfBuilder {
           pw.Text('Due ${formatIsoDate(doc['due_date'])}', style: style, textAlign: pw.TextAlign.right),
           pw.SizedBox(height: 3),
           pw.Text('Invoice No. ${(doc['invoice_number'] ?? '').toString()}', style: style, textAlign: pw.TextAlign.right),
+          pw.SizedBox(height: 3),
+          pw.Text('Sales Executive $salesExecutiveName', style: style, textAlign: pw.TextAlign.right),
+          pw.SizedBox(height: 3),
+          pw.Text('Created By $createdByName', style: style, textAlign: pw.TextAlign.right),
         ],
     };
+  }
+
+  static pw.Widget _addressBlock({
+    required String title,
+    required String name,
+    required String address,
+    required String gstin,
+  }) {
+    final cleanAddr = address.trim();
+    final cleanGstin = gstin.trim();
+    return pw.Container(
+      decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey700, width: 0.5)),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Container(
+            width: double.infinity,
+            color: PdfColors.grey300,
+            padding: const pw.EdgeInsets.fromLTRB(6, 4, 6, 8),
+            child: pw.Text(title, style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+          ),
+          pw.Padding(
+            padding: const pw.EdgeInsets.fromLTRB(7, 6, 7, 14),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(name, style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                if (cleanAddr.isNotEmpty) pw.Text(cleanAddr, style: const pw.TextStyle(fontSize: 8)),
+                if (cleanGstin.isNotEmpty) pw.Text('GSTIN : $cleanGstin', style: const pw.TextStyle(fontSize: 8)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   static List<pw.Widget> _totalsWidgets(
@@ -413,14 +554,10 @@ class SalesDocumentPdfBuilder {
   }
 
   static String _footerContact(Map<String, dynamic> co) {
-    final buf = StringBuffer('Contact: ${(co['address'] ?? '—').toString()}');
-    final ph = (co['phone'] ?? '').toString().trim();
-    if (ph.isNotEmpty) buf.write(' | (M) $ph');
-    final em = (co['email'] ?? '').toString().trim();
-    if (em.isNotEmpty) buf.write(' | $em');
-    final gst = (co['gstin'] ?? '').toString().trim();
-    if (gst.isNotEmpty) buf.write(' | GSTIN: $gst');
-    return buf.toString();
+    final addr = (co['address'] ?? '').toString().trim();
+    if (addr.isNotEmpty) return 'Contact: $addr';
+    final name = (co['company_name'] ?? '—').toString().trim();
+    return 'Contact: ${name.isEmpty ? '—' : name}';
   }
 
   static pw.Widget _th(String s, {bool center = false, bool right = false}) {

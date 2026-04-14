@@ -49,6 +49,9 @@ export function ModuleProvider({ children }) {
 
   const canAccess = (moduleKey) => {
     if (!moduleKey) return true;
+    const role = String(user?.role || '').trim().toLowerCase();
+    const isSalesRole = role === 'sales manager' || role === 'manager' || role === 'sales executive' || role === 'agent';
+    if (isSalesRole && (moduleKey === 'users' || moduleKey === 'settings')) return false;
     if (user?.role === 'Super Admin') return true;
     const cfg = modules.find(m => m.module === moduleKey);
     if (!cfg) return true;

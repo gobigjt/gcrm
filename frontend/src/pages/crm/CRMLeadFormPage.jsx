@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/client';
 import { Field, inputCls, selectCls } from '../../components/FormField';
+import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { apiErrorMessage } from '../../utils/apiErrorMessage';
 
@@ -43,6 +44,7 @@ export default function CRMLeadFormPage() {
   const { id } = useParams();
   const isEdit = useMemo(() => Boolean(id), [id]);
   const nav = useNavigate();
+  const { user } = useAuth();
   const { show } = useToast();
   const [stages, setStages] = useState([]);
   const [sources, setSources] = useState([]);
@@ -51,6 +53,16 @@ export default function CRMLeadFormPage() {
   const [priorities, setPriorities] = useState([]);
   const [form, setForm] = useState({ ...EMPTY });
   const [loading, setLoading] = useState(false);
+  const roleName = String(user?.role || '').toLowerCase();
+  const isSalesManager = roleName === 'sales manager' || roleName === 'manager';
+  const salesExecutiveUsers = useMemo(
+    () =>
+      users.filter((u) => {
+        const r = String(u?.role || '').trim().toLowerCase();
+        return r === 'sales executive' || r === 'agent';
+      }),
+    [users],
+  );
 
   useEffect(() => {
     api.get('/crm/leads/stages').then((r) => setStages(r.data || [])).catch(() => setStages([]));
@@ -151,18 +163,20 @@ export default function CRMLeadFormPage() {
             <section className="space-y-3">
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Assignment</h3>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Assigned To">
+                <Field label="Assign to sales Executive">
                   <select className={selectCls} value={form.assigned_to} onChange={set('assigned_to')}>
                     <option value="">Unassigned</option>
-                    {users.map((u) => <option key={u.id} value={String(u.id)}>{assigneeLabel(u)}</option>)}
+                    {salesExecutiveUsers.map((u) => <option key={u.id} value={String(u.id)}>{assigneeLabel(u)}</option>)}
                   </select>
                 </Field>
-                <Field label="Assign Manager">
-                  <select className={selectCls} value={form.assigned_manager_id} onChange={set('assigned_manager_id')}>
-                    <option value="">Unassigned</option>
-                    {users.map((u) => <option key={u.id} value={String(u.id)}>{assigneeLabel(u)}</option>)}
-                  </select>
-                </Field>
+                {!isSalesManager && (
+                  <Field label="Assign Manager">
+                    <select className={selectCls} value={form.assigned_manager_id} onChange={set('assigned_manager_id')}>
+                      <option value="">Unassigned</option>
+                      {users.map((u) => <option key={u.id} value={String(u.id)}>{assigneeLabel(u)}</option>)}
+                    </select>
+                  </Field>
+                )}
               </div>
             </section>
 

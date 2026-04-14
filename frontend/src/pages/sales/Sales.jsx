@@ -30,6 +30,7 @@ const PAYMENT_METHOD_OPTIONS = ['Cash','Card','UPI','Bank Transfer','Cheque','Ot
 
 const fmt  = n  => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const fmtD = dt => dt ? new Date(dt).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '—';
+const fmtDT = dt => dt ? new Date(dt).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—';
 
 function printSalesDoc(kind, doc) {
   if (!doc) return;
@@ -1156,10 +1157,11 @@ const DETAIL_FULL_PAGE_TITLE = {
   invoice: 'Invoice details',
 };
 
-function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation, onEditInvoice, onEditOrder, fullPage = false }) {
+function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation, onEditInvoice, onEditOrder, fullPage = false, autoDownloadPdf = false }) {
   const { show } = useToast();
   const [doc,     setDoc]     = useState(null);
   const [paying,  setPaying]  = useState(false);
+  const autoPdfTriggeredRef = useRef(false);
 
   useEffect(() => {
     if (fullPage) return undefined;
@@ -1176,6 +1178,12 @@ function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation, onEditInv
   }, [type, id]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!autoDownloadPdf || !doc || autoPdfTriggeredRef.current) return;
+    autoPdfTriggeredRef.current = true;
+    downloadSalesPdf(type, doc);
+  }, [autoDownloadPdf, doc, type]);
 
   const changeStatus = async (status) => {
     const path = { quotation:'/sales/quotations', order:'/sales/orders' }[type];
@@ -1471,7 +1479,9 @@ export function SalesDetailPage({ segment }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const type = segmentToDocType(segment);
+  const autoDownloadPdf = searchParams.get('autoPdf') === '1';
 
   const goBack = () => {
     navigate({ pathname: salesListPath(segment), search: location.search });
@@ -1483,6 +1493,7 @@ export function SalesDetailPage({ segment }) {
         type={type}
         id={id}
         fullPage={false}
+        autoDownloadPdf={autoDownloadPdf}
         onClose={goBack}
         onRefresh={() => {}}
         onEditQuotation={type === 'quotation' ? (qid) => navigate({ pathname: salesEditPath('quotes', qid), search: location.search }) : undefined}
@@ -1970,13 +1981,15 @@ export function SalesCustomersPage() {
   const [modal,     setModal]     = useState(null); // 'new' | 'edit'
   const [editCust,  setEditCust]  = useState(null);
   const [selected,  setSelected]  = useState([]);
-  const search = useSearch(customers, ['name','phone','email','gstin','address']);
+  const search = useSearch(customers, ['name','phone','email','gstin','address','created_by_name']);
   const pager  = usePagination(search.filtered);
   const cols = [
     { label: 'Name',    get: r => r.name },
     { label: 'Phone',   get: r => r.phone || '' },
     { label: 'Email',   get: r => r.email || '' },
     { label: 'GSTIN',   get: r => r.gstin || '' },
+    { label: 'Created by', get: r => r.created_by_name || '' },
+    { label: 'Created at', get: r => fmtDT(r.created_at) },
     { label: 'Address', get: r => r.address || '' },
   ];
 
@@ -2027,7 +2040,7 @@ export function SalesCustomersPage() {
                   onChange={e => setSelected(e.target.checked ? pager.slice.map(r => r.id) : [])}
                 />
               </th>
-              {['Name','Phone','Email','GSTIN','Address',''].map(h => (
+              {['Name','Phone','Email','GSTIN','Created by','Created at','Address',''].map(h => (
                 <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">{h}</th>
               ))}
             </tr></thead>
@@ -2044,6 +2057,8 @@ export function SalesCustomersPage() {
                   <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{c.phone || '—'}</td>
                   <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{c.email || '—'}</td>
                   <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs font-mono">{c.gstin || '—'}</td>
+                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{c.created_by_name || '—'}</td>
+                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{fmtDT(c.created_at)}</td>
                   <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs max-w-[180px] truncate">{c.address || '—'}</td>
                   <td className="px-4 py-3 text-right">
                     <SettingsDropdown options={[

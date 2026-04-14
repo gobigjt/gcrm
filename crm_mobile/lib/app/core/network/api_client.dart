@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
+import '../config/web_app_config.dart';
 import 'api_exception.dart';
 
 class ApiClient {
@@ -14,19 +15,15 @@ class ApiClient {
   /// Avoid hanging forever on cold start / splash when the host is wrong or offline.
   static const Duration requestTimeout = Duration(seconds: 20);
 
-  // Android emulator localhost mapping; override with --dart-define=API_BASE_URL=...
-  // Use a full absolute URL, e.g. http://127.0.0.1:4000/api (note the double slash after http:).
-  static const String baseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: 'http://10.0.2.2:4000/api',
-  );
+  // Centralized app API URL from WebAppConfig (still overrideable with --dart-define=API_BASE_URL=...).
+  static const String baseUrl = WebAppConfig.apiBaseUrl;
 
   /// Ensures [raw] becomes an absolute http(s) URL. On Flutter Web, a host without a scheme
   /// is treated as a path on the app origin (e.g. localhost:port/127.0.0.1:4000/...).
   static String normalizeApiBase(String raw) {
     var s = raw.trim();
     if (s.isEmpty) {
-      return 'http://10.0.2.2:4000/api';
+      return WebAppConfig.apiBaseUrl;
     }
     while (s.endsWith('/')) {
       s = s.substring(0, s.length - 1);

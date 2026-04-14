@@ -468,6 +468,7 @@ CREATE TABLE IF NOT EXISTS customers (
   gstin       VARCHAR(15),
   address     TEXT,
   lead_id     INTEGER REFERENCES leads(id) ON DELETE SET NULL,
+  created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
   is_active   BOOLEAN NOT NULL DEFAULT TRUE,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

@@ -22,7 +22,23 @@ class _SalesChrome {
 class SalesView extends GetView<SalesController> {
   const SalesView({super.key});
 
+  String _formatCreatedDateTime(dynamic value) {
+    final raw = value?.toString().trim() ?? '';
+    if (raw.isEmpty) return '—';
+    final dt = DateTime.tryParse(raw);
+    if (dt == null) return raw;
+    final local = dt.isUtc ? dt.toLocal() : dt;
+    final ymd = formatIsoDate(local.toIso8601String());
+    final hh = local.hour.toString().padLeft(2, '0');
+    final mm = local.minute.toString().padLeft(2, '0');
+    return '$ymd $hh:$mm';
+  }
+
   String _emptyLabel() {
+    if (controller.isCustomersTab) {
+      if (controller.filterCustomerId.value != null) return 'No customer match';
+      return 'No customers yet';
+    }
     if (controller.isQuotationsTab) {
       if (controller.filterCustomerId.value != null) return 'No quotations for this customer yet';
       return 'No quotations yet';
@@ -99,6 +115,7 @@ class SalesView extends GetView<SalesController> {
             0 => 'quotes',
             1 => 'invoices',
             2 => 'orders',
+            3 => 'customers',
             _ => 'quotes',
           },
         ),
@@ -135,7 +152,9 @@ class SalesView extends GetView<SalesController> {
           child: _SalesTabStrip(controller: controller),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: controller.isCustomersTab
+          ? null
+          : FloatingActionButton(
         onPressed: () async {
           if (controller.isQuotationsTab) {
             final cid = controller.filterCustomerId.value;
@@ -232,6 +251,18 @@ class SalesView extends GetView<SalesController> {
                   final isQ = controller.isQuotationsTab;
                   final isInv = controller.isInvoicesTab;
                   final isOrd = controller.isOrdersTab;
+                  final isCustomers = controller.isCustomersTab;
+                  final canDeleteCustomer = auth.role.value == AppRoles.admin || auth.role.value == AppRoles.superAdmin;
+                  if (isCustomers) {
+                    return _CustomerCard(
+                      name: (r['name'] ?? '—').toString(),
+                      phone: (r['phone'] ?? '—').toString(),
+                      email: (r['email'] ?? '—').toString(),
+                      createdBy: (r['created_by_name'] ?? '—').toString(),
+                      createdDateTime: _formatCreatedDateTime(r['created_at']),
+                      onDelete: canDeleteCustomer ? () => _confirmDelete(context, i) : null,
+                    );
+                  }
                   final docKind = isQ
                       ? SalesDocumentKind.quotation
                       : isInv
@@ -331,10 +362,72 @@ class _SalesTabStrip extends StatelessWidget {
               onTap: () => controller.selectTab(2),
             ),
           ),
+          Expanded(
+            child: _SalesTabButton(
+              label: 'CUSTOMERS',
+              selected: t == 3,
+              onTap: () => controller.selectTab(3),
+            ),
+          ),
         ],
       ),
     );
     });
+  }
+}
+
+class _CustomerCard extends StatelessWidget {
+  const _CustomerCard({
+    required this.name,
+    required this.phone,
+    required this.email,
+    required this.createdBy,
+    required this.createdDateTime,
+    this.onDelete,
+  });
+
+  final String name;
+  final String phone;
+  final String email;
+  final String createdBy;
+  final String createdDateTime;
+  final VoidCallback? onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.surfaceContainer,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Theme.of(context).dividerColor),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(name, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: scheme.onSurface)),
+            const SizedBox(height: 6),
+            Text('Phone: $phone', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+            Text('Email: $email', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+            Text('Created by: $createdBy', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+            Text('Created at: $createdDateTime', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+            if (onDelete != null) ...[
+              const SizedBox(height: 6),
+              Align(
+                alignment: Alignment.centerRight,
+                child: IconButton(
+                  onPressed: onDelete,
+                  icon: const Icon(Icons.delete_outline, color: Color(0xFFE53935)),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }
 
