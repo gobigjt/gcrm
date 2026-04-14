@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { resolveApiPublicUrl } from '../utils/publicAssetUrl';
 import { useModules } from '../context/ModuleContext';
@@ -180,23 +179,6 @@ export default function Layout({ children }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef(null);
-  const [companyBranding, setCompanyBranding] = useState({ logo_url: '', favicon_url: '', company_name: '' });
-
-  useEffect(() => {
-    api.get('/settings/company').then((r) => setCompanyBranding(r.data || {})).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    const href = resolveApiPublicUrl(companyBranding?.favicon_url);
-    if (!href || typeof document === 'undefined') return;
-    let link = document.querySelector("link[rel*='icon']");
-    if (!link) {
-      link = document.createElement('link');
-      link.setAttribute('rel', 'icon');
-      document.head.appendChild(link);
-    }
-    link.setAttribute('href', href);
-  }, [companyBranding?.favicon_url]);
 
   // Menu click / route change: top bar (BrowserRouter has no useNavigation; pathname is the signal).
   useLayoutEffect(() => {
@@ -259,8 +241,7 @@ export default function Layout({ children }) {
   const roleCls = roleColors[roleLabel] || roleColors.default;
   const displayName = (user?.name || user?.email || 'User').toString().trim() || 'User';
   const avatarSrc = resolveApiPublicUrl(user?.avatar_url || user?.avatarUrl);
-  const defaultLogoSrc = '/default-logo.png';
-  const logoSrc = resolveApiPublicUrl(companyBranding?.logo_url) || defaultLogoSrc;
+  const logoSrc = '/default-logo.png';
   const pageKey = Object.keys(PAGE_META)
     .filter((p) => p === '/' || pathname.startsWith(p))
     .sort((a, b) => b.length - a.length)[0] || '/';
