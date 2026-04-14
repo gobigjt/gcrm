@@ -267,6 +267,8 @@ Widget salesTotalsCard({
   required TextEditingController discountAmountCtrl,
   required TextEditingController shippingAmountCtrl,
   required TextEditingController roundOffCtrl,
+  /// When false, matches web quote/order [TotalSummary] (line totals only).
+  bool includeDocumentCharges = true,
 }) {
   // Avoid importing SalesLineDraft here — callers pass duck-typed lists.
   // We call .taxableBase(taxType:) and .gstAmount(taxType:) via dynamic dispatch.
@@ -279,9 +281,9 @@ Widget salesTotalsCard({
   subtotal = double.parse(subtotal.toStringAsFixed(2));
   gst      = double.parse(gst.toStringAsFixed(2));
   final halfGst   = double.parse((gst / 2).toStringAsFixed(2));
-  final discAmt   = double.tryParse(discountAmountCtrl.text) ?? 0;
-  final shipAmt   = double.tryParse(shippingAmountCtrl.text) ?? 0;
-  final rOffAmt   = double.tryParse(roundOffCtrl.text)       ?? 0;
+  final discAmt   = includeDocumentCharges ? (double.tryParse(discountAmountCtrl.text) ?? 0) : 0.0;
+  final shipAmt   = includeDocumentCharges ? (double.tryParse(shippingAmountCtrl.text) ?? 0) : 0.0;
+  final rOffAmt   = includeDocumentCharges ? (double.tryParse(roundOffCtrl.text) ?? 0) : 0.0;
   final grand     = double.parse((subtotal + gst - discAmt + shipAmt + rOffAmt).toStringAsFixed(2));
 
   final cs     = Theme.of(context).colorScheme;
@@ -299,7 +301,7 @@ Widget salesTotalsCard({
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          salesTotRow(context, 'Taxable value', subtotal, lightModeSlateTotalsCard: !isDark),
+          salesTotRow(context, 'Subtotal', subtotal, lightModeSlateTotalsCard: !isDark),
           if (taxType != 'no_tax') ...[
             if (interstate)
               salesTotRow(context, 'IGST', gst, lightModeSlateTotalsCard: !isDark)
@@ -396,9 +398,74 @@ InputDecoration salesCustomerDropdownDecoration(BuildContext context, {required 
   );
 }
 
+/// Web `Sales.jsx` [LineItems] product `<select>` above the description field.
+Widget salesLineProductDropdown({
+  required BuildContext context,
+  required List<Map<String, dynamic>> products,
+  required int? selectedProductId,
+  required ValueChanged<int?> onChanged,
+}) {
+  final cs = Theme.of(context).colorScheme;
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+  if (products.isEmpty) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Text(
+        'No catalog products with available stock — enter lines manually.',
+        style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+      ),
+    );
+  }
+  final ids = products.map((e) => (e['id'] as num).toInt()).toSet();
+  final safe = selectedProductId != null && ids.contains(selectedProductId) ? selectedProductId : null;
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text(
+        'Product',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.4,
+          color: isDark ? cs.onSurfaceVariant : const Color(0xFF334155),
+        ),
+      ),
+      const SizedBox(height: 4),
+      DropdownButtonFormField<int?>(
+        isExpanded: true,
+        value: safe,
+        decoration: salesCustomerDropdownDecoration(
+          context,
+          hint: const Text('— Select product —'),
+        ),
+        dropdownColor: isDark ? cs.surfaceContainerHighest : null,
+        style: TextStyle(color: cs.onSurface, fontSize: 14, fontWeight: FontWeight.w500),
+        items: [
+          const DropdownMenuItem<int?>(
+            value: null,
+            child: Text('— Select product —'),
+          ),
+          ...products.map(
+            (p) => DropdownMenuItem<int?>(
+              value: (p['id'] as num).toInt(),
+              child: Text(
+                (p['name'] ?? '—').toString(),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+        ],
+        onChanged: onChanged,
+      ),
+    ],
+  );
+}
+
 PreferredSizeWidget salesDocAppBar(
   BuildContext context, {
   required String title,
+  String? subtitle,
   required bool showSave,
   required bool isSaving,
   VoidCallback? onSave,
@@ -406,6 +473,7 @@ PreferredSizeWidget salesDocAppBar(
   final dark = Theme.of(context).brightness == Brightness.dark;
   final cs = Theme.of(context).colorScheme;
   final barInk = dark ? cs.onSurface : Colors.white;
+  final sub = subtitle?.trim();
   return AppBar(
     backgroundColor: salesDocAppBarBg(context),
     foregroundColor: barInk,
@@ -420,7 +488,24 @@ PreferredSizeWidget salesDocAppBar(
       icon: const Icon(Icons.arrow_back_rounded),
       color: barInk,
     ),
-    title: Text(title),
+    title: sub == null || sub.isEmpty
+        ? Text(title)
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(title),
+              Text(
+                sub,
+                style: TextStyle(
+                  color: barInk.withValues(alpha: 0.82),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  height: 1.2,
+                ),
+              ),
+            ],
+          ),
     actions: [
       if (showSave)
         Padding(

@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/config/web_app_config.dart';
 import '../../core/utils/ui_format.dart'
     show formatInrAmountDisplay, formatIsoDate, formatSalesCardDate, parseDynamicNum;
 import '../../routes/app_routes.dart';
@@ -39,15 +37,6 @@ String _numberLabel(Map<String, dynamic> d, SalesDocumentKind k) {
   };
 }
 
-Uri? _webDetailUri(SalesDocumentKind kind, int id) {
-  final segment = switch (kind) {
-    SalesDocumentKind.quotation => 'quotes',
-    SalesDocumentKind.order => 'orders',
-    SalesDocumentKind.invoice => 'invoices',
-  };
-  return WebAppConfig.salesDetailWebUri(segment: segment, id: id);
-}
-
 class SalesDocumentDetailView extends StatefulWidget {
   const SalesDocumentDetailView({super.key, required this.kind, required this.documentId});
 
@@ -79,20 +68,6 @@ class _SalesDocumentDetailViewState extends State<SalesDocumentDetailView> {
     super.dispose();
   }
 
-  Future<void> _openInBrowser() async {
-    final uri = _webDetailUri(widget.kind, widget.documentId);
-    if (uri == null) {
-      Get.snackbar(
-        'Web app URL',
-        'Set WEB_APP_ORIGIN when building (e.g. --dart-define=WEB_APP_ORIGIN=https://your-crm.example).',
-      );
-      return;
-    }
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      Get.snackbar('Browser', 'Could not open link.');
-    }
-  }
-
   Future<void> _downloadPdf(Map<String, dynamic> doc) async {
     if (_pdfBusy) return;
     setState(() => _pdfBusy = true);
@@ -122,6 +97,14 @@ class _SalesDocumentDetailViewState extends State<SalesDocumentDetailView> {
       final r = await Get.toNamed(
         AppRoutes.invoiceForm,
         arguments: {'invoiceId': widget.documentId},
+      );
+      if (r == true) await c.load();
+      return;
+    }
+    if (widget.kind == SalesDocumentKind.order) {
+      final r = await Get.toNamed(
+        AppRoutes.orderForm,
+        arguments: {'orderId': widget.documentId},
       );
       if (r == true) await c.load();
     }
@@ -187,7 +170,9 @@ class _SalesDocumentDetailViewState extends State<SalesDocumentDetailView> {
       final fg = _appBarFg(context);
       final cs = Theme.of(context).colorScheme;
       final isDark = Theme.of(context).brightness == Brightness.dark;
-      final canEdit = widget.kind == SalesDocumentKind.quotation || widget.kind == SalesDocumentKind.invoice;
+      final canEdit = widget.kind == SalesDocumentKind.quotation ||
+          widget.kind == SalesDocumentKind.invoice ||
+          widget.kind == SalesDocumentKind.order;
       final saving = c.isSaving.value;
 
       return Scaffold(
@@ -211,12 +196,6 @@ class _SalesDocumentDetailViewState extends State<SalesDocumentDetailView> {
                       child: CircularProgressIndicator(strokeWidth: 2, color: fg),
                     )
                   : const Icon(Icons.picture_as_pdf_outlined),
-              color: fg,
-            ),
-            IconButton(
-              tooltip: 'Open in browser (print / PDF)',
-              onPressed: _openInBrowser,
-              icon: const Icon(Icons.open_in_browser_rounded),
               color: fg,
             ),
             if (canEdit)
@@ -566,7 +545,7 @@ Widget _lineItemsCard(BuildContext context, List<Map<String, dynamic>> items, bo
                 Expanded(child: Text('Qty x Price', textAlign: TextAlign.center, style: _lineHdr(context))),
                 Expanded(
                   flex: 2,
-                  child: Text('Amount (INR)', textAlign: TextAlign.right, style: _lineHdr(context)),
+                  child: Text('Amount (₹)', textAlign: TextAlign.right, style: _lineHdr(context)),
                 ),
               ],
             ),

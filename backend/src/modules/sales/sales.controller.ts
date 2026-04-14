@@ -1,4 +1,8 @@
-import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
+import { createReadStream, existsSync } from 'fs';
+import { unlink } from 'fs/promises';
+import { basename, join } from 'path';
+import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser }  from '../../common/decorators/current-user.decorator';
@@ -15,6 +19,37 @@ export class SalesController {
 
   @Get('executives') listSalesExecutives() {
     return this.svc.listSalesExecutives();
+  }
+
+  /** One-time PDF download: file is removed from disk after the response completes. */
+  @Get('generated-pdfs/:fileName')
+  streamGeneratedPdf(@Param('fileName') fileName: string, @Res({ passthrough: false }) res: Response): void {
+    const safe = basename(fileName);
+    if (!/^(quotation|order|invoice)-\d+-\d+\.pdf$/.test(safe)) {
+      res.status(400).json({ statusCode: 400, message: 'Invalid file name' });
+      return;
+    }
+    const filePath = join(process.cwd(), 'uploads', 'pdfs', safe);
+    if (!existsSync(filePath)) {
+      res.status(404).json({ statusCode: 404, message: 'Not found' });
+      return;
+    }
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${safe}"`);
+    const stream = createReadStream(filePath);
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      void unlink(filePath).catch(() => {});
+    };
+    res.once('finish', cleanup);
+    res.once('close', cleanup);
+    stream.once('error', () => {
+      cleanup();
+      if (!res.writableEnded) res.destroy();
+    });
+    stream.pipe(res);
   }
 
   // Customers

@@ -141,12 +141,15 @@ abstract class AppPages {
       name: AppRoutes.orderForm,
       page: () {
         int? initialCustomerId;
+        int? orderId;
         final args = Get.arguments;
         if (args is Map) {
           final ic = args['initialCustomerId'];
           if (ic is num) initialCustomerId = ic.toInt();
+          final oid = args['orderId'];
+          if (oid is num) orderId = oid.toInt();
         }
-        return OrderFormView(initialCustomerId: initialCustomerId);
+        return OrderFormView(initialCustomerId: initialCustomerId, orderId: orderId);
       },
       middlewares: [PermissionMiddleware(permission: AppPermissions.sales)],
     ),

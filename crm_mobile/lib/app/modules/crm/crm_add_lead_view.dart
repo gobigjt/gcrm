@@ -415,7 +415,7 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
                             controller: dealSizeCtrl,
                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
                             decoration: InputDecoration(
-                              labelText: 'Deal size (INR)',
+                              labelText: 'Deal size (₹)',
                               floatingLabelBehavior: FloatingLabelBehavior.always,
                               labelStyle: TextStyle(
                                 fontSize: 10,

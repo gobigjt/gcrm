@@ -310,7 +310,7 @@ class CrmLeadDetailView extends StatelessWidget {
                                 child: _InfoBlock(
                                   bg: isDark ? const Color(0xFF0D2818) : const Color(0xFFE1F5EE),
                                   fg: isDark ? const Color(0xFF6EE7B7) : const Color(0xFF085041),
-                                  label: 'Deal (INR)',
+                                  label: 'Deal (₹)',
                                   value: lead.dealSize != null
                                       ? formatCurrencyInr(lead.dealSize, decimals: 0)
                                       : '—',

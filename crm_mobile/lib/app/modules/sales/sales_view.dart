@@ -289,11 +289,14 @@ class SalesView extends GetView<SalesController> {
                                 );
                                 if (ok == true) await controller.load();
                               }
-                            : isOrd
-                                ? () => Get.snackbar(
-                                      'Sales order',
-                                      'Change status from the document view. Line edits use the web app.',
-                                    )
+                            : isOrd && id > 0
+                                ? () async {
+                                    final ok = await Get.toNamed(
+                                      AppRoutes.orderForm,
+                                      arguments: {'orderId': id},
+                                    );
+                                    if (ok == true) await controller.load();
+                                  }
                                 : () => Get.snackbar('Edit', 'Nothing to edit.'),
                     onCopy: isQ && id > 0
                         ? () async {

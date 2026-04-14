@@ -475,7 +475,7 @@ export class SalesService {
       if (hasLogo) headerH = Math.max(headerH, 80);
       bumpPage(headerH + 36);
       const headerTop = y;
-      pdf.save().lineWidth(1).strokeColor('#444444');
+      pdf.save().lineWidth(1).strokeColor('#333333');
       pdf.moveTo(pageLeft, headerTop).lineTo(pageRight, headerTop).stroke();
       pdf.moveTo(pageLeft, headerTop).lineTo(pageLeft, headerTop + headerH).stroke();
       pdf.moveTo(pageRight, headerTop).lineTo(pageRight, headerTop + headerH).stroke();
@@ -496,7 +496,7 @@ export class SalesService {
       pdf
         .moveTo(pageLeft + logoColW, headerTop)
         .lineTo(pageLeft + logoColW, headerTop + headerH)
-        .stroke('#444444');
+        .stroke('#333333');
       let hy = headerTop + 6;
       const rightBlkW = pageWidth - logoColW - 12;
       const rightX = pageLeft + logoColW + 6;
@@ -518,15 +518,15 @@ export class SalesService {
       y = headerTop + headerH;
 
       bumpPage(36);
-      pdf.rect(pageLeft, y, pageWidth, 24).stroke('#444444');
+      pdf.rect(pageLeft, y, pageWidth, 24).stroke('#333333');
       pdf.fontSize(12).font('Helvetica-Bold').text(title, pageLeft, y + 7, { width: pageWidth, align: 'center' });
       y += 32;
 
       const leftW = pageWidth / 2;
       const metaH = 56;
       bumpPage(metaH + 8);
-      pdf.rect(pageLeft, y, pageWidth, metaH).stroke('#444444');
-      pdf.moveTo(pageLeft + leftW, y).lineTo(pageLeft + leftW, y + metaH).stroke('#444444');
+      pdf.rect(pageLeft, y, pageWidth, metaH).stroke('#333333');
+      pdf.moveTo(pageLeft + leftW, y).lineTo(pageLeft + leftW, y + metaH).stroke('#333333');
       pdf.fontSize(9).font('Helvetica-Bold').text(metaNoLabel, pageLeft + 8, y + 8);
       pdf.font('Helvetica').text(`: ${docNo}`, pageLeft + 95, y + 8);
       pdf.font('Helvetica-Bold').text(metaDateLabel, pageLeft + 8, y + 22);
@@ -544,10 +544,10 @@ export class SalesService {
 
       const boxH = 76;
       bumpPage(boxH + 8);
-      pdf.rect(pageLeft, y, leftW, boxH).stroke('#444444');
-      pdf.rect(pageLeft + leftW, y, leftW, boxH).stroke('#444444');
-      pdf.rect(pageLeft, y, leftW, 16).fillAndStroke('#eaeaea', '#cccccc');
-      pdf.rect(pageLeft + leftW, y, leftW, 16).fillAndStroke('#eaeaea', '#cccccc');
+      pdf.rect(pageLeft, y, leftW, boxH).stroke('#333333');
+      pdf.rect(pageLeft + leftW, y, leftW, boxH).stroke('#333333');
+      pdf.rect(pageLeft, y, leftW, 16).fillAndStroke('#eaeaea', '#999999');
+      pdf.rect(pageLeft + leftW, y, leftW, 16).fillAndStroke('#eaeaea', '#999999');
       pdf.fillColor('#000000').font('Helvetica-Bold').fontSize(9).text('Billing Address', pageLeft + 6, y + 4);
       pdf.text('Delivery Address', pageLeft + leftW + 6, y + 4);
       pdf.font('Helvetica').fontSize(8.5);
@@ -572,7 +572,7 @@ export class SalesService {
       const headers = ['#', 'Item & Description', 'HSN', 'Qty', 'Rate', 'Amount'];
       bumpPage(18);
       let x = pageLeft;
-      pdf.rect(pageLeft, y, pageWidth, 18).fillAndStroke('#eaeaea', '#444444');
+      pdf.rect(pageLeft, y, pageWidth, 18).fillAndStroke('#eaeaea', '#333333');
       headers.forEach((h, i) => {
         pdf
           .fillColor('#000000')
@@ -585,14 +585,14 @@ export class SalesService {
       const items = Array.isArray(docData.items) ? docData.items : [];
       if (!items.length) {
         bumpPage(16);
-        pdf.rect(pageLeft, y, pageWidth, 16).stroke('#444444');
+        pdf.rect(pageLeft, y, pageWidth, 16).stroke('#333333');
         pdf.font('Helvetica').fontSize(8.5).text('No line items', pageLeft, y + 4, { width: pageWidth, align: 'center' });
         y += 16;
       } else {
         items.forEach((it: any, idx: number) => {
           const rowH = 16;
           bumpPage(rowH);
-          pdf.rect(pageLeft, y, pageWidth, rowH).stroke('#444444');
+          pdf.rect(pageLeft, y, pageWidth, rowH).stroke('#333333');
           let cx = pageLeft;
           const vals = [
             String(idx + 1),
@@ -626,7 +626,7 @@ export class SalesService {
       const taxRowH = 16;
       const taxTableH = taxHdrH + displayTaxRows.length * taxRowH;
       bumpPage(taxTableH + 4);
-      pdf.rect(pageLeft, y, pageWidth, taxHdrH).fillAndStroke('#eaeaea', '#444444');
+      pdf.rect(pageLeft, y, pageWidth, taxHdrH).fillAndStroke('#eaeaea', '#333333');
       let taxX = pageLeft;
       const taxHdrs = interstate
         ? ['HSN/SAC', 'Taxable Amount', 'IGST']
@@ -642,7 +642,7 @@ export class SalesService {
       y += taxHdrH;
       for (const tr of displayTaxRows) {
         bumpPage(taxRowH);
-        pdf.rect(pageLeft, y, pageWidth, taxRowH).stroke('#444444');
+        pdf.rect(pageLeft, y, pageWidth, taxRowH).stroke('#333333');
         taxX = pageLeft;
         if (interstate) {
           const vals = [tr.hsn, this.money(tr.taxable), `(${tr.rate}%) ${this.money(tr.igst)}`];
@@ -692,8 +692,8 @@ export class SalesService {
       const leftBlockH = boxPad * 2 + 14 + leftTextH;
       const totalsBoxH = Math.max(leftBlockH, rightBlockH, 52);
       bumpPage(totalsBoxH + 8);
-      pdf.rect(pageLeft, y, pageWidth, totalsBoxH).stroke('#444444');
-      pdf.moveTo(pageLeft + wordsColW, y).lineTo(pageLeft + wordsColW, y + totalsBoxH).stroke('#444444');
+      pdf.rect(pageLeft, y, pageWidth, totalsBoxH).stroke('#333333');
+      pdf.moveTo(pageLeft + wordsColW, y).lineTo(pageLeft + wordsColW, y + totalsBoxH).stroke('#333333');
       pdf.fillColor('#000000').font('Helvetica-Bold').fontSize(11).text('Total in Words', pageLeft + boxPad, y + boxPad);
       pdf.font('Helvetica').fontSize(11).text(wordsStr, pageLeft + boxPad, y + boxPad + 14, { width: wordsColW - boxPad * 2 });
       const ax = pageLeft + wordsColW + boxPad;
@@ -720,8 +720,8 @@ export class SalesService {
       const colW = (pageWidth - 8) / 2;
       const blockH = 92;
       bumpPage(blockH + 48);
-      pdf.rect(pageLeft, y, colW, blockH).stroke('#444444');
-      pdf.rect(pageLeft + colW + 8, y, colW, blockH).stroke('#444444');
+      pdf.rect(pageLeft, y, colW, blockH).stroke('#333333');
+      pdf.rect(pageLeft + colW + 8, y, colW, blockH).stroke('#333333');
       pdf.font('Helvetica-Bold').fontSize(9).text('Terms And Conditions:', pageLeft + 6, y + 6);
       pdf.font('Helvetica').fontSize(8).text(terms || '—', pageLeft + 6, y + 18, { width: colW - 12, height: blockH - 24 });
       pdf.font('Helvetica-Bold').fontSize(9).text('Bank Details:', pageLeft + colW + 14, y + 6);
@@ -806,7 +806,7 @@ export class SalesService {
 
     await this.writePdfToFile(pdf, filePath);
     return {
-      url: `/uploads/pdfs/${fileName}`,
+      url: `/sales/generated-pdfs/${fileName}`,
       file_name: fileName,
       kind,
       id,
