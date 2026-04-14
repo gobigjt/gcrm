@@ -110,11 +110,11 @@ class CrmView extends GetView<CrmController> {
                         child: DropdownButton<int?>(
                           isExpanded: true,
                           value: scope,
-                          hint: const Text('My own'),
+                          hint: const Text('All leads'),
                           items: [
                             const DropdownMenuItem<int?>(
                               value: null,
-                              child: Text('My own'),
+                              child: Text('All leads'),
                             ),
                             ...controller.reportingExecutives.map((e) {
                               final raw = e['id'];

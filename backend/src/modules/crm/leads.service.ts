@@ -50,7 +50,7 @@ export class LeadsService {
 
   private isOwnAssignedScope(role: unknown): boolean {
     const r = String(role || '').trim().toLowerCase();
-    return r === 'sales executive' || this.isSalesManagerRole(role);
+    return r === 'sales executive' || r === 'agent';
   }
 
   /** `YYYY-MM-DD` only; returns null if invalid. */
@@ -73,32 +73,40 @@ export class LeadsService {
   }
 
   /**
-   * For Sales Executive: scoped rows are `assigned_to` only. For Sales Manager: own vs team scope applies.
-   * Sales Manager may pass `filters.assigned_to` = a reporting executive to narrow the pipeline.
+   * Sales Executive is always scoped to self (`assigned_to = current user`).
+   * Sales Manager is unscoped by default (sees all leads), but may optionally scope to:
+   * - self (`assigned_to = manager id`), or
+   * - a reporting Sales Executive via `filters.assigned_to`.
    */
   private async resolveScopedLeadUserId(
     filters: any,
     currentUser?: { id?: unknown; role?: unknown },
   ): Promise<number | null> {
     const uid = Number(currentUser?.id);
-    if (!this.isOwnAssignedScope(currentUser?.role) || !Number.isInteger(uid) || uid <= 0) return null;
+    if (!Number.isInteger(uid) || uid <= 0) return null;
 
     const roleStr = String(currentUser?.role || '').trim().toLowerCase();
+    if (this.isSalesExecutiveRole(roleStr)) {
+      return uid;
+    }
+
     if (this.isSalesManagerRole(roleStr)) {
       const raw = filters?.assigned_to;
-      if (raw != null && String(raw).trim() !== '') {
-        const execId = Number(raw);
-        if (Number.isInteger(execId) && execId > 0 && execId !== uid) {
-          const v = await this.db.query(
-            `SELECT 1 FROM users
-              WHERE id = $1 AND role = 'Sales Executive' AND is_active = TRUE AND sales_manager_id = $2`,
-            [execId, uid],
-          );
-          if (v.rows[0]) return execId;
-        }
+      if (raw == null || String(raw).trim() === '') return null;
+      const execId = Number(raw);
+      if (!Number.isInteger(execId) || execId <= 0) return null;
+      if (execId === uid) return uid;
+      const v = await this.db.query(
+        `SELECT 1 FROM users
+          WHERE id = $1 AND role = 'Sales Executive' AND is_active = TRUE AND sales_manager_id = $2`,
+        [execId, uid],
+      );
+      if (v.rows[0]) {
+        return execId;
       }
+      return null;
     }
-    return uid;
+    return null;
   }
 
   /** Sales executives reporting to the current user (Sales Manager only; others get []). */

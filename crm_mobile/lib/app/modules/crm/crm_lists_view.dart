@@ -40,7 +40,9 @@ class _CrmListsViewState extends State<CrmListsView> {
       if ((role == 'sales executive' || role == 'sales manager') && uid > 0) {
         if (role == 'sales manager') {
           final ex = _auth.crmExecutiveScopeId.value;
-          path += '?assigned_to=${ex ?? uid}';
+          if (ex != null) {
+            path += '?assigned_to=$ex';
+          }
         } else {
           path += '?assigned_to=$uid';
         }
