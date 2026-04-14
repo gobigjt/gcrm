@@ -407,6 +407,32 @@ export class LeadsService {
   }
 
   masterSources()  { return this.masterCrud('lead_sources'); }
+  masterStages() {
+    return {
+      list: () => this.db.query('SELECT * FROM lead_stages ORDER BY position, name').then(r => r.rows),
+      create: async (name: string) => {
+        const mx = await this.db.query('SELECT COALESCE(MAX(position), 0) AS mx FROM lead_stages');
+        const nextPos = Number(mx.rows[0]?.mx || 0) + 1;
+        return this.db.query(
+          'INSERT INTO lead_stages (name, position) VALUES ($1, $2) RETURNING *',
+          [name, nextPos],
+        ).then(r => r.rows[0]);
+      },
+      update: (id: number, name: string) =>
+        this.db.query('UPDATE lead_stages SET name=$1 WHERE id=$2 RETURNING *', [name, id]).then(r => r.rows[0] || null),
+      remove: (id: number) => this.db.query('DELETE FROM lead_stages WHERE id=$1', [id]),
+    };
+  }
+  async reorderStages(ids: number[]) {
+    const uniq = Array.from(new Set((ids || []).map((n) => Number(n)).filter((n) => Number.isInteger(n) && n > 0)));
+    if (!uniq.length) return this.masterStages().list();
+    await this.db.transaction(async (client) => {
+      for (let i = 0; i < uniq.length; i += 1) {
+        await client.query('UPDATE lead_stages SET position=$1 WHERE id=$2', [i + 1, uniq[i]]);
+      }
+    });
+    return this.masterStages().list();
+  }
   masterSegments() { return this.masterCrud('crm_segments'); }
   masterPriorities() { return this.masterCrud('crm_priorities'); }
 

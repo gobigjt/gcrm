@@ -7,10 +7,11 @@ import { useToast } from '../../context/ToastContext';
 import { apiErrorMessage } from '../../utils/apiErrorMessage';
 import { promptDestructive } from '../../utils/promptDestructive';
 
-const TABS = ['Sources', 'Segments', 'Priority'];
+const TABS = ['Sources', 'Stages', 'Segments', 'Priority'];
 
 const API = {
   Sources:  '/crm/leads/masters/sources',
+  Stages: '/crm/leads/masters/stages',
   Segments: '/crm/leads/masters/segments',
   Priority: '/crm/leads/masters/priorities',
 };
@@ -93,6 +94,7 @@ function MasterTab({ tabKey }) {
       },
     });
   };
+
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
@@ -200,7 +202,7 @@ function MasterTab({ tabKey }) {
 }
 
 export default function CRMMastersPage() {
-  const [tab, setTab] = useState('Platforms');
+  const [tab, setTab] = useState('Sources');
 
   return (
     <div className="space-y-5">
@@ -208,7 +210,7 @@ export default function CRMMastersPage() {
         <div>
           <p className="text-[11px] text-slate-500 dark:text-slate-400">Home / CRM / Masters</p>
           <h2 className="text-[16px] font-semibold text-slate-800 dark:text-slate-100 mt-0.5">CRM Masters</h2>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Manage platforms, segments and priorities</p>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Manage sources, stages, segments and priorities</p>
         </div>
         <Link to="/crm" className="btn-wf-secondary">Back to CRM</Link>
       </div>

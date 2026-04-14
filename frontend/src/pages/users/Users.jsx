@@ -247,7 +247,7 @@ function ZonesTab() {
       setCreateOpen(false);
       setCForm({ name: '', code: '' });
       load();
-      show('Zone created', 'success');
+      show('Zone created successfully', 'success');
     } catch (err) {
       show(apiErrorMessage(err, 'Could not create zone'), 'error');
     } finally {
@@ -262,7 +262,7 @@ function ZonesTab() {
       await api.patch(`/users/zones/${editZone.id}`, { name: eForm.name, code: eForm.code || null });
       setEditZone(null);
       load();
-      show('Zone updated', 'success');
+      show('Zone updated successfully', 'success');
     } catch (err) {
       show(apiErrorMessage(err, 'Could not update zone'), 'error');
     } finally {
@@ -277,7 +277,7 @@ function ZonesTab() {
         try {
           await api.delete(`/users/zones/${z.id}`);
           load();
-          show('Zone deleted', 'success');
+          show('Zone deleted successfully', 'success');
         } catch (err) {
           show(apiErrorMessage(err, 'Could not delete zone'), 'error');
         }
@@ -481,7 +481,7 @@ function UsersTab({ allPerms, roles }) {
         sales_manager_id: '',
       });
       load();
-      show('User created', 'success');
+      show('User created successfully', 'success');
     } catch (err) {
       show(apiErrorMessage(err, 'Could not create user'), 'error');
     } finally {
@@ -509,7 +509,7 @@ function UsersTab({ allPerms, roles }) {
       await api.patch(`/users/${editModal.id}`, payload);
       setEditModal(null);
       load();
-      show('User updated', 'success');
+      show('User updated successfully', 'success');
     } catch (err) {
       show(apiErrorMessage(err, 'Could not update user'), 'error');
     } finally {
@@ -550,7 +550,7 @@ function UsersTab({ allPerms, roles }) {
       setAddExecutiveId('');
       await refreshSalesTeam();
       load();
-      show('Executive added to team', 'success');
+      show('Executive added to team successfully', 'success');
     } catch (err) {
       show(apiErrorMessage(err, 'Could not add to team'), 'error');
     } finally {
@@ -565,7 +565,7 @@ function UsersTab({ allPerms, roles }) {
       await api.patch(`/users/${execId}`, { sales_manager_id: null });
       await refreshSalesTeam();
       load();
-      show('Executive removed from team', 'success');
+      show('Executive removed from team successfully', 'success');
     } catch (err) {
       show(apiErrorMessage(err, 'Could not remove from team'), 'error');
     } finally {
@@ -588,7 +588,7 @@ function UsersTab({ allPerms, roles }) {
       await api.put(`/users/${permModal.user.id}/permissions`, { permission_ids: permModal.userPermIds });
       setPermModal(null);
       load();
-      show('Permissions saved', 'success');
+      show('Permissions saved successfully', 'success');
     } catch (err) {
       show(apiErrorMessage(err, 'Could not save permissions'), 'error');
     } finally { setSaving(false); }
@@ -598,7 +598,7 @@ function UsersTab({ allPerms, roles }) {
     try {
       await api.patch(`/users/${u.id}/toggle-status`);
       load();
-      show('User status updated', 'success');
+      show('User status updated successfully', 'success');
     } catch (err) {
       show(apiErrorMessage(err, 'Could not update status'), 'error');
     }
@@ -905,7 +905,7 @@ function RolesTab({ allPerms, onReload }) {
       setCForm({ name:'', description:'' });
       load();
       onReload();
-      show('Role created', 'success');
+      show('Role created successfully', 'success');
     } catch (err) {
       show(apiErrorMessage(err, 'Could not create role'), 'error');
     } finally { setSaving(false); }
@@ -919,7 +919,7 @@ function RolesTab({ allPerms, onReload }) {
           await api.delete(`/users/roles/${role.id}`);
           load();
           onReload();
-          show('Role deleted', 'success');
+          show('Role deleted successfully', 'success');
         } catch (e) {
           show(apiErrorMessage(e, 'Cannot delete role'), 'error');
         }
@@ -938,7 +938,7 @@ function RolesTab({ allPerms, onReload }) {
       await api.put(`/users/roles/${editPermModal.role.id}/permissions`, { permission_ids: editPermModal.selectedIds });
       setEditPermModal(null);
       load();
-      show('Role permissions saved', 'success');
+      show('Role permissions saved successfully', 'success');
     } catch (err) {
       show(apiErrorMessage(err, 'Could not save permissions'), 'error');
     } finally { setSaving(false); }

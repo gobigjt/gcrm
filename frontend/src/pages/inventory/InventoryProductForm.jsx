@@ -154,7 +154,7 @@ export default function InventoryProductForm() {
         });
       }
       setErrors({});
-      show(isEdit ? 'Product updated' : 'Product created', 'success');
+      show(isEdit ? 'Product updated successfully' : 'Product created successfully', 'success');
       nav(`/inventory/products/${productId}`);
     } catch (err) {
       const msg = apiErrorMessage(err, 'Could not save product');
@@ -179,16 +179,16 @@ export default function InventoryProductForm() {
       </div>
 
       <form onSubmit={handleSubmit} className="bg-white dark:bg-[#1a1d2e] rounded-2xl shadow-card border border-slate-200/80 dark:border-slate-700/50 p-5">
-        <Field label="Name *">
+        <Field label={<><span>Name</span> <span className="text-red-600 dark:text-red-400">*</span></>}>
           <input className={inputErrorCls('name')} value={form.name} onChange={set('name')} required />
           {errors.name ? <div className="mt-1 text-xs text-red-600 dark:text-red-400">{errors.name}</div> : null}
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="SKU">
+          <Field label={<><span>SKU</span> <span className="text-red-600 dark:text-red-400">*</span></>}>
             <input className={inputErrorCls('sku')} value={form.sku} onChange={set('sku')} required />
             {errors.sku ? <div className="mt-1 text-xs text-red-600 dark:text-red-400">{errors.sku}</div> : null}
           </Field>
-          <Field label="Code">
+          <Field label={<><span>Code</span> <span className="text-red-600 dark:text-red-400">*</span></>}>
             <input className={inputErrorCls('code')} value={form.code} onChange={set('code')} required />
             {errors.code ? <div className="mt-1 text-xs text-red-600 dark:text-red-400">{errors.code}</div> : null}
           </Field>
@@ -205,7 +205,7 @@ export default function InventoryProductForm() {
               {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </Field>
-          <Field label="Unit">
+          <Field label={<><span>Unit</span> <span className="text-red-600 dark:text-red-400">*</span></>}>
             <input className={inputErrorCls('unit')} value={form.unit} onChange={set('unit')} />
             {errors.unit ? <div className="mt-1 text-xs text-red-600 dark:text-red-400">{errors.unit}</div> : null}
           </Field>

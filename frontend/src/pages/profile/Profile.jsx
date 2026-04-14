@@ -79,7 +79,7 @@ export default function ProfilePage() {
       const u = await refreshUser();
       setProfile(u || null);
       setAvatarBust((k) => k + 1);
-      show('Profile photo updated', 'success');
+      show('Profile photo updated successfully', 'success');
     } catch (err) {
       setAvatarErr(apiErrorMessage(err, 'Upload failed'));
       show(apiErrorMessage(err, 'Upload failed'), 'error');
@@ -96,7 +96,7 @@ export default function ProfilePage() {
       const u = await refreshUser();
       setProfile(u || null);
       setAvatarBust((k) => k + 1);
-      show('Profile photo removed', 'success');
+      show('Profile photo removed successfully', 'success');
     } catch (err) {
       setAvatarErr(apiErrorMessage(err, 'Remove failed'));
       show(apiErrorMessage(err, 'Remove failed'), 'error');

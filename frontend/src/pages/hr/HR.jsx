@@ -110,7 +110,7 @@ export default function HR() {
       setModal(false);
       setForm(EMPTY);
       loadEmp();
-      show('Employee created', 'success');
+      show('Employee created successfully', 'success');
     } catch (err) {
       show(apiErrorMessage(err, 'Could not create employee'), 'error');
     } finally {

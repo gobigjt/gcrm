@@ -24,7 +24,7 @@ export default function InventoryCategoriesPage() {
       await api.post('/inventory/categories', { name: name.trim() });
       setName('');
       load();
-      show('Category added', 'success');
+      show('Category added successfully', 'success');
     } catch (err) {
       show(apiErrorMessage(err, 'Could not add category'), 'error');
     }
@@ -37,7 +37,7 @@ export default function InventoryCategoriesPage() {
       setEditingId(null);
       setEditingName('');
       load();
-      show('Category updated', 'success');
+      show('Category updated successfully', 'success');
     } catch (err) {
       show(apiErrorMessage(err, 'Could not update category'), 'error');
     }
@@ -50,7 +50,7 @@ export default function InventoryCategoriesPage() {
         try {
           await api.delete(`/inventory/categories/${id}`);
           load();
-          show('Category deleted', 'success');
+          show('Category deleted successfully', 'success');
         } catch (err) {
           show(apiErrorMessage(err, 'Could not delete category'), 'error');
         }

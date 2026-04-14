@@ -246,10 +246,10 @@ function LeadModal({ lead, stages, sources, users, onClose, onSaved }) {
       const body = buildPayload();
       if (lead) {
         await api.patch(`/crm/leads/${lead.id}`, body);
-        show('Lead updated', 'success');
+        show('Lead updated successfully', 'success');
       } else {
         await api.post('/crm/leads', body);
-        show('Lead created', 'success');
+        show('Lead created successfully', 'success');
       }
       onSaved();
     } catch (err) {
@@ -1138,7 +1138,7 @@ export default function CRM() {
         await api.delete(`/crm/leads/${id}`);
         loadStats();
         loadLeads();
-        show('Lead deleted', 'success');
+        show('Lead deleted successfully', 'success');
       },
     });
   };

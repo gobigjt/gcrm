@@ -127,7 +127,7 @@ function VendorModal({ vendor, onClose, onSaved }) {
     try {
       vendor ? await api.patch(`/purchase/vendors/${vendor.id}`, form)
              : await api.post('/purchase/vendors', form);
-      show(vendor ? 'Vendor updated' : 'Vendor created', 'success');
+      show(vendor ? 'Vendor updated successfully' : 'Vendor created successfully', 'success');
       onSaved();
     } catch (err) {
       show(apiErrorMessage(err, 'Could not save vendor'), 'error');
@@ -167,7 +167,7 @@ function POModal({ vendors, products, onClose, onSaved }) {
         unit_price: Number(l.unit_price), gst_rate: Number(l.gst_rate), total: l.total,
       }));
       await api.post('/purchase/pos', { ...form, items: lines });
-      show('Purchase order created', 'success');
+      show('Purchase order created successfully', 'success');
       onSaved();
     } catch (err) {
       show(apiErrorMessage(err, 'Could not create PO'), 'error');
@@ -226,7 +226,7 @@ function GRNModal({ openPOs, products, onClose, onSaved }) {
     e.preventDefault(); setLoading(true);
     try {
       await api.post('/purchase/grns', { ...form, items });
-      show('GRN saved', 'success');
+      show('GRN saved successfully', 'success');
       onSaved();
     } catch (err) {
       show(apiErrorMessage(err, 'Could not save GRN'), 'error');
@@ -290,7 +290,7 @@ function PODrawer({ id, onClose, onRefresh }) {
       await api.patch(`/purchase/pos/${id}`, { status });
       load();
       onRefresh();
-      show('PO status updated', 'success');
+      show('PO status updated successfully', 'success');
     } catch (err) {
       show(apiErrorMessage(err, 'Could not update status'), 'error');
     }
@@ -419,7 +419,7 @@ export default function Purchase() {
         await api.delete(`/purchase/${type}/${id}`);
         loadData();
         loadStats();
-        show('Deleted', 'success');
+        show('Deleted successfully', 'success');
       },
     });
   };

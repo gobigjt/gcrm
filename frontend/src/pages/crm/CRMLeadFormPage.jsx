@@ -103,12 +103,12 @@ export default function CRMLeadFormPage() {
       const body = buildPayload();
       if (isEdit) {
         await api.patch(`/crm/leads/${id}`, body);
-        show('Lead updated', 'success');
+        show('Lead updated successfully', 'success');
         nav(`/crm/leads/${id}`);
       } else {
         const r = await api.post('/crm/leads', body);
         const lead = r.data?.lead || r.data;
-        show('Lead created', 'success');
+        show('Lead created successfully', 'success');
         nav(lead?.id ? `/crm/leads/${lead.id}` : '/crm');
       }
     } catch (err) {

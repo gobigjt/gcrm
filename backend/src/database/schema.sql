@@ -228,6 +228,7 @@ CREATE TABLE IF NOT EXISTS company_settings (
   phone             VARCHAR(20),
   email             VARCHAR(255),
   logo_url          TEXT,
+  invoice_logo_url  TEXT,
   favicon_url       TEXT,
   currency          VARCHAR(10) NOT NULL DEFAULT 'INR',
   fiscal_year_start DATE,

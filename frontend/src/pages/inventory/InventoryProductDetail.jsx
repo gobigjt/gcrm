@@ -65,7 +65,7 @@ export default function InventoryProductDetail() {
       loadStock();
       const refreshed = await api.get(`/inventory/products/${id}`);
       setProduct(refreshed.data?.product || refreshed.data || null);
-      show('Stock updated', 'success');
+      show('Stock updated successfully', 'success');
     } catch (err) {
       show(apiErrorMessage(err, 'Could not update stock'), 'error');
     } finally {
