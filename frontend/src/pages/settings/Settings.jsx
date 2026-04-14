@@ -35,18 +35,11 @@ const MODULE_ICONS = {
 
 // ─── Company Tab ─────────────────────────────────────────────
 
-function letterIcon(text) {
-  const t = String(text || '').trim();
-  return t ? t.slice(0, 1).toUpperCase() : 'C';
-}
-
 function CompanyTab({ user }) {
   const { show } = useToast();
   const [form,  setForm]  = useState({});
   const [saved, setSaved] = useState(false);
-  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingInvoiceLogo, setUploadingInvoiceLogo] = useState(false);
-  const [uploadingFavicon, setUploadingFavicon] = useState(false);
   const defaultBankDetails = {
     bank_name: 'KVB Bank',
     bank_branch: 'Srirangam',
@@ -82,37 +75,6 @@ function CompanyTab({ user }) {
     }
   };
 
-  const handleLogoUpload = async (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    setUploadingLogo(true);
-    try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const r = await api.post('/settings/company/logo', fd);
-      setForm((f) => ({ ...f, ...(r.data || {}) }));
-      show('Logo updated successfully', 'success');
-    } catch (err) {
-      show(apiErrorMessage(err, 'Logo upload failed'), 'error');
-    } finally {
-      setUploadingLogo(false);
-    }
-  };
-
-  const clearLogo = async () => {
-    setUploadingLogo(true);
-    try {
-      await api.patch('/settings/company', { logo_url: '' });
-      setForm((f) => ({ ...f, logo_url: '' }));
-      show('Logo removed successfully', 'success');
-    } catch (err) {
-      show(apiErrorMessage(err, 'Could not remove logo'), 'error');
-    } finally {
-      setUploadingLogo(false);
-    }
-  };
-
   const handleInvoiceLogoUpload = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = '';
@@ -141,37 +103,6 @@ function CompanyTab({ user }) {
       show(apiErrorMessage(err, 'Could not remove invoice logo'), 'error');
     } finally {
       setUploadingInvoiceLogo(false);
-    }
-  };
-
-  const handleFaviconUpload = async (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    setUploadingFavicon(true);
-    try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const r = await api.post('/settings/company/favicon', fd);
-      setForm((f) => ({ ...f, ...(r.data || {}) }));
-      show('Favicon updated successfully', 'success');
-    } catch (err) {
-      show(apiErrorMessage(err, 'Favicon upload failed'), 'error');
-    } finally {
-      setUploadingFavicon(false);
-    }
-  };
-
-  const clearFavicon = async () => {
-    setUploadingFavicon(true);
-    try {
-      await api.patch('/settings/company', { favicon_url: '' });
-      setForm((f) => ({ ...f, favicon_url: '' }));
-      show('Favicon removed successfully', 'success');
-    } catch (err) {
-      show(apiErrorMessage(err, 'Could not remove favicon'), 'error');
-    } finally {
-      setUploadingFavicon(false);
     }
   };
 
@@ -205,74 +136,10 @@ function CompanyTab({ user }) {
 
         <section className="rounded-xl border border-slate-200 dark:border-slate-700/50 p-4 h-full">
           <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-3">Branding</h4>
-          <Field label="Company logo">
-          <div className="flex flex-wrap items-start gap-4">
-            <img
-              src={resolveApiPublicUrl(form.logo_url) || '/default-logo.png'}
-              alt="Company logo"
-              className="max-h-20 max-w-[200px] object-contain rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 p-1"
-            />
-            <div className="flex flex-col gap-2">
-              <label className="btn-wf-secondary text-xs cursor-pointer inline-block text-center">
-                {uploadingLogo ? 'Uploading…' : 'Upload image'}
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
-                  className="hidden"
-                  disabled={uploadingLogo}
-                  onChange={handleLogoUpload}
-                />
-              </label>
-              {form.logo_url && (
-                <button type="button" className="btn-wf-secondary text-xs" disabled={uploadingLogo} onClick={clearLogo}>
-                  Remove logo
-                </button>
-              )}
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 max-w-[220px]">
-                JPEG, PNG, WebP, GIF, or SVG. Max 2 MB. Used on Tax Invoice print/PDF.
-              </p>
-            </div>
-          </div>
-          </Field>
-          <Field label="Favicon">
-          <div className="flex flex-wrap items-start gap-4 mt-3">
-            {form.favicon_url ? (
-              <img
-                src={resolveApiPublicUrl(form.favicon_url)}
-                alt="Company favicon"
-                className="h-10 w-10 object-contain rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 p-1"
-              />
-            ) : (
-              <div className="h-10 w-10 rounded-md border border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center text-xs font-semibold text-slate-500 dark:text-slate-300">
-                {letterIcon(form.company_name)}
-              </div>
-            )}
-            <div className="flex flex-col gap-2">
-              <label className="btn-wf-secondary text-xs cursor-pointer inline-block text-center">
-                {uploadingFavicon ? 'Uploading…' : 'Upload favicon'}
-                <input
-                  type="file"
-                  accept=".ico,image/x-icon,image/vnd.microsoft.icon,image/png,image/svg+xml,image/jpeg,image/webp"
-                  className="hidden"
-                  disabled={uploadingFavicon}
-                  onChange={handleFaviconUpload}
-                />
-              </label>
-              {form.favicon_url && (
-                <button type="button" className="btn-wf-secondary text-xs" disabled={uploadingFavicon} onClick={clearFavicon}>
-                  Remove favicon
-                </button>
-              )}
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 max-w-[220px]">
-                ICO/PNG/SVG/JPG/WebP, max 1 MB. Used for browser tab icon.
-              </p>
-            </div>
-          </div>
-          </Field>
           <Field label="Invoice logo">
           <div className="flex flex-wrap items-start gap-4 mt-3">
             <img
-              src={resolveApiPublicUrl(form.invoice_logo_url || form.logo_url) || '/default-logo.png'}
+              src={resolveApiPublicUrl(form.invoice_logo_url) || '/default-logo.png'}
               alt="Invoice logo"
               className="max-h-20 max-w-[200px] object-contain rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 p-1"
             />
