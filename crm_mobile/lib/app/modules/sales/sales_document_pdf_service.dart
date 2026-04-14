@@ -4,6 +4,11 @@ import '../../core/storage/save_pdf.dart';
 import '../../core/utils/media_url.dart';
 import 'sales_document_kind.dart';
 
+bool _isGeneratedPdfPath(String url) {
+  final u = url.trim();
+  return u.contains('/sales/generated-pdfs/');
+}
+
 class SalesDocumentPdfService {
   SalesDocumentPdfService._();
 
@@ -39,15 +44,26 @@ class SalesDocumentPdfService {
     final fileName = (root['file_name'] ?? '').toString().trim();
     final name = fileName.isEmpty ? _defaultFileName(kind, id) : fileName;
 
-    final publicUrl = resolveUploadsPublicUrl(relUrl);
-    if (publicUrl.isEmpty) {
-      throw StateError('Invalid public PDF url');
+    late final List<int> bytes;
+    if (_isGeneratedPdfPath(relUrl)) {
+      var path = relUrl.trim();
+      if (path.startsWith('/api/')) {
+        path = path.substring('/api'.length);
+      }
+      if (!path.startsWith('/')) path = '/$path';
+      bytes = await auth.authorizedGetBytes(path: path);
+    } else {
+      final publicUrl = resolveUploadsPublicUrl(relUrl);
+      if (publicUrl.isEmpty) {
+        throw StateError('Invalid public PDF url');
+      }
+      final fileRes = await http.get(Uri.parse(publicUrl));
+      if (fileRes.statusCode < 200 || fileRes.statusCode >= 300) {
+        throw StateError('Failed to download generated PDF');
+      }
+      bytes = fileRes.bodyBytes;
     }
-    final fileRes = await http.get(Uri.parse(publicUrl));
-    if (fileRes.statusCode < 200 || fileRes.statusCode >= 300) {
-      throw StateError('Failed to download generated PDF');
-    }
-    await savePdfDownload(fileName: name, bytes: fileRes.bodyBytes);
+    await savePdfDownload(fileName: name, bytes: bytes);
   }
 
   /// Uses backend PDF generator endpoint and downloads returned file URL.

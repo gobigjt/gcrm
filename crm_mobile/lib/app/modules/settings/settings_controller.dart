@@ -2,6 +2,7 @@ import 'package:get/get.dart';
 
 import '../../core/models/settings_models.dart';
 import '../../core/network/error_utils.dart';
+import '../../core/utils/ui_format.dart';
 import '../auth/auth_controller.dart';
 
 class SettingsController extends GetxController {
@@ -61,7 +62,7 @@ class SettingsController extends GetxController {
           'address': (address ?? '').trim().isEmpty ? null : address!.trim(),
           'phone': (phone ?? '').trim().isEmpty ? null : phone!.trim(),
           'email': (email ?? '').trim().isEmpty ? null : email!.trim(),
-          'currency': (currency ?? '').trim().isEmpty ? 'INR' : currency!.trim(),
+          'currency': normalizeCompanyCurrencyForApi(currency ?? ''),
           'fiscal_year_start': (fiscalYearStart ?? '').trim().isEmpty ? null : fiscalYearStart!.trim(),
         },
       );

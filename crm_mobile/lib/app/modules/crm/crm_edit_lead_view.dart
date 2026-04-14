@@ -375,7 +375,7 @@ class _CrmEditLeadViewState extends State<CrmEditLeadView> {
                                 child: TextField(
                                   controller: _dealSize,
                                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                  decoration: _dec(scheme, 'Deal size (INR)', null),
+                                  decoration: _dec(scheme, 'Deal size (₹)', null),
                                 ),
                               ),
                               const SizedBox(width: 10),

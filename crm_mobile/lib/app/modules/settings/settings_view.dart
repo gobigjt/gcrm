@@ -59,7 +59,7 @@ class SettingsView extends GetView<SettingsController> {
                     _kv('Email', c.email.isEmpty ? '—' : c.email),
                     _kv('Phone', c.phone.isEmpty ? '—' : c.phone),
                     _kv('Address', c.address.isEmpty ? '—' : c.address),
-                    _kv('Currency', c.currency.isEmpty ? 'INR' : c.currency),
+                    _kv('Currency', displayCurrencyLabel(c.currency)),
                     _kv('Fiscal Year Start', formatIsoDate(c.fiscalYearStart)),
                   ],
                 ),
@@ -109,7 +109,7 @@ class SettingsView extends GetView<SettingsController> {
     final addrCtrl = TextEditingController(text: c.address);
     final phoneCtrl = TextEditingController(text: c.phone);
     final emailCtrl = TextEditingController(text: c.email);
-    final currencyCtrl = TextEditingController(text: c.currency.isEmpty ? 'INR' : c.currency);
+    final currencyCtrl = TextEditingController(text: displayCurrencyLabel(c.currency));
     final fyCtrl = TextEditingController(text: formatIsoDate(c.fiscalYearStart));
 
     await showModalBottomSheet<void>(

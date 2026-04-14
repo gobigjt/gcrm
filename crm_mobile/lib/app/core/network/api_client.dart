@@ -112,6 +112,31 @@ class ApiClient {
     return _decodeJson(res);
   }
 
+  /// Authenticated GET returning raw bytes (e.g. PDF). Does not JSON-decode the body.
+  Future<List<int>> getBytes({
+    required String path,
+    Map<String, String>? headers,
+  }) async {
+    final res = await _client
+        .get(_uri(path), headers: headers ?? const {})
+        .timeout(
+      requestTimeout,
+      onTimeout: () => throw ApiException(
+        message:
+            'Connection timed out. Check Wi‑Fi/mobile data and that the app points to your API '
+            '(build with --dart-define=API_BASE_URL=…).',
+        statusCode: 408,
+      ),
+    );
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw ApiException(
+        message: 'Request failed',
+        statusCode: res.statusCode,
+      );
+    }
+    return res.bodyBytes;
+  }
+
   Future<Map<String, dynamic>> login({
     required String email,
     required String password,

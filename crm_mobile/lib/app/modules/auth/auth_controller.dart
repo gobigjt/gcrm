@@ -189,6 +189,32 @@ class AuthController extends GetxController {
     }
   }
 
+  /// GET binary response (e.g. generated sales PDF) with Bearer auth.
+  Future<List<int>> authorizedGetBytes({required String path}) async {
+    final access = accessToken.value;
+    if (access.isEmpty) {
+      throw Exception('Not authenticated');
+    }
+    final headers = {'Authorization': 'Bearer $access'};
+    try {
+      return await _api.getBytes(path: path, headers: headers);
+    } catch (e) {
+      final unauthorized = e is ApiException && e.statusCode == 401;
+      if (!unauthorized) rethrow;
+      try {
+        await _ensureFreshTokens();
+        return await _api.getBytes(
+          path: path,
+          headers: {'Authorization': 'Bearer ${accessToken.value}'},
+        );
+      } catch (_) {
+        await _clearLocalSession();
+        Get.offAllNamed(AppRoutes.login);
+        throw Exception('Session expired. Please log in again.');
+      }
+    }
+  }
+
   Future<void> _ensureFreshTokens() async {
     final inFlight = _tokenRefreshInFlight;
     if (inFlight != null) {

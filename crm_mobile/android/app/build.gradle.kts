@@ -1,3 +1,9 @@
+// APK size: a single universal `app-release.apk` is often ~50MB+ (Flutter engine for every CPU ABI).
+// For sideloading to real phones, prefer per-ABI builds (~17MB typical arm64):
+//   flutter build apk --release --split-per-abi --obfuscate --split-debug-info=build/app/outputs/symbols
+// Or run: tool/build_release_apk.ps1
+// Google Play: use `flutter build appbundle` (Play serves optimized splits). Keep `symbols/` private.
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
