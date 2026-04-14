@@ -142,8 +142,8 @@ class SplashView extends GetView<AuthController> {
         children: [
           const Center(
             child: SizedBox(
-              width: 132,
-              height: 132,
+              width: 200,
+              height: 100,
               child: Image(
                 image: AssetImage('assets/images/ezcrm-logo.png'),
                 fit: BoxFit.contain,

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import api from '../../api/client';
@@ -205,9 +205,20 @@ function leadToForm(row) {
 }
 
 function LeadModal({ lead, stages, sources, users, onClose, onSaved }) {
+  const { user } = useAuth();
   const { show } = useToast();
   const [form, setForm] = useState(() => leadToForm(lead));
   const [loading, setLoading] = useState(false);
+  const roleName = String(user?.role || '').toLowerCase();
+  const isSalesManager = roleName === 'sales manager' || roleName === 'manager';
+  const salesExecutiveUsers = useMemo(
+    () =>
+      users.filter((u) => {
+        const r = String(u?.role || '').trim().toLowerCase();
+        return r === 'sales executive' || r === 'agent';
+      }),
+    [users],
+  );
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
   const assigneeLabel = (u) => (String(u?.role || '').toLowerCase() === 'manager' ? `${u.name} (Manager)` : u.name);
 
@@ -308,18 +319,20 @@ function LeadModal({ lead, stages, sources, users, onClose, onSaved }) {
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Assigned To">
+          <Field label="Assign to sales Executive">
             <select className={selectCls} value={form.assigned_to} onChange={set('assigned_to')}>
               <option value="">Unassigned</option>
-              {users.map(u => <option key={u.id} value={String(u.id)}>{assigneeLabel(u)}</option>)}
+              {salesExecutiveUsers.map(u => <option key={u.id} value={String(u.id)}>{assigneeLabel(u)}</option>)}
             </select>
           </Field>
-          <Field label="Assign Manager">
-            <select className={selectCls} value={form.assigned_manager_id} onChange={set('assigned_manager_id')}>
-              <option value="">Unassigned</option>
-              {users.map(u => <option key={u.id} value={String(u.id)}>{assigneeLabel(u)}</option>)}
-            </select>
-          </Field>
+          {!isSalesManager && (
+            <Field label="Assign Manager">
+              <select className={selectCls} value={form.assigned_manager_id} onChange={set('assigned_manager_id')}>
+                <option value="">Unassigned</option>
+                {users.map(u => <option key={u.id} value={String(u.id)}>{assigneeLabel(u)}</option>)}
+              </select>
+            </Field>
+          )}
         </div>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Priority">

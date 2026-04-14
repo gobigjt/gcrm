@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/auth/role_home_route.dart';
-import '../../widgets/crm_suite_logo_mark.dart';
 import 'auth_controller.dart';
 
 /// Login screen — dark-mode optimised with gradient hero section.
@@ -276,10 +275,14 @@ class _HeroSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Logo mark
-          const CrmSuiteLogoMark(
-            size: 100,
-            preset: CrmSuiteLogoMarkPreset.login,
+          // Same logo asset used on splash screen.
+          const SizedBox(
+            width: 200,
+            height: 100,
+            child: Image(
+              image: AssetImage('assets/images/ezcrm-logo.png'),
+              fit: BoxFit.contain,
+            ),
           ),
           const SizedBox(height: 16),
           Text(
