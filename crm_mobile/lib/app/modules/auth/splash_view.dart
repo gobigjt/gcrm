@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../routes/app_routes.dart';
-import '../../widgets/crm_suite_logo_mark.dart';
 import 'auth_controller.dart';
 
 /// Splash + cold start — matches EZcrmcrm_mobile_showcase_1.html "Onboarding · Splash".
@@ -142,9 +141,14 @@ class SplashView extends GetView<AuthController> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const Center(
-            child: CrmSuiteLogoMark(
-              size: 132,
-              preset: CrmSuiteLogoMarkPreset.splash,
+            child: SizedBox(
+              width: 132,
+              height: 132,
+              child: Image(
+                image: AssetImage('assets/images/ezcrm-logo.png'),
+                fit: BoxFit.contain,
+                filterQuality: FilterQuality.high,
+              ),
             ),
           ),
           const SizedBox(height: 16),
