@@ -1,10 +1,36 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { RedisService }    from '../../redis/redis.service';
 
 @Injectable()
 export class InventoryService {
   constructor(private readonly db: DatabaseService, private readonly cache: RedisService) {}
+
+  private mapProductWriteError(error: unknown): never {
+    const e = error as { code?: string; constraint?: string };
+    if (e?.code === '23505') {
+      if (e.constraint === 'products_sku_key') {
+        throw new ConflictException('SKU already exists');
+      }
+      if (e.constraint === 'products_code_key') {
+        throw new ConflictException('Product code already exists');
+      }
+      throw new ConflictException('Duplicate product code');
+    }
+    throw error;
+  }
+
+  private toNullableInt(value: unknown): number | null {
+    if (value == null) return null;
+    if (typeof value === 'string') {
+      const t = value.trim();
+      if (!t) return null;
+      const n = Number(t);
+      return Number.isInteger(n) ? n : null;
+    }
+    const n = Number(value);
+    return Number.isInteger(n) ? n : null;
+  }
 
   async listBrands() {
     return (await this.db.query('SELECT * FROM brands ORDER BY name')).rows;
@@ -121,20 +147,57 @@ export class InventoryService {
     )).rows[0];
   }
   async createProduct(d: any) {
-    const res = await this.db.query(
-      'INSERT INTO products (name,code,sku,hsn_code,category,brand_id,description,unit,purchase_price,sale_price,image_url,gst_rate,low_stock_alert) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
-      [d.name, d.code, d.sku, d.hsn_code, d.category, d.brand_id, d.description, d.unit||'pcs', d.purchase_price||0, d.sale_price||0, d.image_url, d.gst_rate||0, d.low_stock_alert||0],
-    );
+    const brandId = this.toNullableInt(d?.brand_id);
+    const purchasePrice = Number(d?.purchase_price);
+    const salePrice = Number(d?.sale_price);
+    const gstRate = Number(d?.gst_rate);
+    const lowStockAlert = Number(d?.low_stock_alert);
+    let res;
+    try {
+      res = await this.db.query(
+        'INSERT INTO products (name,code,sku,hsn_code,category,brand_id,description,unit,purchase_price,sale_price,image_url,gst_rate,low_stock_alert) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
+        [
+          d.name,
+          d.code,
+          d.sku,
+          d.hsn_code,
+          d.category,
+          brandId,
+          d.description,
+          d.unit || 'pcs',
+          Number.isFinite(purchasePrice) ? purchasePrice : 0,
+          Number.isFinite(salePrice) ? salePrice : 0,
+          d.image_url,
+          Number.isFinite(gstRate) ? gstRate : 0,
+          Number.isFinite(lowStockAlert) ? lowStockAlert : 0,
+        ],
+      );
+    } catch (error) {
+      this.mapProductWriteError(error);
+    }
     await this.cache.delPattern('products:*');
     return res.rows[0];
   }
   async updateProduct(id: number, d: any) {
     const fields = ['name','code','sku','hsn_code','category','brand_id','description','unit','purchase_price','sale_price','image_url','gst_rate','low_stock_alert','is_active'];
     const sets: string[] = []; const vals: any[] = []; let i = 1;
-    for (const f of fields) { if(d[f]!==undefined){ sets.push(`${f}=$${i++}`); vals.push(d[f]); } }
+    for (const f of fields) {
+      if (d[f] === undefined) continue;
+      let nextVal = d[f];
+      if (f === 'brand_id') {
+        nextVal = this.toNullableInt(d[f]);
+      }
+      sets.push(`${f}=$${i++}`);
+      vals.push(nextVal);
+    }
     if(!sets.length) return null;
     vals.push(id);
-    const res = await this.db.query(`UPDATE products SET ${sets.join(',')} WHERE id=$${i} RETURNING *`, vals);
+    let res;
+    try {
+      res = await this.db.query(`UPDATE products SET ${sets.join(',')} WHERE id=$${i} RETURNING *`, vals);
+    } catch (error) {
+      this.mapProductWriteError(error);
+    }
     await this.cache.delPattern('products:*');
     return res.rows[0];
   }
