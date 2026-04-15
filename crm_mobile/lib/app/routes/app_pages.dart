@@ -121,18 +121,26 @@ abstract class AppPages {
         int? quotationId;
         int? copyFromId;
         int? initialCustomerId;
+        int? initialCreatedById;
+        bool forceCustomerPrefill = false;
         if (args is Map) {
           final q = args['quotationId'];
           final c = args['copyFromId'];
           final ic = args['initialCustomerId'];
+          final cb = args['initialCreatedById'];
+          final fp = args['forceCustomerPrefill'];
           if (q is num) quotationId = q.toInt();
           if (c is num) copyFromId = c.toInt();
           if (ic is num) initialCustomerId = ic.toInt();
+          if (cb is num) initialCreatedById = cb.toInt();
+          if (fp is bool) forceCustomerPrefill = fp;
         }
         return QuotationFormView(
           quotationId: quotationId,
           copyFromId: copyFromId,
           initialCustomerId: initialCustomerId,
+          initialCreatedById: initialCreatedById,
+          forceCustomerPrefill: forceCustomerPrefill,
         );
       },
       middlewares: [PermissionMiddleware(permission: AppPermissions.sales)],

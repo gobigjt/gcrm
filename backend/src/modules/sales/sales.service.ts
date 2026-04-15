@@ -398,7 +398,7 @@ export class SalesService {
          FROM users u
          INNER JOIN roles r ON r.id = u.role_id
          WHERE u.is_active = TRUE
-           AND r.name IN ('Sales Executive', 'Sales Manager', 'Admin', 'Super Admin')
+           AND r.name = 'Sales Executive'
          ORDER BY u.name`,
       )
     ).rows;

@@ -284,16 +284,6 @@ class _HeroSection extends StatelessWidget {
               fit: BoxFit.contain,
             ),
           ),
-          const SizedBox(height: 16),
-          Text(
-            'EzCRM',
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
-              letterSpacing: -0.4,
-            ),
-          ),
           const SizedBox(height: 6),
           Text(
             "India's smartest sales & operations platform",

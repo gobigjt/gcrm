@@ -8,7 +8,13 @@ import '../auth/auth_controller.dart';
 import 'sales_line_draft.dart';
 
 class QuotationFormController extends GetxController {
-  QuotationFormController({this.quotationId, this.copyFromId, this.initialCustomerId});
+  QuotationFormController({
+    this.quotationId,
+    this.copyFromId,
+    this.initialCustomerId,
+    this.initialCreatedById,
+    this.forceCustomerPrefill = false,
+  });
 
   /// Edit existing quotation.
   final int? quotationId;
@@ -18,6 +24,8 @@ class QuotationFormController extends GetxController {
 
   /// New quotation: pre-select customer (e.g. CRM lead handoff).
   final int? initialCustomerId;
+  final int? initialCreatedById;
+  final bool forceCustomerPrefill;
 
   final AuthController _auth = Get.find<AuthController>();
 
@@ -90,7 +98,12 @@ class QuotationFormController extends GetxController {
           statusValue.value = 'draft';
         }
       } else {
-        _syncCreatedBySelection();
+        // Keep new form unselected by default; prefill only for explicit lead handoff.
+        if (initialCreatedById != null && initialCreatedById! > 0) {
+          _syncCreatedBySelection(initialCreatedById);
+        } else {
+          selectedCreatedById.value = null;
+        }
         if (lines.isEmpty) addLine();
       }
     } catch (e) {
@@ -104,16 +117,15 @@ class QuotationFormController extends GetxController {
     final res  = await _auth.authorizedRequest(method: 'GET', path: '/sales/customers');
     final list = _asList(res);
     customers.assignAll(list);
-    final init = initialCustomerId;
-    if (init != null && list.any((c) => (c['id'] as num?)?.toInt() == init)) {
-      selectedCustomerId.value = init;
+    final sourceMode = quotationId != null || copyFromId != null;
+    if (sourceMode) return;
+    // New quotations should not pre-select customer unless explicitly requested.
+    if (forceCustomerPrefill && initialCustomerId != null) {
+      final ids = list.map((c) => (c['id'] as num?)?.toInt()).whereType<int>().toSet();
+      selectedCustomerId.value = ids.contains(initialCustomerId) ? initialCustomerId : null;
       return;
     }
-    final skipDefaultCustomer = quotationId != null || copyFromId != null;
-    if (!skipDefaultCustomer && selectedCustomerId.value == null && list.isNotEmpty) {
-      final id = list.first['id'];
-      if (id != null) selectedCustomerId.value = (id as num).toInt();
-    }
+    selectedCustomerId.value = null;
   }
 
   Future<void> _loadProducts() async {

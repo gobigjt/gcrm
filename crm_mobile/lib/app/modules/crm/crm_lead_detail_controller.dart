@@ -17,6 +17,7 @@ class CrmLeadDetailController extends GetxController {
   final lead = Rxn<CrmLead>();
   final activities = <CrmActivityRow>[].obs;
   final followups = <CrmFollowupRow>[].obs;
+  final stages = <CrmLookupItem>[].obs;
 
   @override
   void onInit() {
@@ -31,6 +32,7 @@ class CrmLeadDetailController extends GetxController {
       final leadRes = await _auth.authorizedRequest(method: 'GET', path: '/crm/leads/$leadId');
       final actRes = await _auth.authorizedRequest(method: 'GET', path: '/crm/leads/$leadId/activities');
       final folRes = await _auth.authorizedRequest(method: 'GET', path: '/crm/leads/$leadId/followups');
+      final stagesRes = await _auth.authorizedRequest(method: 'GET', path: '/crm/leads/stages');
       lead.value = CrmLead.fromJson(
         Map<String, dynamic>.from((leadRes as Map)['lead'] as Map),
       );
@@ -39,6 +41,9 @@ class CrmLeadDetailController extends GetxController {
       );
       followups.assignAll(
         (folRes as List).map((e) => CrmFollowupRow.fromJson(Map<String, dynamic>.from(e as Map))),
+      );
+      stages.assignAll(
+        (stagesRes as List).map((e) => CrmLookupItem.fromJson(Map<String, dynamic>.from(e as Map))),
       );
     } catch (e) {
       errorMessage.value = userFriendlyError(e);
@@ -116,6 +121,20 @@ class CrmLeadDetailController extends GetxController {
       await _auth.authorizedRequest(
         method: 'DELETE',
         path: '/crm/leads/$leadId/followups/$followupId',
+      );
+      await load();
+    } finally {
+      isSubmitting.value = false;
+    }
+  }
+
+  Future<void> changeStage(int stageId) async {
+    isSubmitting.value = true;
+    try {
+      await _auth.authorizedRequest(
+        method: 'PATCH',
+        path: '/crm/leads/$leadId',
+        body: {'stage_id': stageId},
       );
       await load();
     } finally {
