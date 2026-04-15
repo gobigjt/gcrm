@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "78612861873",
+    "project_id": "ezcrm-90230",
+    "storage_bucket": "ezcrm-90230.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:78612861873:android:c2fd49253a72fb1f44e390",
+        "android_client_info": {
+          "package_name": "com.redonix.ezcrm"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCWFa_jSsm-uXzWJjfKhWB7irUM6eim52Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

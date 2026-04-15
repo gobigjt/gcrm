@@ -138,7 +138,7 @@ export class LeadsController {
   async update(@Param('id') id: string, @Body() b: any, @CurrentUser() u: any) {
     const leadId = Number(id);
     await this.assertLeadAccess(leadId, u);
-    return this.svc.update(leadId, b);
+    return this.svc.update(leadId, b, u);
   }
 
   @Post(':id/convert-customer')
@@ -190,11 +190,11 @@ export class LeadsController {
   async doneFollowup(@Param('id') id: string, @Param('fid') fid: string, @CurrentUser() u: any) {
     const leadId = Number(id);
     await this.assertLeadAccess(leadId, u);
-    return this.svc.doneFollowup(leadId, Number(fid));
+    return this.svc.doneFollowup(leadId, Number(fid), u);
   }
 
   @UseGuards(RolesGuard)
-  @Roles('Admin', 'Sales Manager')
+  @Roles('Admin', 'Sales Manager', 'Sales Executive', 'Agent')
   @Patch(':id/followups/:fid')
   async updateFollowup(
     @Param('id') id: string,
@@ -204,11 +204,16 @@ export class LeadsController {
   ) {
     const leadId = Number(id);
     await this.assertLeadAccess(leadId, u);
-    return this.svc.updateFollowup(leadId, Number(fid), {
-      due_date: b.due_date,
-      description: b.description,
-      assigned_to: b.assigned_to === undefined ? undefined : b.assigned_to,
-    });
+    return this.svc.updateFollowup(
+      leadId,
+      Number(fid),
+      {
+        due_date: b.due_date,
+        description: b.description,
+        assigned_to: b.assigned_to === undefined ? undefined : b.assigned_to,
+      },
+      u,
+    );
   }
 
   @UseGuards(RolesGuard)
