@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { RedisService }    from '../../redis/redis.service';
 import { createWriteStream, existsSync, mkdirSync } from 'fs';
@@ -276,6 +276,27 @@ function normalizeOrderStatus(status: unknown): string {
   return (SALES_ORDER_STATUSES as readonly string[]).includes(s) ? s : 'pending';
 }
 
+const APPROVAL_STATUSES = ['pending', 'approved', 'rejected'] as const;
+
+function normalizeDocApprovalStatus(s: unknown): string {
+  const v = String(s ?? 'approved')
+    .trim()
+    .toLowerCase();
+  return (APPROVAL_STATUSES as readonly string[]).includes(v) ? v : 'approved';
+}
+
+function initialDocApprovalStatus(role?: string): 'pending' | 'approved' {
+  return String(role || '').trim() === 'Sales Executive' ? 'pending' : 'approved';
+}
+
+function canApproveSalesDocuments(role?: string): boolean {
+  const r = String(role || '').trim();
+  return r === 'Admin' || r === 'Super Admin' || r === 'Sales Manager';
+}
+
+export type SalesActor = { id?: number; role?: string };
+type DbTxClient = { query: (sql: string, params?: any[]) => Promise<{ rows: any[] }> };
+
 @Injectable()
 export class SalesService {
   constructor(private readonly db: DatabaseService, private readonly cache: RedisService) {}
@@ -371,8 +392,46 @@ export class SalesService {
     return ok ? rid : self;
   }
 
+  private async assertDocumentApprovalPatch(
+    table: 'quotations' | 'sales_orders' | 'invoices',
+    id: number,
+    requested: 'approved' | 'rejected',
+    actor: SalesActor,
+  ): Promise<void> {
+    if (!canApproveSalesDocuments(actor?.role)) {
+      throw new ForbiddenException('Only Admin, Super Admin, or Sales Manager can approve or reject this document.');
+    }
+    const cur = await this.db.query(`SELECT approval_status FROM ${table} WHERE id=$1`, [id]);
+    if (!cur.rows[0]) throw new NotFoundException();
+    if (cur.rows[0].approval_status !== 'pending') {
+      throw new BadRequestException('Document is not awaiting approval.');
+    }
+    const ab = Number(actor.id);
+    const approver = Number.isFinite(ab) && ab > 0 ? ab : null;
+    await this.db.query(
+      `UPDATE ${table} SET approval_status=$1, approved_by=$2, approved_at=NOW() WHERE id=$3`,
+      [requested, approver, id],
+    );
+  }
+
   private money(v: unknown): string {
     return Number(v ?? 0).toFixed(2);
+  }
+
+  private async nextQuotationNumber(client: DbTxClient): Promise<string> {
+    // Avoid duplicate numbers when two quotes are created concurrently.
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext('quotations:number'))`);
+    const last = await client.query(
+      `SELECT quotation_number
+         FROM quotations
+        WHERE quotation_number ~ '^QUOT-[0-9]{1,6}$'
+        ORDER BY CAST(SUBSTRING(quotation_number FROM 'QUOT-([0-9]+)$') AS INTEGER) DESC
+        LIMIT 1`,
+    );
+    const raw = String(last.rows[0]?.quotation_number || '');
+    const m = /^QUOT-(\d{1,6})$/.exec(raw);
+    const next = (m ? Number(m[1]) : 0) + 1;
+    return `QUOT-${String(next).padStart(4, '0')}`;
   }
 
   private writePdfToFile(doc: any, filePath: string): Promise<void> {
@@ -384,7 +443,7 @@ export class SalesService {
     });
   }
 
-  async generateSalesPdfFile(kind: 'quotation' | 'order' | 'invoice', id: number) {
+  async generateSalesPdfFile(kind: 'quotation' | 'order' | 'invoice', id: number, actor?: SalesActor) {
     const company = (await this.db.query('SELECT * FROM company_settings LIMIT 1')).rows[0] || {};
     const docData =
       kind === 'quotation'
@@ -393,6 +452,13 @@ export class SalesService {
           ? await this.getOrder(id)
           : await this.getInvoice(id);
     if (!docData) return null;
+    const ap = String((docData as { approval_status?: string }).approval_status ?? 'approved');
+    if (ap === 'pending' && !canApproveSalesDocuments(actor?.role)) {
+      throw new ForbiddenException('This document is pending approval and cannot be exported yet.');
+    }
+    if (ap === 'rejected' && !canApproveSalesDocuments(actor?.role)) {
+      throw new ForbiddenException('This document was rejected and cannot be exported.');
+    }
 
     const uploadsRoot = join(process.cwd(), 'uploads');
     const pdfDir = join(uploadsRoot, 'pdfs');
@@ -845,7 +911,14 @@ export class SalesService {
   }
 
   // ─── Quotations ───────────────────────────────────────────
-  async listQuotations(filters?: { customer_id?: number; created_by?: number; status?: string; from?: string; to?: string }) {
+  async listQuotations(filters?: {
+    customer_id?: number;
+    created_by?: number;
+    status?: string;
+    approval_status?: string;
+    from?: string;
+    to?: string;
+  }) {
     const conds: string[] = [];
     const vals: any[] = [];
     let n = 1;
@@ -860,6 +933,10 @@ export class SalesService {
     if (filters?.status) {
       conds.push(`q.status=$${n++}`);
       vals.push(filters.status);
+    }
+    if (filters?.approval_status) {
+      conds.push(`q.approval_status=$${n++}`);
+      vals.push(filters.approval_status);
     }
     if (filters?.from) {
       conds.push(`q.created_at>=$${n++}`);
@@ -901,22 +978,45 @@ export class SalesService {
     ]);
     return q.rows[0] ? { ...q.rows[0], items: items.rows } : null;
   }
-  async createQuotation(data: any, items: any[]) {
+  async createQuotation(data: any, items: any[], actor?: SalesActor) {
     return this.db.transaction(async (client) => {
       const subtotal = items.reduce((s, i) => s + Number(i.total), 0);
       const cgst = items.reduce((s, i) => s + Number(i.cgst || 0), 0);
       const sgst = items.reduce((s, i) => s + Number(i.sgst || 0), 0);
       const igst = items.reduce((s, i) => s + Number(i.igst || 0), 0);
       const total = subtotal + cgst + sgst + igst;
-      const qn = `QUOT-${Date.now()}`;
+      const qn = await this.nextQuotationNumber(client);
+      const approval = initialDocApprovalStatus(actor?.role);
+      const approverId =
+        approval === 'approved' && Number.isFinite(Number(actor?.id)) && Number(actor?.id) > 0
+          ? Number(actor?.id)
+          : null;
       const qr = await client.query(
         `INSERT INTO quotations
           (quotation_number,customer_id,proposal_id,status,valid_until,notes,
-           gst_type,tax_type,is_interstate,subtotal,cgst,sgst,igst,total_amount,created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
-        [qn, data.customer_id, data.proposal_id, data.status||'draft', data.valid_until, data.notes,
-         data.gst_type||'intra_state', data.tax_type||'exclusive', data.is_interstate||false,
-         subtotal, cgst, sgst, igst, total, data.created_by],
+           gst_type,tax_type,is_interstate,subtotal,cgst,sgst,igst,total_amount,created_by,
+           approval_status,approved_by,approved_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
+        [
+          qn,
+          data.customer_id,
+          data.proposal_id,
+          data.status || 'draft',
+          data.valid_until,
+          data.notes,
+          data.gst_type || 'intra_state',
+          data.tax_type || 'exclusive',
+          data.is_interstate || false,
+          subtotal,
+          cgst,
+          sgst,
+          igst,
+          total,
+          data.created_by,
+          approval,
+          approverId,
+          approverId ? new Date().toISOString() : null,
+        ],
       );
       for (const it of items)
         await client.query(
@@ -927,7 +1027,14 @@ export class SalesService {
   }
 
   // ─── Orders ───────────────────────────────────────────────
-  async listOrders(filters?: { customer_id?: number; created_by?: number; status?: string; from?: string; to?: string }) {
+  async listOrders(filters?: {
+    customer_id?: number;
+    created_by?: number;
+    status?: string;
+    approval_status?: string;
+    from?: string;
+    to?: string;
+  }) {
     const conds: string[] = [];
     const vals: any[] = [];
     let n = 1;
@@ -942,6 +1049,10 @@ export class SalesService {
     if (filters?.status) {
       conds.push(`o.status=$${n++}`);
       vals.push(filters.status);
+    }
+    if (filters?.approval_status) {
+      conds.push(`o.approval_status=$${n++}`);
+      vals.push(filters.approval_status);
     }
     if (filters?.from) {
       conds.push(`o.order_date>=$${n++}`);
@@ -983,7 +1094,14 @@ export class SalesService {
     ]);
     return o.rows[0] ? { ...o.rows[0], items: items.rows } : null;
   }
-  async createOrder(data: any, items: any[]) {
+  async createOrder(data: any, items: any[], actor?: SalesActor) {
+    if (data.quotation_id) {
+      const q = await this.db.query('SELECT approval_status FROM quotations WHERE id=$1', [data.quotation_id]);
+      if (!q.rows[0]) throw new BadRequestException('Quotation not found.');
+      if (q.rows[0].approval_status !== 'approved') {
+        throw new BadRequestException('The quotation must be approved before you can create an order from it.');
+      }
+    }
     return this.db.transaction(async (client) => {
       const subtotal = items.reduce((s, i) => s + Number(i.total), 0);
       const cgst = items.reduce((s, i) => s + Number(i.cgst || 0), 0);
@@ -991,15 +1109,38 @@ export class SalesService {
       const igst = items.reduce((s, i) => s + Number(i.igst || 0), 0);
       const total = subtotal + cgst + sgst + igst;
       const on = `ORD-${Date.now()}`;
+      const approval = initialDocApprovalStatus(actor?.role);
+      const approverId =
+        approval === 'approved' && Number.isFinite(Number(actor?.id)) && Number(actor?.id) > 0
+          ? Number(actor?.id)
+          : null;
       const or = await client.query(
         `INSERT INTO sales_orders
           (order_number,customer_id,quotation_id,status,order_date,due_date,notes,
-           gst_type,tax_type,is_interstate,subtotal,cgst,sgst,igst,total_amount,created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
-        [on, data.customer_id, data.quotation_id||null, normalizeOrderStatus(data.status),
-         data.order_date||new Date().toISOString().split('T')[0], data.due_date||null, data.notes,
-         data.gst_type||'intra_state', data.tax_type||'exclusive', data.is_interstate||false,
-         subtotal, cgst, sgst, igst, total, data.created_by],
+           gst_type,tax_type,is_interstate,subtotal,cgst,sgst,igst,total_amount,created_by,
+           approval_status,approved_by,approved_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
+        [
+          on,
+          data.customer_id,
+          data.quotation_id || null,
+          normalizeOrderStatus(data.status),
+          data.order_date || new Date().toISOString().split('T')[0],
+          data.due_date || null,
+          data.notes,
+          data.gst_type || 'intra_state',
+          data.tax_type || 'exclusive',
+          data.is_interstate || false,
+          subtotal,
+          cgst,
+          sgst,
+          igst,
+          total,
+          data.created_by,
+          approval,
+          approverId,
+          approverId ? new Date().toISOString() : null,
+        ],
       );
       for (const it of items)
         await client.query(
@@ -1008,18 +1149,32 @@ export class SalesService {
       return or.rows[0];
     });
   }
-  async patchOrder(id: number, b: any) {
-    if (typeof b === 'string') {
-      const st = normalizeOrderStatus(b);
-      return (await this.db.query('UPDATE sales_orders SET status=$1 WHERE id=$2 RETURNING *', [st, id])).rows[0];
+  async patchOrder(id: number, b: any, actor?: SalesActor) {
+    const body: any = typeof b === 'string' ? { status: b } : { ...b };
+    if (body.approval_status !== undefined) {
+      const req = normalizeDocApprovalStatus(body.approval_status);
+      if (req !== 'approved' && req !== 'rejected') {
+        throw new BadRequestException('approval_status must be approved or rejected.');
+      }
+      await this.assertDocumentApprovalPatch('sales_orders', id, req as 'approved' | 'rejected', actor || {});
+      delete body.approval_status;
     }
-    if (b?.items !== undefined && Array.isArray(b.items)) {
+    const apRow = await this.db.query('SELECT approval_status FROM sales_orders WHERE id=$1', [id]);
+    if (!apRow.rows[0]) return null;
+    const ap0 = String(apRow.rows[0].approval_status ?? 'approved');
+    if (ap0 === 'pending' && body.status !== undefined) {
+      throw new BadRequestException('Order is pending approval; fulfillment status cannot be changed yet.');
+    }
+    if (ap0 === 'rejected' && body.status !== undefined) {
+      throw new BadRequestException('This order was rejected.');
+    }
+    if (body?.items !== undefined && Array.isArray(body.items)) {
       return this.db.transaction(async (client) => {
         const ex = await client.query('SELECT id FROM sales_orders WHERE id=$1', [id]);
         if (!ex.rows[0]) return null;
         await client.query('DELETE FROM sales_order_items WHERE order_id=$1', [id]);
         let subtotal = 0, cgst = 0, sgst = 0, igst = 0;
-        for (const it of b.items) {
+        for (const it of body.items) {
           const lineTotal = Number(it.total ?? 0);
           subtotal += lineTotal;
           cgst += Number(it.cgst || 0);
@@ -1036,15 +1191,15 @@ export class SalesService {
         const sets = ['subtotal=$1','cgst=$2','sgst=$3','igst=$4','total_amount=$5'];
         const vals: any[] = [subtotal, cgst, sgst, igst, total];
         let n = 6;
-        if (b.customer_id !== undefined)  { sets.push(`customer_id=$${n++}`);   vals.push(b.customer_id); }
-        if (b.order_date !== undefined)   { sets.push(`order_date=$${n++}`);    vals.push(b.order_date); }
-        if (b.due_date !== undefined)     { sets.push(`due_date=$${n++}`);      vals.push(b.due_date); }
-        if (b.notes !== undefined)        { sets.push(`notes=$${n++}`);         vals.push(b.notes); }
-        if (b.status !== undefined)       { sets.push(`status=$${n++}`);        vals.push(normalizeOrderStatus(b.status)); }
-        if (b.gst_type !== undefined)     { sets.push(`gst_type=$${n++}`);      vals.push(b.gst_type); }
-        if (b.tax_type !== undefined)     { sets.push(`tax_type=$${n++}`);      vals.push(b.tax_type); }
-        if (b.is_interstate !== undefined){ sets.push(`is_interstate=$${n++}`); vals.push(b.is_interstate); }
-        if (b.created_by !== undefined)   { sets.push(`created_by=$${n++}`);    vals.push(b.created_by); }
+        if (body.customer_id !== undefined)  { sets.push(`customer_id=$${n++}`);   vals.push(body.customer_id); }
+        if (body.order_date !== undefined)   { sets.push(`order_date=$${n++}`);    vals.push(body.order_date); }
+        if (body.due_date !== undefined)     { sets.push(`due_date=$${n++}`);      vals.push(body.due_date); }
+        if (body.notes !== undefined)        { sets.push(`notes=$${n++}`);         vals.push(body.notes); }
+        if (body.status !== undefined)       { sets.push(`status=$${n++}`);        vals.push(normalizeOrderStatus(body.status)); }
+        if (body.gst_type !== undefined)     { sets.push(`gst_type=$${n++}`);      vals.push(body.gst_type); }
+        if (body.tax_type !== undefined)     { sets.push(`tax_type=$${n++}`);      vals.push(body.tax_type); }
+        if (body.is_interstate !== undefined){ sets.push(`is_interstate=$${n++}`); vals.push(body.is_interstate); }
+        if (body.created_by !== undefined)   { sets.push(`created_by=$${n++}`);    vals.push(body.created_by); }
         vals.push(id);
         await client.query(`UPDATE sales_orders SET ${sets.join(', ')} WHERE id=$${n}`, vals);
         return this.getOrder(id);
@@ -1053,29 +1208,29 @@ export class SalesService {
     const sets: string[] = [];
     const vals: any[] = [];
     let n = 1;
-    if (b?.status !== undefined) {
+    if (body?.status !== undefined) {
       sets.push(`status=$${n++}`);
-      vals.push(normalizeOrderStatus(b.status));
+      vals.push(normalizeOrderStatus(body.status));
     }
-    if (b?.notes !== undefined) {
+    if (body?.notes !== undefined) {
       sets.push(`notes=$${n++}`);
-      vals.push(b.notes);
+      vals.push(body.notes);
     }
-    if (b?.order_date !== undefined) {
+    if (body?.order_date !== undefined) {
       sets.push(`order_date=$${n++}`);
-      vals.push(b.order_date);
+      vals.push(body.order_date);
     }
-    if (b?.due_date !== undefined) {
+    if (body?.due_date !== undefined) {
       sets.push(`due_date=$${n++}`);
-      vals.push(b.due_date);
+      vals.push(body.due_date);
     }
-    if (b?.customer_id !== undefined) {
+    if (body?.customer_id !== undefined) {
       sets.push(`customer_id=$${n++}`);
-      vals.push(b.customer_id);
+      vals.push(body.customer_id);
     }
-    if (b?.created_by !== undefined) {
+    if (body?.created_by !== undefined) {
       sets.push(`created_by=$${n++}`);
-      vals.push(b.created_by);
+      vals.push(body.created_by);
     }
     if (!sets.length) {
       return (await this.db.query('SELECT * FROM sales_orders WHERE id=$1', [id])).rows[0];
@@ -1085,7 +1240,14 @@ export class SalesService {
   }
 
   // ─── Invoices ─────────────────────────────────────────────
-  async listInvoices(filters?: { customer_id?: number; created_by?: number; status?: string; from?: string; to?: string }) {
+  async listInvoices(filters?: {
+    customer_id?: number;
+    created_by?: number;
+    status?: string;
+    approval_status?: string;
+    from?: string;
+    to?: string;
+  }) {
     const conds: string[] = [];
     const vals: any[] = [];
     let n = 1;
@@ -1100,6 +1262,10 @@ export class SalesService {
     if (filters?.status) {
       conds.push(`i.status=$${n++}`);
       vals.push(filters.status);
+    }
+    if (filters?.approval_status) {
+      conds.push(`i.approval_status=$${n++}`);
+      vals.push(filters.approval_status);
     }
     if (filters?.from) {
       conds.push(`i.invoice_date>=$${n++}`);
@@ -1145,7 +1311,14 @@ export class SalesService {
     ]);
     return inv.rows[0] ? { ...inv.rows[0], items: items.rows, payments: pays.rows } : null;
   }
-  async createInvoice(data: any, items: any[]) {
+  async createInvoice(data: any, items: any[], actor?: SalesActor) {
+    if (data.order_id) {
+      const o = await this.db.query('SELECT approval_status FROM sales_orders WHERE id=$1', [data.order_id]);
+      if (!o.rows[0]) throw new BadRequestException('Order not found.');
+      if (o.rows[0].approval_status !== 'approved') {
+        throw new BadRequestException('The sales order must be approved before you can create an invoice from it.');
+      }
+    }
     const row = await this.db.transaction(async (client) => {
       let subtotal = 0, cgst = 0, sgst = 0, igst = 0;
       for (const it of items) {
@@ -1155,9 +1328,33 @@ export class SalesService {
       }
       const total = subtotal + cgst + sgst + igst;
       const inv_no = `INV-${Date.now()}`;
+      const approval = initialDocApprovalStatus(actor?.role);
+      const approverId =
+        approval === 'approved' && Number.isFinite(Number(actor?.id)) && Number(actor?.id) > 0
+          ? Number(actor?.id)
+          : null;
       const ir = await client.query(
-        'INSERT INTO invoices (invoice_number,customer_id,order_id,invoice_date,due_date,subtotal,cgst,sgst,igst,total_amount,notes,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',
-        [inv_no, data.customer_id, data.order_id, data.invoice_date||new Date().toISOString().split('T')[0], data.due_date, subtotal, cgst, sgst, igst, total, data.notes, data.created_by],
+        `INSERT INTO invoices
+          (invoice_number,customer_id,order_id,invoice_date,due_date,subtotal,cgst,sgst,igst,total_amount,notes,created_by,
+           approval_status,approved_by,approved_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+        [
+          inv_no,
+          data.customer_id,
+          data.order_id,
+          data.invoice_date || new Date().toISOString().split('T')[0],
+          data.due_date,
+          subtotal,
+          cgst,
+          sgst,
+          igst,
+          total,
+          data.notes,
+          data.created_by,
+          approval,
+          approverId,
+          approverId ? new Date().toISOString() : null,
+        ],
       );
       for (const it of items)
         await client.query('INSERT INTO invoice_items (invoice_id,product_id,description,quantity,unit_price,gst_rate,cgst,sgst,igst,total) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
@@ -1375,16 +1572,40 @@ export class SalesService {
 
   /**
    * Partial update. If `items` is an array, line items are replaced and `total_amount` recalculated.
-   * Optional fields: `status`, `notes`, `valid_until`, `customer_id`.
+   * Optional fields: `status`, `notes`, `valid_until`, `customer_id`, `approval_status` (managers only).
    */
-  async patchQuotation(id: number, b: any) {
-    if (b?.items !== undefined && Array.isArray(b.items)) {
+  async patchQuotation(id: number, b: any, actor?: SalesActor) {
+    const body = { ...b };
+    if (body.approval_status !== undefined) {
+      const req = normalizeDocApprovalStatus(body.approval_status);
+      if (req !== 'approved' && req !== 'rejected') {
+        throw new BadRequestException('approval_status must be approved or rejected.');
+      }
+      await this.assertDocumentApprovalPatch('quotations', id, req as 'approved' | 'rejected', actor || {});
+      delete body.approval_status;
+    }
+    const apRow = await this.db.query('SELECT approval_status FROM quotations WHERE id=$1', [id]);
+    if (!apRow.rows[0]) return null;
+    const ap0 = String(apRow.rows[0].approval_status ?? 'approved');
+    if (ap0 === 'pending' && body.status !== undefined) {
+      const st = String(body.status).toLowerCase();
+      if (st === 'sent' || st === 'accepted') {
+        throw new BadRequestException('Quotation is pending approval; it cannot be marked sent or accepted yet.');
+      }
+    }
+    if (ap0 === 'rejected' && body.status !== undefined) {
+      const st = String(body.status).toLowerCase();
+      if (st === 'sent' || st === 'accepted') {
+        throw new BadRequestException('This quotation was rejected.');
+      }
+    }
+    if (body?.items !== undefined && Array.isArray(body.items)) {
       return this.db.transaction(async (client) => {
         const ex = await client.query('SELECT id FROM quotations WHERE id=$1', [id]);
         if (!ex.rows[0]) return null;
         await client.query('DELETE FROM quotation_items WHERE quotation_id=$1', [id]);
         let subtotal = 0, cgst = 0, sgst = 0, igst = 0;
-        for (const it of b.items) {
+        for (const it of body.items) {
           const lineTotal = Number(it.total ?? 0);
           subtotal += lineTotal;
           cgst += Number(it.cgst || 0);
@@ -1401,14 +1622,14 @@ export class SalesService {
         const sets = ['subtotal=$1','cgst=$2','sgst=$3','igst=$4','total_amount=$5'];
         const vals: any[] = [subtotal, cgst, sgst, igst, total];
         let n = 6;
-        if (b.customer_id !== undefined) { sets.push(`customer_id=$${n++}`); vals.push(b.customer_id); }
-        if (b.valid_until !== undefined)  { sets.push(`valid_until=$${n++}`); vals.push(b.valid_until); }
-        if (b.notes !== undefined)        { sets.push(`notes=$${n++}`);       vals.push(b.notes); }
-        if (b.status !== undefined)       { sets.push(`status=$${n++}`);      vals.push(b.status); }
-        if (b.gst_type !== undefined)     { sets.push(`gst_type=$${n++}`);    vals.push(b.gst_type); }
-        if (b.tax_type !== undefined)     { sets.push(`tax_type=$${n++}`);    vals.push(b.tax_type); }
-        if (b.is_interstate !== undefined){ sets.push(`is_interstate=$${n++}`); vals.push(b.is_interstate); }
-        if (b.created_by !== undefined)   { sets.push(`created_by=$${n++}`);  vals.push(b.created_by); }
+        if (body.customer_id !== undefined) { sets.push(`customer_id=$${n++}`); vals.push(body.customer_id); }
+        if (body.valid_until !== undefined)  { sets.push(`valid_until=$${n++}`); vals.push(body.valid_until); }
+        if (body.notes !== undefined)        { sets.push(`notes=$${n++}`);       vals.push(body.notes); }
+        if (body.status !== undefined)       { sets.push(`status=$${n++}`);      vals.push(body.status); }
+        if (body.gst_type !== undefined)     { sets.push(`gst_type=$${n++}`);    vals.push(body.gst_type); }
+        if (body.tax_type !== undefined)     { sets.push(`tax_type=$${n++}`);    vals.push(body.tax_type); }
+        if (body.is_interstate !== undefined){ sets.push(`is_interstate=$${n++}`); vals.push(body.is_interstate); }
+        if (body.created_by !== undefined)   { sets.push(`created_by=$${n++}`);  vals.push(body.created_by); }
         vals.push(id);
         await client.query(`UPDATE quotations SET ${sets.join(', ')} WHERE id=$${n}`, vals);
         return this.getQuotation(id);
@@ -1417,25 +1638,25 @@ export class SalesService {
     const sets: string[] = [];
     const vals: any[] = [];
     let n = 1;
-    if (b?.status !== undefined) {
+    if (body?.status !== undefined) {
       sets.push(`status = $${n++}`);
-      vals.push(b.status);
+      vals.push(body.status);
     }
-    if (b?.notes !== undefined) {
+    if (body?.notes !== undefined) {
       sets.push(`notes = $${n++}`);
-      vals.push(b.notes);
+      vals.push(body.notes);
     }
-    if (b?.valid_until !== undefined) {
+    if (body?.valid_until !== undefined) {
       sets.push(`valid_until = $${n++}`);
-      vals.push(b.valid_until);
+      vals.push(body.valid_until);
     }
-    if (b?.customer_id !== undefined) {
+    if (body?.customer_id !== undefined) {
       sets.push(`customer_id = $${n++}`);
-      vals.push(b.customer_id);
+      vals.push(body.customer_id);
     }
-    if (b?.created_by !== undefined) {
+    if (body?.created_by !== undefined) {
       sets.push(`created_by = $${n++}`);
-      vals.push(b.created_by);
+      vals.push(body.created_by);
     }
     if (!sets.length) return this.getQuotation(id);
     vals.push(id);
@@ -1443,8 +1664,26 @@ export class SalesService {
     return this.getQuotation(id);
   }
 
-  async patchInvoice(id: number, b: any) {
-    if (b?.items !== undefined && Array.isArray(b.items)) {
+  async patchInvoice(id: number, b: any, actor?: SalesActor) {
+    const body = { ...b };
+    if (body.approval_status !== undefined) {
+      const req = normalizeDocApprovalStatus(body.approval_status);
+      if (req !== 'approved' && req !== 'rejected') {
+        throw new BadRequestException('approval_status must be approved or rejected.');
+      }
+      await this.assertDocumentApprovalPatch('invoices', id, req as 'approved' | 'rejected', actor || {});
+      delete body.approval_status;
+    }
+    const apInv = await this.db.query('SELECT approval_status FROM invoices WHERE id=$1', [id]);
+    if (!apInv.rows[0]) return null;
+    const apI0 = String(apInv.rows[0].approval_status ?? 'approved');
+    if (apI0 === 'pending' && body.status !== undefined) {
+      throw new BadRequestException('Invoice is pending approval; payment status cannot be changed yet.');
+    }
+    if (apI0 === 'rejected' && body.status !== undefined) {
+      throw new BadRequestException('This invoice was rejected.');
+    }
+    if (body?.items !== undefined && Array.isArray(body.items)) {
       const row = await this.db.transaction(async (client) => {
         const ex = await client.query('SELECT id FROM invoices WHERE id=$1', [id]);
         if (!ex.rows[0]) return null;
@@ -1455,15 +1694,15 @@ export class SalesService {
         let cgst = 0;
         let sgst = 0;
         let igst = 0;
-        for (const it of b.items) {
+        for (const it of body.items) {
           const qty = Number(it.quantity ?? 0);
           const unit = Number(it.unit_price ?? 0);
           const rate = Number(it.gst_rate ?? 0);
           const base = qty * unit;
           const gst = base * rate / 100;
-          const lineCgst = Number(it.cgst ?? (b.is_interstate ? 0 : gst / 2));
-          const lineSgst = Number(it.sgst ?? (b.is_interstate ? 0 : gst / 2));
-          const lineIgst = Number(it.igst ?? (b.is_interstate ? gst : 0));
+          const lineCgst = Number(it.cgst ?? (body.is_interstate ? 0 : gst / 2));
+          const lineSgst = Number(it.sgst ?? (body.is_interstate ? 0 : gst / 2));
+          const lineIgst = Number(it.igst ?? (body.is_interstate ? gst : 0));
           const lineTotal = Number(it.total ?? (base + lineCgst + lineSgst + lineIgst));
 
           subtotal += base;
@@ -1492,12 +1731,12 @@ export class SalesService {
         const sets = ['subtotal=$1', 'cgst=$2', 'sgst=$3', 'igst=$4', 'total_amount=$5'];
         const vals: any[] = [subtotal, cgst, sgst, igst, total];
         let n = 6;
-        if (b.customer_id !== undefined) { sets.push(`customer_id=$${n++}`); vals.push(b.customer_id); }
-        if (b.invoice_date !== undefined) { sets.push(`invoice_date=$${n++}`); vals.push(b.invoice_date); }
-        if (b.due_date !== undefined) { sets.push(`due_date=$${n++}`); vals.push(b.due_date); }
-        if (b.notes !== undefined) { sets.push(`notes=$${n++}`); vals.push(b.notes); }
-        if (b.status !== undefined) { sets.push(`status=$${n++}`); vals.push(b.status); }
-        if (b.created_by !== undefined) { sets.push(`created_by=$${n++}`); vals.push(b.created_by); }
+        if (body.customer_id !== undefined) { sets.push(`customer_id=$${n++}`); vals.push(body.customer_id); }
+        if (body.invoice_date !== undefined) { sets.push(`invoice_date=$${n++}`); vals.push(body.invoice_date); }
+        if (body.due_date !== undefined) { sets.push(`due_date=$${n++}`); vals.push(body.due_date); }
+        if (body.notes !== undefined) { sets.push(`notes=$${n++}`); vals.push(body.notes); }
+        if (body.status !== undefined) { sets.push(`status=$${n++}`); vals.push(body.status); }
+        if (body.created_by !== undefined) { sets.push(`created_by=$${n++}`); vals.push(body.created_by); }
         vals.push(id);
         await client.query(`UPDATE invoices SET ${sets.join(', ')} WHERE id=$${n}`, vals);
         return this.getInvoice(id);
@@ -1509,12 +1748,12 @@ export class SalesService {
     const sets: string[] = [];
     const vals: any[] = [];
     let n = 1;
-    if (b?.status !== undefined) { sets.push(`status=$${n++}`); vals.push(b.status); }
-    if (b?.notes !== undefined) { sets.push(`notes=$${n++}`); vals.push(b.notes); }
-    if (b?.invoice_date !== undefined) { sets.push(`invoice_date=$${n++}`); vals.push(b.invoice_date); }
-    if (b?.due_date !== undefined) { sets.push(`due_date=$${n++}`); vals.push(b.due_date); }
-    if (b?.customer_id !== undefined) { sets.push(`customer_id=$${n++}`); vals.push(b.customer_id); }
-    if (b?.created_by !== undefined) { sets.push(`created_by=$${n++}`); vals.push(b.created_by); }
+    if (body?.status !== undefined) { sets.push(`status=$${n++}`); vals.push(body.status); }
+    if (body?.notes !== undefined) { sets.push(`notes=$${n++}`); vals.push(body.notes); }
+    if (body?.invoice_date !== undefined) { sets.push(`invoice_date=$${n++}`); vals.push(body.invoice_date); }
+    if (body?.due_date !== undefined) { sets.push(`due_date=$${n++}`); vals.push(body.due_date); }
+    if (body?.customer_id !== undefined) { sets.push(`customer_id=$${n++}`); vals.push(body.customer_id); }
+    if (body?.created_by !== undefined) { sets.push(`created_by=$${n++}`); vals.push(body.created_by); }
     if (!sets.length) return this.getInvoice(id);
     vals.push(id);
     await this.db.query(`UPDATE invoices SET ${sets.join(', ')} WHERE id=$${n}`, vals);
@@ -1523,6 +1762,12 @@ export class SalesService {
   }
 
   async addPayment(invoiceId: number, data: any) {
+    const invAp = await this.db.query('SELECT approval_status FROM invoices WHERE id=$1', [invoiceId]);
+    if (!invAp.rows[0]) throw new NotFoundException();
+    const ap = String(invAp.rows[0].approval_status ?? 'approved');
+    if (ap !== 'approved') {
+      throw new ForbiddenException('Payments can only be recorded after the invoice is approved.');
+    }
     const row = await this.db.transaction(async (client) => {
       const pr = await client.query(
         'INSERT INTO payments (invoice_id,amount,payment_date,method,reference,notes,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',

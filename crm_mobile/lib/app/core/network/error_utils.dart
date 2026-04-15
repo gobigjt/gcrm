@@ -17,5 +17,15 @@ String userFriendlyError(Object error, {bool loginAttempt = false}) {
     return error.message;
   }
   final text = error.toString();
+  if (text.contains('SocketException') ||
+      text.contains('Failed host lookup') ||
+      text.contains('No address associated with hostname') ||
+      text.contains('Network is unreachable')) {
+    return 'Cannot reach the API server (network or DNS). Check Wi‑Fi or mobile data. '
+        'If you are developing locally, rebuild with the correct API URL, e.g. '
+        'flutter run --dart-define=API_BASE_URL=http://127.0.0.1:4000/api '
+        '(iOS Simulator) or http://YOUR_PC_LAN_IP:4000/api on a physical phone. '
+        'See crm_mobile/README.md.';
+  }
   return text.replaceFirst('Exception: ', '');
 }
