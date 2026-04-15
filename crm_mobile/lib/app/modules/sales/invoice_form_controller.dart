@@ -96,7 +96,7 @@ class InvoiceFormController extends GetxController {
       if (isEdit) {
         await _loadExistingInvoice();
       } else {
-        _syncCreatedBySelection();
+        selectedCreatedById.value = null;
         if (lines.isEmpty) addLine();
       }
     } catch (e) {
@@ -110,14 +110,9 @@ class InvoiceFormController extends GetxController {
     final res  = await _auth.authorizedRequest(method: 'GET', path: '/sales/customers');
     final list = _asList(res);
     customers.assignAll(list);
-    final init = initialCustomerId;
-    if (init != null && list.any((c) => (c['id'] as num?)?.toInt() == init)) {
-      selectedCustomerId.value = init;
-      return;
-    }
-    if (selectedCustomerId.value == null && list.isNotEmpty) {
-      final id = list.first['id'];
-      if (id != null) selectedCustomerId.value = (id as num).toInt();
+    if (!isEdit) {
+      // New invoices should not pre-select customer.
+      selectedCustomerId.value = null;
     }
   }
 

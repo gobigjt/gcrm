@@ -13,6 +13,7 @@ class CrmLead {
     required this.phone,
     this.email = '',
     this.assignedName = '',
+    this.assignedManagerName = '',
     this.leadSegment = '',
     this.jobTitle = '',
     this.productCategory = '',
@@ -56,6 +57,7 @@ class CrmLead {
   final String phone;
   final String email;
   final String assignedName;
+  final String assignedManagerName;
   final String leadSegment;
   final String jobTitle;
   final String productCategory;
@@ -118,6 +120,7 @@ class CrmLead {
       phone: (json['phone'] ?? '').toString(),
       email: (json['email'] ?? '').toString(),
       assignedName: (json['assigned_name'] ?? '').toString(),
+      assignedManagerName: (json['assigned_manager_name'] ?? '').toString(),
       leadSegment: (json['lead_segment'] ?? '').toString(),
       jobTitle: (json['job_title'] ?? '').toString(),
       productCategory: (json['product_category'] ?? '').toString(),

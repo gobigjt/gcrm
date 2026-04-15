@@ -85,7 +85,7 @@ class OrderFormController extends GetxController {
       if (isEdit) {
         await _loadOrderIntoForm(orderId!);
       } else {
-        _syncCreatedBySelection();
+        selectedCreatedById.value = null;
         if (lines.isEmpty) addLine();
       }
     } catch (e) {
@@ -130,14 +130,9 @@ class OrderFormController extends GetxController {
     final res  = await _auth.authorizedRequest(method: 'GET', path: '/sales/customers');
     final list = _asList(res);
     customers.assignAll(list);
-    final init = initialCustomerId;
-    if (!isEdit && init != null && list.any((c) => (c['id'] as num?)?.toInt() == init)) {
-      selectedCustomerId.value = init;
-      return;
-    }
-    if (!isEdit && selectedCustomerId.value == null && list.isNotEmpty) {
-      final id = list.first['id'];
-      if (id != null) selectedCustomerId.value = (id as num).toInt();
+    if (!isEdit) {
+      // New orders should not pre-select customer.
+      selectedCustomerId.value = null;
     }
   }
 

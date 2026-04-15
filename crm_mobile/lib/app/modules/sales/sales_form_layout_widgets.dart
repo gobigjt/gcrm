@@ -172,14 +172,18 @@ class SalesBillToFields extends StatelessWidget {
               decoration: customerDecoration(context),
               dropdownColor: Theme.of(context).brightness == Brightness.dark ? cs.surfaceContainerHighest : null,
               style: TextStyle(color: cs.onSurface, fontSize: 15, fontWeight: FontWeight.w500),
-              items: executives
-                  .map(
-                    (u) => DropdownMenuItem<int>(
-                      value: (u['id'] as num).toInt(),
-                      child: Text((u['name'] ?? '—').toString(), overflow: TextOverflow.ellipsis),
-                    ),
-                  )
-                  .toList(),
+              items: [
+                const DropdownMenuItem<int>(
+                  value: null,
+                  child: Text('Select sales executive'),
+                ),
+                ...executives.map(
+                  (u) => DropdownMenuItem<int>(
+                    value: (u['id'] as num).toInt(),
+                    child: Text((u['name'] ?? '—').toString(), overflow: TextOverflow.ellipsis),
+                  ),
+                ),
+              ],
               onChanged: canPick ? onExecutiveChanged : null,
             ),
           if (!canPick)

@@ -9,11 +9,20 @@ import 'sales_document_form_ui.dart';
 import 'sales_form_layout_widgets.dart';
 
 class QuotationFormView extends StatefulWidget {
-  const QuotationFormView({super.key, this.quotationId, this.copyFromId, this.initialCustomerId});
+  const QuotationFormView({
+    super.key,
+    this.quotationId,
+    this.copyFromId,
+    this.initialCustomerId,
+    this.initialCreatedById,
+    this.forceCustomerPrefill = false,
+  });
 
   final int? quotationId;
   final int? copyFromId;
   final int? initialCustomerId;
+  final int? initialCreatedById;
+  final bool forceCustomerPrefill;
 
   @override
   State<QuotationFormView> createState() => _QuotationFormViewState();
@@ -32,6 +41,8 @@ class _QuotationFormViewState extends State<QuotationFormView> {
         quotationId: widget.quotationId,
         copyFromId: widget.copyFromId,
         initialCustomerId: widget.initialCustomerId,
+        initialCreatedById: widget.initialCreatedById,
+        forceCustomerPrefill: widget.forceCustomerPrefill,
       ),
       tag: _tag,
     );

@@ -622,7 +622,7 @@ function CustomerAddressPreview({ customer }) {
 const SALES_ORDER_STATUS_LIST = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
 const SALES_ORDER_STATUS_SET = new Set(SALES_ORDER_STATUS_LIST);
 
-function DocumentModal({ type, customers, products, initialCustomerId = '', existingId = null, onClose, onSaved, fullPage = false }) {
+function DocumentModal({ type, customers, products, initialCustomerId = '', initialCreatedBy = '', existingId = null, onClose, onSaved, fullPage = false }) {
   const { user } = useAuth();
   const { show } = useToast();
   const isQuote   = type === 'quotation';
@@ -672,9 +672,9 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
     setForm((f) => ({
       ...f,
       customer_id: initialCustomerId || '',
-      created_by: existingId ? f.created_by : String(user?.id || f.created_by || ''),
+      created_by: existingId ? f.created_by : (initialCreatedBy || ''),
     }));
-  }, [initialCustomerId, type, existingId, user?.id]);
+  }, [initialCustomerId, initialCreatedBy, type, existingId]);
 
   useEffect(() => {
     if (!existingId || (!isQuote && !isInvoice && !isOrder)) {
@@ -934,6 +934,7 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
               <Field label="Sales Executive *">
                 <select className={selectCls} value={form.created_by} onChange={set('created_by')} required
                   disabled={!canPickOtherExecutive && executiveOptions.length <= 1}>
+                {!isEditInvoice && <option value="">Select sales executive</option>}
                   {executiveOptions.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                 </select>
                 {!canPickOtherExecutive && (
@@ -1069,6 +1070,7 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
             <Field label="Sales Executive *">
               <select className={selectCls} value={form.created_by} onChange={set('created_by')} required
                 disabled={!canPickOtherExecutive && executiveOptions.length <= 1}>
+                {!existingId && <option value="">Select sales executive</option>}
                 {executiveOptions.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
               {!canPickOtherExecutive && (
@@ -1523,6 +1525,8 @@ export function SalesFormPage({ segment }) {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const prefillCustomer = searchParams.get('customerId') || '';
+  const prefillCreatedBy = searchParams.get('createdBy') || '';
+  const forceCustomerPrefill = searchParams.get('prefillCustomer') === '1';
   const [products, setProducts] = useState([]);
   const [customers, setCustomers] = useState([]);
   const existingId = id != null ? id : null;
@@ -1541,6 +1545,9 @@ export function SalesFormPage({ segment }) {
     navigate({ pathname: salesListPath(segment), search: location.search });
   };
 
+  const effectiveInitialCustomerId = existingId || forceCustomerPrefill ? prefillCustomer : '';
+  const effectiveInitialCreatedBy = existingId ? '' : prefillCreatedBy;
+
   return (
     <div className="w-full min-w-0 -mx-5">
       <DocumentModal
@@ -1548,7 +1555,8 @@ export function SalesFormPage({ segment }) {
         type={type}
         customers={customers}
         products={products}
-        initialCustomerId={prefillCustomer}
+        initialCustomerId={effectiveInitialCustomerId}
+        initialCreatedBy={effectiveInitialCreatedBy}
         existingId={existingId}
         fullPage
         onClose={goBack}
@@ -1665,6 +1673,7 @@ export function SalesListPage({ segment }) {
   const [salesExecutives, setSalesExecutives] = useState([]);
   /** `{ type, id }` when a document drawer is open (quote / order / invoice). */
   const [drawer, setDrawer] = useState(null);
+  const stateFilterAppliedRef = useRef(false);
 
   const loadStats = useCallback(() => { api.get('/sales/stats').then(r => setStats(r.data)).catch(() => {}); }, []);
   const loadData  = useCallback(() => {
@@ -1688,6 +1697,27 @@ export function SalesListPage({ segment }) {
     api.get('/sales/executives').then((r) => setSalesExecutives(r.data || [])).catch(() => setSalesExecutives([]));
     loadStats();
   }, []);
+
+  useEffect(() => {
+    const st = location.state || {};
+    const incomingCustomerId = st?.filterCustomerId;
+    const incomingCustomerName = st?.filterCustomerName;
+    if (stateFilterAppliedRef.current) return;
+    if (!incomingCustomerId) return;
+    stateFilterAppliedRef.current = true;
+    setFilters((prev) => ({
+      ...prev,
+      customer_id: String(incomingCustomerId),
+    }));
+    if (incomingCustomerName) {
+      show(`Filtered quotations for ${incomingCustomerName}`, 'success');
+    }
+    // Clear one-time navigation state to avoid reapplying on remount.
+    navigate(
+      { pathname: location.pathname, search: location.search },
+      { replace: true, state: null },
+    );
+  }, [location.pathname, location.search, location.state, navigate, show]);
 
   useEffect(() => {
     const sp = new URLSearchParams(location.search);

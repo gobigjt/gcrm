@@ -6,7 +6,8 @@ import { useCallback, useRef, useState } from 'react';
  * @param {'success'|'error'|'info'|'warning'} [type='success']
  * @param {null|{
  *   actions?: Array<{ label: string, variant?: 'secondary'|'danger'|'primary', onClick: () => void | Promise<void> }>,
- *   durationMs?: number | false
+ *   durationMs?: number | false,
+ *   position?: 'bottom-right' | 'top-center'
  * }} [extra]
  */
 /** Local toast stack (e.g. tests). Prefer `useToast` from `context/ToastContext` in the app. */
@@ -30,7 +31,10 @@ export function useToastState() {
       },
     }));
 
-    setToasts((t) => [...t, { id, message, type, actions: wrappedActions }]);
+    setToasts((t) => [
+      ...t,
+      { id, message, type, actions: wrappedActions, position: extra?.position || 'bottom-right' },
+    ]);
 
     if (!rawActions?.length) {
       const ms = extra?.durationMs ?? 3000;
@@ -67,9 +71,11 @@ const BTN_CLS = {
 
 export function ToastContainer({ toasts }) {
   if (!toasts.length) return null;
-  return (
-    <div className="fixed bottom-5 right-5 z-[9999] flex flex-col gap-2 max-w-sm">
-      {toasts.map((t) => (
+  const topCenter = toasts.filter((t) => t.position === 'top-center');
+  const bottomRight = toasts.filter((t) => t.position !== 'top-center');
+  const renderStack = (items, stackCls) => (
+    <div className={stackCls}>
+      {items.map((t) => (
         <div
           key={t.id}
           className={`pointer-events-auto px-4 py-3 rounded-xl shadow-lg text-sm font-medium animate-fade-in-up ${TYPE_CLS[t.type] || TYPE_CLS.success}`}
@@ -92,5 +98,11 @@ export function ToastContainer({ toasts }) {
         </div>
       ))}
     </div>
+  );
+  return (
+    <>
+      {topCenter.length > 0 && renderStack(topCenter, 'fixed top-5 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 w-[min(92vw,28rem)]')}
+      {bottomRight.length > 0 && renderStack(bottomRight, 'fixed bottom-5 right-5 z-[9999] flex flex-col gap-2 max-w-sm')}
+    </>
   );
 }

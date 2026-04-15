@@ -375,6 +375,7 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
   const [fuEditId,   setFuEditId]   = useState(null);
   const [fuEditForm, setFuEditForm] = useState({ due_date: '', description: '', assigned_to: '' });
   const [saving,     setSaving]     = useState(false);
+  const [salesLoading, setSalesLoading] = useState(false);
   const [detail,     setDetail]     = useState(lead);
   const [copyLabel,    setCopyLabel]    = useState('');
   const [copyAppLabel, setCopyAppLabel] = useState('');
@@ -533,6 +534,96 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
     }
   };
 
+  const confirmByToast = (message, confirmLabel = 'Yes') =>
+    new Promise((resolve) => {
+      let settled = false;
+      const done = (v) => {
+        if (settled) return;
+        settled = true;
+        resolve(v);
+      };
+      showToast(message, 'warning', {
+        position: 'top-center',
+        actions: [
+          { label: 'No', variant: 'secondary', onClick: () => done(false) },
+          { label: confirmLabel, variant: 'primary', onClick: () => done(true) },
+        ],
+      });
+    });
+
+  const openQuotationCreate = async () => {
+    if (salesLoading) return;
+    const okCreateQuote = await confirmByToast('Open Sales / Quote for this lead?', 'Yes');
+    if (!okCreateQuote) {
+      showToast('Sales / Quote action cancelled.', 'error');
+      return;
+    }
+    setSalesLoading(true);
+    try {
+      const res = await api.get('/sales/customers');
+      const customers = res.data || [];
+      let linked = customers.find((c) => String(c?.lead_id || '') === String(lead.id));
+      if (!linked) {
+        const okCreateCustomer = await confirmByToast(
+          'No customer linked to this lead. Create customer now?',
+          'Yes',
+        );
+        if (!okCreateCustomer) {
+          showToast('Customer creation cancelled. Quotation not opened.', 'error');
+          setSalesLoading(false);
+          return;
+        }
+        const conv = await api.post(`/crm/leads/${lead.id}/convert-customer`);
+        const convertedCustomer = conv?.data?.customer;
+        if (convertedCustomer?.id) {
+          linked = convertedCustomer;
+        } else {
+          const reloaded = await api.get('/sales/customers');
+          const refreshed = reloaded.data || [];
+          linked = refreshed.find((c) => String(c?.lead_id || '') === String(lead.id));
+        }
+        if (!linked?.id) {
+          showToast('Customer could not be created from this lead.', 'error');
+          setSalesLoading(false);
+          return;
+        }
+        showToast('Customer created from lead. Opening quotation list.', 'success');
+      }
+      const quotesRes = await api.get('/sales/quotations');
+      const quotes = quotesRes.data || [];
+      const hasExistingQuotes = Array.isArray(quotes)
+        && quotes.some((q) => String(q?.customer_id || '') === String(linked?.id || ''));
+      if (hasExistingQuotes) {
+        showToast('Confirmed. Opening quotation list.', 'success');
+        onClose();
+        nav('/sales/quotes', {
+          state: {
+            initialTab: 'quotes',
+            filterCustomerId: Number(linked.id),
+            filterCustomerName: String(linked.name || '').trim() || undefined,
+          },
+        });
+        return;
+      }
+      const sp = new URLSearchParams();
+      if (linked?.id) {
+        sp.set('customerId', String(linked.id));
+        sp.set('prefillCustomer', '1');
+      }
+      const assigneeId = Number(detail?.assigned_to ?? lead?.assigned_to ?? 0);
+      if (Number.isFinite(assigneeId) && assigneeId > 0) {
+        sp.set('createdBy', String(assigneeId));
+      }
+      showToast('Confirmed. Opening quotation create page.', 'success');
+      onClose();
+      nav({ pathname: '/sales/quotes/new', search: sp.toString() });
+    } catch (err) {
+      showToast(apiErrorMessage(err, 'Could not open sales/quote flow'), 'error');
+    } finally {
+      setSalesLoading(false);
+    }
+  };
+
   const ACTIVITY_ICONS = {
     note: '📝', call: '📞', email: '📧', meeting: '🤝', whatsapp: '💬', sms: '💬',
   };
@@ -621,12 +712,13 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
             ) : (
               <span className="h-11 rounded-xl border border-dashed border-slate-200 dark:border-slate-600 text-slate-400 text-[10px] flex items-center justify-center">No phone</span>
             )}
-            <Link
-              to={salesFromLeadPath(lead.id)}
-              onClick={onClose}
+            <button
+              type="button"
+              onClick={openQuotationCreate}
+              disabled={salesLoading}
               className="h-11 rounded-xl border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 text-[11px] font-semibold flex items-center justify-center gap-1 hover:bg-slate-50 dark:hover:bg-slate-800">
               🛒 Sales
-            </Link>
+            </button>
           </div>
 
           <div className="grid grid-cols-3 gap-2 mt-3">
@@ -871,6 +963,14 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
         </div>
       </div>
 
+      {salesLoading && (
+        <div className="fixed inset-0 z-[10001] bg-black/25 backdrop-blur-sm flex items-center justify-center">
+          <div className="bg-white dark:bg-[#13152a] border border-slate-200 dark:border-slate-700 rounded-xl px-5 py-4 shadow-xl flex items-center gap-3">
+            <div className="w-5 h-5 border-2 border-slate-300 border-t-brand-600 rounded-full animate-spin" />
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Opening quote flow...</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
