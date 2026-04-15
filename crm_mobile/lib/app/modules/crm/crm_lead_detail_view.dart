@@ -335,6 +335,11 @@ class CrmLeadDetailView extends StatelessWidget {
                           ],
                           const SizedBox(height: 8),
                           _DetailIconRow(icon: Icons.sell_outlined, label: 'Lead source', value: lead.source),
+                          _DetailIconRow(
+                            icon: Icons.category_outlined,
+                            label: 'Product category',
+                            value: lead.productCategory.trim().isEmpty ? '—' : lead.productCategory.trim(),
+                          ),
                           if (lead.tags.isNotEmpty) ...[
                             const SizedBox(height: 10),
                             Text('Tags', style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700)),

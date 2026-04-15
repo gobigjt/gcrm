@@ -52,11 +52,10 @@ export default function Login() {
         {/* Brand */}
         <div className="text-center mb-8">
           <img
-            src="/default-logo.png"
+            src={dark ? '/logo-white.png' : '/logo-dark.png'}
             alt="EzCRM logo"
             className="h-14 w-auto max-w-[240px] mx-auto mb-4 rounded-md object-contain p-1"
           />
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50 tracking-tight">EzCRM</h1>
           <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Sign in to your workspace</p>
         </div>
 

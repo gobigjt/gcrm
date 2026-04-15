@@ -8,7 +8,7 @@ import { apiErrorMessage } from '../../utils/apiErrorMessage';
 
 const EMPTY = {
   name: '', email: '', phone: '', company: '', source_id: '', stage_id: '', assigned_to: '', assigned_manager_id: '', priority: 'warm', notes: '',
-  lead_segment: '', job_title: '', website: '', address: '', tags: '', deal_size: '', lead_score: '',
+  lead_segment: '', job_title: '', product_category: '', website: '', address: '', tags: '', deal_size: '', lead_score: '',
 };
 
 function tagsToString(tags) {
@@ -32,6 +32,7 @@ function leadToForm(row) {
     notes: row.notes || '',
     lead_segment: row.lead_segment || '',
     job_title: row.job_title || '',
+    product_category: row.product_category || '',
     website: row.website || '',
     address: row.address || '',
     tags: tagsToString(row.tags),
@@ -51,6 +52,7 @@ export default function CRMLeadFormPage() {
   const [users, setUsers] = useState([]);
   const [segments, setSegments] = useState([]);
   const [priorities, setPriorities] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [form, setForm] = useState({ ...EMPTY });
   const [loading, setLoading] = useState(false);
   const roleName = String(user?.role || '').toLowerCase();
@@ -70,6 +72,7 @@ export default function CRMLeadFormPage() {
     api.get('/crm/leads/assignees').then((r) => setUsers(r.data || [])).catch(() => setUsers([]));
     api.get('/crm/leads/masters/segments').then((r) => setSegments(Array.isArray(r.data) ? r.data : [])).catch(() => setSegments([]));
     api.get('/crm/leads/masters/priorities').then((r) => setPriorities(Array.isArray(r.data) ? r.data : [])).catch(() => setPriorities([]));
+    api.get('/inventory/categories').then((r) => setCategories(Array.isArray(r.data) ? r.data : [])).catch(() => setCategories([]));
   }, []);
 
   useEffect(() => {
@@ -100,6 +103,7 @@ export default function CRMLeadFormPage() {
       notes: form.notes.trim() || null,
       lead_segment: form.lead_segment.trim() || null,
       job_title: form.job_title.trim() || null,
+      product_category: form.product_category.trim() || null,
       website: form.website.trim() || null,
       address: form.address.trim() || null,
       tags: tagsArr,
@@ -155,6 +159,15 @@ export default function CRMLeadFormPage() {
                 </Field>
               <Field label="Job title"><input className={inputCls} value={form.job_title} onChange={set('job_title')} /></Field>
             </div>
+            <Field label="Product category">
+              <select className={selectCls} value={form.product_category} onChange={set('product_category')}>
+                <option value="">Select…</option>
+                {form.product_category && !categories.some((c) => c.name === form.product_category) && (
+                  <option value={form.product_category}>{form.product_category}</option>
+                )}
+                {categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+              </select>
+            </Field>
             <Field label="Website"><input className={inputCls} value={form.website} onChange={set('website')} /></Field>
             <Field label="Address"><textarea className={inputCls + ' h-16 resize-none'} value={form.address} onChange={set('address')} /></Field>
           </section>

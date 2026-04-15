@@ -201,6 +201,36 @@ Widget salesDropdownRow({
   );
 }
 
+Widget salesCustomerAddressPreview(
+  BuildContext context, {
+  required Map<String, dynamic>? customer,
+}) {
+  if (customer == null) return const SizedBox.shrink();
+  final billing = ((customer['billing_address'] ?? customer['address'] ?? '') as Object).toString().trim();
+  final shipping = ((customer['shipping_address'] ?? '') as Object).toString().trim();
+  final gstin = ((customer['gstin'] ?? '') as Object).toString().trim();
+  if (billing.isEmpty && shipping.isEmpty && gstin.isEmpty) return const SizedBox.shrink();
+  final cs = Theme.of(context).colorScheme;
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+  return Container(
+    margin: const EdgeInsets.only(top: 10),
+    padding: const EdgeInsets.all(10),
+    decoration: BoxDecoration(
+      color: cs.surfaceContainer,
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: isDark ? cs.outlineVariant : Colors.grey.shade300),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (billing.isNotEmpty) Text('Billing: $billing', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+        if (shipping.isNotEmpty) Text('Shipping: $shipping', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+        if (gstin.isNotEmpty) Text('GSTIN: $gstin', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+      ],
+    ),
+  );
+}
+
 // ─── Totals card helper ───────────────────────────────────────────────────────
 
 /// A single row in the dark totals summary card.

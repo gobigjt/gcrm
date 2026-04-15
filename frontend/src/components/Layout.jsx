@@ -241,7 +241,7 @@ export default function Layout({ children }) {
   const roleCls = roleColors[roleLabel] || roleColors.default;
   const displayName = (user?.name || user?.email || 'User').toString().trim() || 'User';
   const avatarSrc = resolveApiPublicUrl(user?.avatar_url || user?.avatarUrl);
-  const logoSrc = '/default-logo.png';
+  const logoSrc = dark ? '/logo-white.png' : '/logo-dark.png';
   const pageKey = Object.keys(PAGE_META)
     .filter((p) => p === '/' || pathname.startsWith(p))
     .sort((a, b) => b.length - a.length)[0] || '/';

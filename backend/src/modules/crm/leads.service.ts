@@ -195,7 +195,7 @@ export class LeadsService {
       conds.push(`(
         l.name ILIKE $${i} OR l.email ILIKE $${i} OR l.company ILIKE $${i} OR l.phone ILIKE $${i}
         OR l.website ILIKE $${i} OR l.address ILIKE $${i} OR l.job_title ILIKE $${i}
-        OR l.lead_segment ILIKE $${i}
+        OR l.lead_segment ILIKE $${i} OR l.product_category ILIKE $${i}
         OR COALESCE(array_to_string(l.tags, ' '), '') ILIKE $${i}
       )`);
       vals.push(term);
@@ -284,9 +284,9 @@ export class LeadsService {
     const res = await this.db.query(
       `INSERT INTO leads (
          name,email,phone,company,source_id,stage_id,assigned_to,assigned_manager_id,notes,priority,custom_fields,
-         lead_segment,job_title,deal_size,website,address,tags,lead_score,created_by
+         lead_segment,job_title,product_category,deal_size,website,address,tags,lead_score,created_by
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::text[],$18,$19) RETURNING *`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18::text[],$19,$20) RETURNING *`,
       [
         data.name, data.email, data.phone, data.company, data.source_id,
         data.stage_id, data.assigned_to || null, data.assigned_manager_id || null, data.notes,
@@ -294,6 +294,7 @@ export class LeadsService {
         data.custom_fields ? JSON.stringify(data.custom_fields) : null,
         data.lead_segment ?? null,
         data.job_title ?? null,
+        data.product_category ?? null,
         data.deal_size ?? null,
         data.website ?? null,
         data.address ?? null,
@@ -336,7 +337,7 @@ export class LeadsService {
     const fields = [
       'name', 'email', 'phone', 'company', 'source_id', 'stage_id', 'assigned_to', 'assigned_manager_id', 'notes',
       'priority', 'custom_fields', 'is_converted', 'lead_score',
-      'lead_segment', 'job_title', 'deal_size', 'website', 'address', 'tags',
+      'lead_segment', 'job_title', 'product_category', 'deal_size', 'website', 'address', 'tags',
     ];
     const sets: string[] = [];
     const vals: any[] = [];
