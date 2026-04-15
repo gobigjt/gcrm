@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../core/auth/role_permissions.dart';
 import '../../core/utils/ui_format.dart'
     show formatInrAmountDisplay, formatIsoDate, formatSalesCardDate, parseDynamicNum;
 import '../../routes/app_routes.dart';
@@ -170,6 +171,9 @@ class _SalesDocumentDetailViewState extends State<SalesDocumentDetailView> {
       final fg = _appBarFg(context);
       final cs = Theme.of(context).colorScheme;
       final isDark = Theme.of(context).brightness == Brightness.dark;
+      final auth = Get.find<AuthController>();
+      final approval = SalesDocumentDetailController.approvalStatusOf(d);
+      final blockPdf = approval == 'pending' && !canApproveSalesDocuments(auth.role.value);
       final canEdit = widget.kind == SalesDocumentKind.quotation ||
           widget.kind == SalesDocumentKind.invoice ||
           widget.kind == SalesDocumentKind.order;
@@ -187,8 +191,8 @@ class _SalesDocumentDetailViewState extends State<SalesDocumentDetailView> {
           title: Text(_titleForKind(widget.kind)),
           actions: [
             IconButton(
-              tooltip: 'Download PDF',
-              onPressed: _pdfBusy ? null : () => _downloadPdf(d),
+              tooltip: blockPdf ? 'PDF available after approval' : 'Download PDF',
+              onPressed: (blockPdf || _pdfBusy) ? null : () => _downloadPdf(d),
               icon: _pdfBusy
                   ? SizedBox(
                       width: 22,
@@ -236,7 +240,7 @@ class _SalesDocumentDetailViewState extends State<SalesDocumentDetailView> {
             const SizedBox(height: 12),
             _customerBlock(d, isDark, cs),
             const SizedBox(height: 12),
-            _statusAndMeta(c, widget.kind, d, isDark, cs),
+            _statusAndMeta(c, widget.kind, d, isDark, cs, approval),
             if ((d['notes'] ?? '').toString().trim().isNotEmpty) ...[
               const SizedBox(height: 12),
               Text('Notes', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: cs.onSurface)),
@@ -307,11 +311,93 @@ Widget _statusAndMeta(
   Map<String, dynamic> d,
   bool isDark,
   ColorScheme cs,
+  String approval,
 ) {
   final status = SalesDocumentDetailController.statusOf(d, kind);
+  final auth = Get.find<AuthController>();
+  final canApprove = canApproveSalesDocuments(auth.role.value);
+  final showWorkflowMenus = approval == 'approved';
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
+      if (approval == 'pending')
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Material(
+            color: isDark ? const Color(0xFF3D2E00) : const Color(0xFFFFF8E1),
+            borderRadius: BorderRadius.circular(10),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.hourglass_top_rounded, size: 20, color: isDark ? Colors.amber.shade200 : Colors.amber.shade900),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Awaiting approval from a sales manager or admin before this document can be sent, fulfilled, or paid.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.35,
+                        color: isDark ? Colors.amber.shade100 : Colors.brown.shade900,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      if (approval == 'rejected')
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Material(
+            color: isDark ? const Color(0xFF3D1518) : const Color(0xFFFCEBEB),
+            borderRadius: BorderRadius.circular(10),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                children: [
+                  Icon(Icons.cancel_outlined, size: 20, color: isDark ? const Color(0xFFFDA4AF) : const Color(0xFF791F1F)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'This document was rejected. Edit and resubmit, or contact your manager.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.35,
+                        color: isDark ? const Color(0xFFFDA4AF) : const Color(0xFF791F1F),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      if (approval == 'pending' && canApprove)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Obx(() {
+            final saving = c.isSaving.value;
+            return Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton(
+                  onPressed: saving ? null : () => c.setDocumentApproval('approved'),
+                  child: const Text('Approve'),
+                ),
+                OutlinedButton(
+                  onPressed: saving ? null : () => c.setDocumentApproval('rejected'),
+                  child: const Text('Reject'),
+                ),
+              ],
+            );
+          }),
+        ),
       Wrap(
         spacing: 8,
         runSpacing: 8,
@@ -319,7 +405,7 @@ Widget _statusAndMeta(
         children: [
           Text('Status:', style: TextStyle(color: isDark ? cs.onSurface : Colors.grey.shade800, fontWeight: FontWeight.w600)),
           _statusChip(kind, status, isDark),
-          if (kind == SalesDocumentKind.quotation)
+          if (kind == SalesDocumentKind.quotation && showWorkflowMenus)
             Obx(() {
               final saving = c.isSaving.value;
               return PopupMenuButton<String>(
@@ -342,7 +428,7 @@ Widget _statusAndMeta(
                 ),
               );
             }),
-          if (kind == SalesDocumentKind.order)
+          if (kind == SalesDocumentKind.order && showWorkflowMenus)
             Obx(() {
               final saving = c.isSaving.value;
               return PopupMenuButton<String>(

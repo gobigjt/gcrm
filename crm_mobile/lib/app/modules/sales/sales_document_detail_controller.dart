@@ -118,6 +118,30 @@ class SalesDocumentDetailController extends GetxController {
         .toString();
   }
 
+  /// Backend `approval_status`: `pending` | `approved` | `rejected` (defaults to approved for older rows).
+  static String approvalStatusOf(Map<String, dynamic>? d) {
+    return (d?['approval_status'] ?? 'approved').toString().trim().toLowerCase();
+  }
+
+  Future<void> setDocumentApproval(String approvedOrRejected) async {
+    if (documentId <= 0) return;
+    final v = approvedOrRejected.trim().toLowerCase();
+    if (v != 'approved' && v != 'rejected') return;
+    isSaving.value = true;
+    try {
+      await _auth.authorizedRequest(
+        method: 'PATCH',
+        path: _path,
+        body: {'approval_status': v},
+      );
+      await load();
+    } catch (e) {
+      Get.snackbar('Error', userFriendlyError(e));
+    } finally {
+      isSaving.value = false;
+    }
+  }
+
   static double lineAmount(Map<String, dynamic> item) => parseDynamicNum(item['total']).toDouble();
 
   static double sumPayments(Map<String, dynamic>? inv) {

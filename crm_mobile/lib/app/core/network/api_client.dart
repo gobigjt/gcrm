@@ -15,8 +15,8 @@ class ApiClient {
   /// Avoid hanging forever on cold start / splash when the host is wrong or offline.
   static const Duration requestTimeout = Duration(seconds: 20);
 
-  // Centralized app API URL from WebAppConfig (still overrideable with --dart-define=API_BASE_URL=...).
-  static const String baseUrl = WebAppConfig.apiBaseUrl;
+  // Centralized app API URL from WebAppConfig (override with --dart-define=API_BASE_URL=...).
+  static String get baseUrl => WebAppConfig.apiBaseUrl;
 
   /// Ensures [raw] becomes an absolute http(s) URL. On Flutter Web, a host without a scheme
   /// is treated as a path on the app origin (e.g. localhost:port/127.0.0.1:4000/...).
