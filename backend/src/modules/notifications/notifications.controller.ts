@@ -1,5 +1,5 @@
-import { Controller, Delete, Get, Param, Patch, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard }          from '../../common/guards/jwt-auth.guard';
 import { CurrentUser }           from '../../common/decorators/current-user.decorator';
 import { NotificationsService }  from './notifications.service';
@@ -27,4 +27,44 @@ export class NotificationsController {
 
   @Delete('read')
   deleteRead(@CurrentUser() u: any) { return this.svc.deleteRead(u.id); }
+
+  @Post('push-token')
+  registerPushToken(
+    @CurrentUser() u: any,
+    @Body() body: { token?: string; platform?: string },
+  ) {
+    return this.svc.registerPushToken({
+      userId: Number(u.id),
+      token: String(body?.token || ''),
+      platform: body?.platform,
+    });
+  }
+
+  @Delete('push-token')
+  unregisterPushToken(
+    @CurrentUser() u: any,
+    @Body() body?: { token?: string },
+  ) {
+    return this.svc.unregisterPushToken({
+      userId: Number(u.id),
+      token: body?.token,
+    });
+  }
+
+  @Post('test-push')
+  testPush(
+    @CurrentUser() u: any,
+    @Body() body?: {
+      user_id?: number;
+      title?: string;
+      body?: string;
+    },
+  ) {
+    return this.svc.testPush({
+      actorUserId: Number(u.id),
+      targetUserId: body?.user_id,
+      title: body?.title,
+      body: body?.body,
+    });
+  }
 }

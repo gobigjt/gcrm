@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { RedisService }    from '../../redis/redis.service';
+import { SalesNotificationsService } from './sales-notifications.service';
 import { createWriteStream, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import PDFDocument = require('pdfkit');
@@ -319,7 +320,11 @@ type DbTxClient = { query: (sql: string, params?: any[]) => Promise<{ rows: any[
 
 @Injectable()
 export class SalesService {
-  constructor(private readonly db: DatabaseService, private readonly cache: RedisService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly cache: RedisService,
+    private readonly salesNotifications: SalesNotificationsService,
+  ) {}
 
   // ─── Customers ────────────────────────────────────────────
   async listCustomers(search?: string) {
@@ -1029,7 +1034,7 @@ export class SalesService {
     return q.rows[0] ? { ...q.rows[0], items: items.rows } : null;
   }
   async createQuotation(data: any, items: any[], actor?: SalesActor) {
-    return this.db.transaction(async (client) => {
+    const created = await this.db.transaction(async (client) => {
       const { subtotal, cgst, sgst, igst, total } = deriveTotalsFromLineItems(items);
       const qn = await this.nextQuotationNumber(client);
       const approval = initialDocApprovalStatus(actor?.role);
@@ -1070,6 +1075,8 @@ export class SalesService {
           [qr.rows[0].id, it.product_id||null, it.description, it.quantity, it.unit_price, it.discount||0, it.gst_rate||0, it.cgst||0, it.sgst||0, it.igst||0, it.total]);
       return qr.rows[0];
     });
+    await this.salesNotifications.notifySalesManagerOnExecutiveQuoteCreated(created, actor);
+    return created;
   }
 
   // ─── Orders ───────────────────────────────────────────────

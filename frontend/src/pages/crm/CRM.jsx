@@ -717,7 +717,7 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
               onClick={openQuotationCreate}
               disabled={salesLoading}
               className="h-11 rounded-xl border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 text-[11px] font-semibold flex items-center justify-center gap-1 hover:bg-slate-50 dark:hover:bg-slate-800">
-              🛒 Sales
+              🛒 Sales / Quote
             </button>
           </div>
 

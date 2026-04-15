@@ -181,6 +181,34 @@ class ApiClient {
     return Map<String, dynamic>.from(data as Map);
   }
 
+  Future<void> registerPushToken({
+    required String accessToken,
+    required String token,
+    required String platform,
+  }) async {
+    await request(
+      method: 'POST',
+      path: '/notifications/push-token',
+      headers: {'Authorization': 'Bearer $accessToken'},
+      body: {
+        'token': token,
+        'platform': platform,
+      },
+    );
+  }
+
+  Future<void> unregisterPushToken({
+    required String accessToken,
+    String? token,
+  }) async {
+    await request(
+      method: 'DELETE',
+      path: '/notifications/push-token',
+      headers: {'Authorization': 'Bearer $accessToken'},
+      body: token == null ? <String, dynamic>{} : {'token': token},
+    );
+  }
+
   static MediaType _imageMediaTypeForFilename(String name) {
     final lower = name.toLowerCase();
     if (lower.endsWith('.png')) return MediaType('image', 'png');

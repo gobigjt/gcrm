@@ -173,6 +173,7 @@ class AuthView extends GetView<AuthController> {
                             ),
                           ),
                         ),
+                        const SizedBox(height: 8),
                         Align(
                           alignment: Alignment.centerRight,
                           child: TextButton(
@@ -198,7 +199,7 @@ class AuthView extends GetView<AuthController> {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 8),
                         Obx(
                           () => _SignInButton(
                             isLoading: controller.isLoading.value,
@@ -206,39 +207,6 @@ class AuthView extends GetView<AuthController> {
                                 ? null
                                 : controller.login,
                           ),
-                        ),
-                        const SizedBox(height: 20),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Divider(
-                                  color: borderColor,
-                                  thickness: 0.8,
-                                  height: 1),
-                            ),
-                            Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 12),
-                              child: Text(
-                                'or',
-                                style: TextStyle(
-                                    fontSize: 11, color: subtitleColor),
-                              ),
-                            ),
-                            Expanded(
-                              child: Divider(
-                                  color: borderColor,
-                                  thickness: 0.8,
-                                  height: 1),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        _BiometricButton(
-                          isDark: isDark,
-                          borderColor: borderColor,
-                          textColor: textColor,
-                          fieldFill: fieldFill,
                         ),
                       ],
                     ),
@@ -363,52 +331,3 @@ class _SignInButton extends StatelessWidget {
   }
 }
 
-class _BiometricButton extends StatelessWidget {
-  const _BiometricButton({
-    required this.isDark,
-    required this.borderColor,
-    required this.textColor,
-    required this.fieldFill,
-  });
-
-  final bool isDark;
-  final Color borderColor;
-  final Color textColor;
-  final Color fieldFill;
-
-  @override
-  Widget build(BuildContext context) {
-    return OutlinedButton(
-      style: OutlinedButton.styleFrom(
-        foregroundColor: textColor,
-        backgroundColor: fieldFill,
-        side: BorderSide(color: borderColor),
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
-      ),
-      onPressed: () {
-        Get.snackbar(
-          'Biometric login',
-          'Not implemented in this prototype. You can still sign in with password.',
-          snackPosition: SnackPosition.BOTTOM,
-        );
-      },
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.fingerprint_rounded, size: 20, color: textColor),
-          const SizedBox(width: 10),
-          Text(
-            'Continue with biometrics',
-            style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: textColor),
-          ),
-        ],
-      ),
-    );
-  }
-}

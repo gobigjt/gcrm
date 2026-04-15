@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
@@ -25,6 +27,7 @@ class AuthController extends GetxController {
   final ApiClient _api = ApiClient();
   final SecureStorageService _storage = SecureStorageService();
   Future<void>? _tokenRefreshInFlight;
+  StreamSubscription<String>? _fcmTokenSub;
 
   final email = ''.obs;
   final password = ''.obs;
@@ -51,7 +54,14 @@ class AuthController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    _initFcmTokenSync();
     restoreSession();
+  }
+
+  @override
+  void onClose() {
+    _fcmTokenSub?.cancel();
+    super.onClose();
   }
 
   Future<void> login() async {
@@ -132,6 +142,7 @@ class AuthController extends GetxController {
   Future<void> logout() async {
     final access = accessToken.value;
     final refresh = refreshToken.value;
+    await _unregisterPushTokenSafe(access);
     if (access.isNotEmpty && refresh.isNotEmpty) {
       try {
         await _api.logout(accessToken: access, refreshToken: refresh);
@@ -245,6 +256,7 @@ class AuthController extends GetxController {
     accessToken.value = access;
     refreshToken.value = refresh;
     await _loadPermissionsFromServer(access);
+    await _registerPushTokenSafe(access);
     isLoggedIn.value = true;
     await refreshSalesExecutiveAttendance();
   }
@@ -377,6 +389,67 @@ class AuthController extends GetxController {
     grantedPermissions.clear();
     crmExecutiveScopeId.value = null;
     await _storage.clearSession();
+  }
+
+  String _pushPlatform() {
+    if (kIsWeb) return 'web';
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.android:
+        return 'android';
+      case TargetPlatform.iOS:
+        return 'ios';
+      case TargetPlatform.windows:
+        return 'windows';
+      case TargetPlatform.macOS:
+        return 'macos';
+      case TargetPlatform.linux:
+        return 'linux';
+      default:
+        return 'unknown';
+    }
+  }
+
+  void _initFcmTokenSync() {
+    try {
+      _fcmTokenSub = FirebaseMessaging.instance.onTokenRefresh.listen((token) async {
+        final access = accessToken.value;
+        if (access.isEmpty || token.trim().isEmpty) return;
+        await _api.registerPushToken(
+          accessToken: access,
+          token: token,
+          platform: _pushPlatform(),
+        );
+      });
+    } catch (_) {
+      // Firebase may be unavailable in local/dev builds.
+    }
+  }
+
+  Future<void> _registerPushTokenSafe(String access) async {
+    if (access.isEmpty) return;
+    try {
+      final messaging = FirebaseMessaging.instance;
+      await messaging.requestPermission(alert: true, badge: true, sound: true);
+      final token = await messaging.getToken();
+      if (token == null || token.trim().isEmpty) return;
+      await _api.registerPushToken(
+        accessToken: access,
+        token: token,
+        platform: _pushPlatform(),
+      );
+    } catch (_) {
+      // Push setup should never block login/session restore.
+    }
+  }
+
+  Future<void> _unregisterPushTokenSafe(String access) async {
+    if (access.isEmpty) return;
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      await _api.unregisterPushToken(accessToken: access, token: token);
+    } catch (_) {
+      // Ignore token cleanup failures on logout.
+    }
   }
 
   Future<void> _persistUserFromAvatarResponse(Map<String, dynamic> data) async {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:get/get.dart';
 
 import 'app/core/theme/app_theme.dart';
@@ -7,7 +8,13 @@ import 'app/modules/auth/auth_controller.dart';
 import 'app/routes/app_pages.dart';
 import 'app/routes/app_routes.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await Firebase.initializeApp();
+  } catch (_) {
+    // App still runs without FCM if Firebase config is not set yet.
+  }
   runApp(const CrmMobileApp());
 }
 
