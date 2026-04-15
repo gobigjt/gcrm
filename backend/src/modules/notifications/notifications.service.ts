@@ -60,6 +60,49 @@ export class NotificationsService {
     return res.rows[0];
   }
 
+  /**
+   * In-app notification row + FCM to all active device tokens for the user.
+   * FCM `data` values must be strings; extra keys go in `pushPayload`.
+   */
+  async createInAppAndPush(data: {
+    user_id: number;
+    title: string;
+    body?: string | null;
+    type?: string;
+    module?: string;
+    link?: string | null;
+    pushPayload?: Record<string, string>;
+  }): Promise<{ sent: number; failed: number }> {
+    try {
+      const bodyText = data.body != null && data.body !== '' ? String(data.body) : null;
+      await this.create({
+        user_id: data.user_id,
+        title: data.title,
+        body: bodyText ?? undefined,
+        type: data.type ?? 'info',
+        module: data.module ?? undefined,
+        link: data.link != null ? String(data.link) : undefined,
+      });
+      const payload: Record<string, string> = {
+        module: String(data.module ?? ''),
+        link: data.link != null ? String(data.link) : '',
+      };
+      for (const [k, v] of Object.entries(data.pushPayload || {})) {
+        payload[k] = v == null ? '' : String(v);
+      }
+      const push = await this.sendPushToUser({
+        userId: data.user_id,
+        title: data.title,
+        body: bodyText ?? undefined,
+        payload,
+      });
+      return { sent: push.sent ?? 0, failed: push.failed ?? 0 };
+    } catch {
+      /* must not break callers */
+      return { sent: 0, failed: 0 };
+    }
+  }
+
   async deleteRead(userId: number) {
     await this.db.query(
       'DELETE FROM notifications WHERE user_id=$1 AND is_read=TRUE',
@@ -163,29 +206,21 @@ export class NotificationsService {
       String(input.body || '').trim() ||
       `FCM test sent at ${new Date().toISOString()}`;
 
-    const push = await this.sendPushToUser({
-      userId: targetUserId,
-      title,
-      body,
-      payload: {
-        module: 'notifications',
-        source: 'test-push',
-      },
-    });
-
-    await this.create({
+    const push = await this.createInAppAndPush({
       user_id: targetUserId,
       title,
       body,
       type: 'info',
       module: 'notifications',
+      link: null,
+      pushPayload: { source: 'test-push' },
     });
 
     return {
       ok: true,
       target_user_id: targetUserId,
-      sent: push.sent ?? 0,
-      failed: push.failed ?? 0,
+      sent: push.sent,
+      failed: push.failed,
     };
   }
 }

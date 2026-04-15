@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { RedisService }    from '../../redis/redis.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -24,17 +24,116 @@ export class LeadsService {
 
   private async notifyCrmLead(userId: number, lead: { id: number; name: string; company?: string | null }, title: string, body?: string | null) {
     if (!userId) return;
+    const link = this.crmLeadWebLink(lead.id);
+    const text = body ?? (lead.company ? String(lead.company) : 'Open to view details');
+    await this.notifications.createInAppAndPush({
+      user_id: userId,
+      title,
+      body: text,
+      type: 'info',
+      module: 'crm',
+      link,
+      pushPayload: { leadId: String(lead.id) },
+    });
+  }
+
+  private async resolveManagerIdsForNewLead(row: { assigned_manager_id?: unknown; assigned_to?: unknown; created_by?: unknown }): Promise<number[]> {
+    const ids = new Set<number>();
+    const am = row.assigned_manager_id != null ? Number(row.assigned_manager_id) : 0;
+    if (Number.isInteger(am) && am > 0) ids.add(am);
+
+    const addManagerOfUser = async (userId: number) => {
+      if (!Number.isInteger(userId) || userId <= 0) return;
+      const r = await this.db.query(
+        `SELECT sales_manager_id FROM users WHERE id = $1 AND is_active = TRUE LIMIT 1`,
+        [userId],
+      );
+      const sm = r.rows[0]?.sales_manager_id != null ? Number(r.rows[0].sales_manager_id) : 0;
+      if (Number.isInteger(sm) && sm > 0) ids.add(sm);
+    };
+
+    const at = row.assigned_to != null ? Number(row.assigned_to) : 0;
+    await addManagerOfUser(at);
+
+    const cb = row.created_by != null ? Number(row.created_by) : 0;
+    await addManagerOfUser(cb);
+
+    if (ids.size === 0) {
+      const all = await this.db.query(
+        `SELECT id FROM users
+          WHERE is_active = TRUE
+            AND (role = 'Sales Manager' OR role = 'Manager')`,
+      );
+      for (const x of all.rows) {
+        const id = Number(x.id);
+        if (Number.isInteger(id) && id > 0) ids.add(id);
+      }
+    }
+    return [...ids];
+  }
+
+  private async notifyManagersForNewLead(row: { id: number; name?: string; company?: string | null; assigned_manager_id?: unknown; assigned_to?: unknown; created_by?: unknown }) {
+    const managerIds = await this.resolveManagerIdsForNewLead(row);
+    const leadName = String(row.name || 'Lead').trim() || 'Lead';
+    const title = 'New lead';
+    const body = `${leadName} was added.`;
+    for (const mgrId of managerIds) {
+      await this.notifyCrmLead(mgrId, { id: row.id, name: leadName, company: row.company ?? null }, title, body);
+    }
+  }
+
+  /** After a lead row exists (API, capture, imports): managers + assignee notifications. */
+  async notifyAfterLeadRowPull(leadId: number): Promise<void> {
+    const r = await this.db.query(
+      `SELECT id, name, company, assigned_to, assigned_manager_id, created_by FROM leads WHERE id = $1 LIMIT 1`,
+      [leadId],
+    );
+    const row = r.rows[0];
+    if (!row) return;
+    await this.notifyAfterLeadRow(row);
+  }
+
+  private async notifyAfterLeadRow(row: { id: number; name?: string; company?: string | null; assigned_to?: unknown; assigned_manager_id?: unknown; created_by?: unknown }) {
+    await this.notifyManagersForNewLead(row);
+    if (row.assigned_to != null && Number(row.assigned_to) > 0) {
+      const leadName = String(row.name || 'Lead').trim() || 'Lead';
+      await this.notifyCrmLead(
+        Number(row.assigned_to),
+        { id: row.id, name: leadName, company: row.company ?? null },
+        `New lead assigned: ${leadName}`,
+      );
+    }
+  }
+
+  private async notifyManagerOfSalesExecutive(
+    executiveUserId: number,
+    title: string,
+    body: string,
+    leadId: number,
+    leadDisplayName: string,
+  ) {
+    if (!Number.isInteger(executiveUserId) || executiveUserId <= 0) return;
     try {
-      await this.notifications.create({
-        user_id: userId,
+      const mgrRes = await this.db.query(
+        `SELECT m.id
+           FROM users u
+           JOIN users m ON m.id = u.sales_manager_id
+          WHERE u.id = $1
+            AND u.is_active = TRUE
+            AND m.is_active = TRUE
+          LIMIT 1`,
+        [executiveUserId],
+      );
+      const mid = mgrRes.rows[0]?.id;
+      if (!mid) return;
+      await this.notifyCrmLead(
+        Number(mid),
+        { id: leadId, name: leadDisplayName, company: null },
         title,
-        body: body ?? (lead.company ? String(lead.company) : 'Open to view details'),
-        type: 'info',
-        module: 'crm',
-        link: this.crmLeadWebLink(lead.id),
-      });
+        body,
+      );
     } catch {
-      /* notification failure must not break CRM */
+      /* ignore */
     }
   }
 
@@ -306,13 +405,11 @@ export class LeadsService {
     const row = res.rows[0];
     await this.cache.delPattern('leads:*');
     await this.invalidateDashboardCache();
-    if (row.assigned_to) {
-      await this.notifyCrmLead(Number(row.assigned_to), row, `New lead assigned: ${row.name}`);
-    }
+    await this.notifyAfterLeadRow(row);
     return row;
   }
 
-  async update(id: number, data: any) {
+  async update(id: number, data: any, currentUser?: { id?: unknown; role?: unknown }) {
     const intPatchKeys = ['assigned_to', 'assigned_manager_id', 'source_id', 'stage_id'] as const;
     for (const key of intPatchKeys) {
       if (!Object.prototype.hasOwnProperty.call(data, key)) continue;
@@ -329,10 +426,15 @@ export class LeadsService {
       data[key] = n;
     }
 
+    const prevSnapRes = await this.db.query(
+      'SELECT stage_id, assigned_to, name, company FROM leads WHERE id=$1',
+      [id],
+    );
+    const prevSnap = prevSnapRes.rows[0];
+
     let prevAssignee: number | null | undefined;
     if (data.assigned_to !== undefined) {
-      const cur = await this.get(id);
-      prevAssignee = cur ? (cur.assigned_to != null ? Number(cur.assigned_to) : null) : null;
+      prevAssignee = prevSnap ? (prevSnap.assigned_to != null ? Number(prevSnap.assigned_to) : null) : null;
     }
     const fields = [
       'name', 'email', 'phone', 'company', 'source_id', 'stage_id', 'assigned_to', 'assigned_manager_id', 'notes',
@@ -368,8 +470,41 @@ export class LeadsService {
       data.assigned_to != null &&
       Number(data.assigned_to) !== (prevAssignee ?? null)
     ) {
-      await this.notifyCrmLead(Number(data.assigned_to), updated, `Lead reassigned to you: ${updated.name}`);
+      const nm = String(updated.name || 'Lead').trim() || 'Lead';
+      await this.notifyCrmLead(
+        Number(data.assigned_to),
+        { id: updated.id, name: nm, company: updated.company ?? null },
+        `Lead assigned to you: ${nm}`,
+      );
     }
+
+    if (
+      prevSnap &&
+      data.stage_id !== undefined &&
+      updated &&
+      updated.stage_id != null &&
+      Number(updated.stage_id) !== Number(prevSnap.stage_id)
+    ) {
+      const uid = Number(currentUser?.id);
+      if (this.isSalesManagerRole(currentUser?.role) && Number.isInteger(uid) && uid > 0 && updated.assigned_to) {
+        const s1 = Number(prevSnap.stage_id);
+        const s2 = Number(updated.stage_id);
+        const stRes = await this.db.query('SELECT id, name FROM lead_stages WHERE id = $1 OR id = $2', [s1, s2]);
+        const map = new Map<number, string>(stRes.rows.map((r: { id: number; name: string }) => [Number(r.id), String(r.name)]));
+        const oldName = map.get(s1) || 'Previous stage';
+        const newName = map.get(s2) || 'New stage';
+        const mgrNameRes = await this.db.query('SELECT name FROM users WHERE id=$1 LIMIT 1', [uid]);
+        const managerName = String(mgrNameRes.rows[0]?.name || 'Sales Manager');
+        const leadNm = String(updated.name || 'Lead').trim() || 'Lead';
+        await this.notifyCrmLead(
+          Number(updated.assigned_to),
+          { id: updated.id, name: leadNm, company: updated.company ?? null },
+          'Lead stage updated',
+          `${managerName} moved "${leadNm}" from ${oldName} to ${newName}.`,
+        );
+      }
+    }
+
     return updated;
   }
 
@@ -585,7 +720,7 @@ export class LeadsService {
       await this.notifyCrmLead(
         Number(row.assigned_to),
         { id: leadId, name, company: lead?.company },
-        'Follow-up scheduled',
+        'New task assigned',
         row.description || null,
       );
     }
@@ -634,13 +769,40 @@ export class LeadsService {
     return res.rows;
   }
 
-  async doneFollowup(leadId: number, fid: number) {
+  async doneFollowup(leadId: number, fid: number, currentUser?: { id?: unknown; role?: unknown }) {
+    const pre = await this.db.query(
+      `SELECT f.assigned_to, l.name AS lead_name
+         FROM lead_followups f
+         JOIN leads l ON l.id = f.lead_id
+        WHERE f.id = $1 AND f.lead_id = $2`,
+      [fid, leadId],
+    );
+    if (!pre.rows[0]) throw new NotFoundException('Follow-up not found');
+
     const res = await this.db.query(
       'UPDATE lead_followups SET is_done=TRUE WHERE id=$1 AND lead_id=$2 RETURNING *',
       [fid, leadId],
     );
     if (!res.rows[0]) throw new NotFoundException('Follow-up not found');
     await this.invalidateDashboardCache();
+
+    if (currentUser && this.isSalesExecutiveRole(currentUser.role)) {
+      const uid = Number(currentUser.id);
+      const assignee = Number(pre.rows[0].assigned_to);
+      if (Number.isInteger(uid) && uid > 0 && Number.isInteger(assignee) && assignee === uid) {
+        const actorRes = await this.db.query('SELECT name FROM users WHERE id=$1 LIMIT 1', [uid]);
+        const actorName = String(actorRes.rows[0]?.name || 'Sales Executive');
+        const leadNm = String(pre.rows[0].lead_name || 'Lead');
+        await this.notifyManagerOfSalesExecutive(
+          uid,
+          'Task completed',
+          `${actorName} completed a task on "${leadNm}".`,
+          leadId,
+          leadNm,
+        );
+      }
+    }
+
     return res.rows[0];
   }
 
@@ -648,12 +810,29 @@ export class LeadsService {
     leadId: number,
     fid: number,
     data: { due_date?: string; description?: string; assigned_to?: number | null },
+    currentUser?: { id?: unknown; role?: unknown },
   ) {
-    const cur = await this.db.query(
-      'SELECT id FROM lead_followups WHERE id=$1 AND lead_id=$2',
-      [fid, leadId],
-    );
-    if (!cur.rows[0]) throw new NotFoundException('Follow-up not found');
+    const before = (
+      await this.db.query(
+        `SELECT f.*, l.name AS lead_name
+           FROM lead_followups f
+           JOIN leads l ON l.id = f.lead_id
+          WHERE f.id = $1 AND f.lead_id = $2`,
+        [fid, leadId],
+      )
+    ).rows[0];
+    if (!before) throw new NotFoundException('Follow-up not found');
+
+    if (currentUser) {
+      const role = String(currentUser.role || '').trim().toLowerCase();
+      if (role === 'sales executive' || role === 'agent') {
+        const uid = Number(currentUser.id);
+        if (Number(before.assigned_to) !== uid) {
+          throw new ForbiddenException('You can only update tasks assigned to you.');
+        }
+      }
+    }
+
     const sets: string[] = [];
     const vals: any[] = [];
     let i = 1;
@@ -679,6 +858,29 @@ export class LeadsService {
       vals,
     );
     await this.invalidateDashboardCache();
+
+    if (currentUser && this.isSalesExecutiveRole(currentUser.role)) {
+      const uid = Number(currentUser.id);
+      if (Number(before.assigned_to) === uid) {
+        const changed =
+          (data.due_date !== undefined && String(data.due_date ?? '') !== String(before.due_date ?? '')) ||
+          (data.description !== undefined && String(data.description ?? '') !== String(before.description ?? '')) ||
+          (data.assigned_to !== undefined && Number(data.assigned_to) !== Number(before.assigned_to));
+        if (changed) {
+          const actorRes = await this.db.query('SELECT name FROM users WHERE id=$1 LIMIT 1', [uid]);
+          const actorName = String(actorRes.rows[0]?.name || 'Sales Executive');
+          const leadNm = String(before.lead_name || 'Lead');
+          await this.notifyManagerOfSalesExecutive(
+            uid,
+            'Task updated',
+            `${actorName} updated a task on "${leadNm}".`,
+            leadId,
+            leadNm,
+          );
+        }
+      }
+    }
+
     return res.rows[0];
   }
 

@@ -1634,6 +1634,9 @@ export class SalesService {
         throw new BadRequestException('approval_status must be approved or rejected.');
       }
       await this.assertDocumentApprovalPatch('quotations', id, req as 'approved' | 'rejected', actor || {});
+      if (req === 'approved') {
+        void this.salesNotifications.notifyExecutiveOnQuotationApproved(id, actor);
+      }
       delete body.approval_status;
     }
     const apRow = await this.db.query('SELECT approval_status FROM quotations WHERE id=$1', [id]);
