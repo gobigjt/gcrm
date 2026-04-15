@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useSearchParams, useLocation, Link, Navigate, useParams, useNavigate } from 'react-router-dom';
 import { salesListPath, salesNewPath, salesViewPath, salesEditPath } from './salesPaths';
 import api from '../../api/client';
@@ -70,6 +70,15 @@ const STATUS_CLS = {
 const StatusBadge = ({ s }) => (
   <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_CLS[s] || STATUS_CLS.draft}`}>{s}</span>
 );
+const APPROVAL_CLS = {
+  approved:'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+  pending:'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+  rejected:'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+};
+const ApprovalBadge = ({ s }) => {
+  const v = String(s || 'approved').toLowerCase();
+  return <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${APPROVAL_CLS[v] || APPROVAL_CLS.approved}`}>{v}</span>;
+};
 
 const StatCard = ({ icon, label, value, sub }) => (
   <div className="bg-white dark:bg-[#1a1d2e] rounded-2xl border border-slate-200/80 dark:border-slate-700/50 shadow-card p-4 flex items-center gap-3">
@@ -490,13 +499,15 @@ function LineItems({ items, onChange, products, interstate = false, taxType = 'e
 // ─── Customer Modal ───────────────────────────────────────────
 
 function customerFormFromLead(lead) {
+  const leadAddress = (lead.address || '').trim();
   const name = ((lead.company || lead.name || '') + '').trim() || 'Lead contact';
   return {
     name,
     email: lead.email || '',
     phone: lead.phone || '',
     gstin: '',
-    address: (lead.address || '').trim(),
+    billing_address: leadAddress,
+    shipping_address: leadAddress,
   };
 }
 
@@ -504,22 +515,43 @@ function CustomerModal({ customer, crmLeadPrefill, onClose, onSaved }) {
   const { show } = useToast();
   const [form, setForm] = useState(() => {
     if (customer) {
-      return { name: customer.name, email: customer.email || '', phone: customer.phone || '', gstin: customer.gstin || '', address: customer.address || '' };
+      return {
+        name: customer.name,
+        email: customer.email || '',
+        phone: customer.phone || '',
+        gstin: customer.gstin || '',
+        billing_address: customer.billing_address || customer.address || '',
+        shipping_address: customer.shipping_address || '',
+      };
     }
     if (crmLeadPrefill) return customerFormFromLead(crmLeadPrefill);
-    return { name:'', email:'', phone:'', gstin:'', address:'' };
+    return { name:'', email:'', phone:'', gstin:'', billing_address:'', shipping_address:'' };
+  });
+  const [sameAsBilling, setSameAsBilling] = useState(() => {
+    const billing = String(form.billing_address || '').trim();
+    const shipping = String(form.shipping_address || '').trim();
+    return shipping === '' || shipping === billing;
   });
   const [loading, setLoading] = useState(false);
-  const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
+  const set = k => e => setForm(f => {
+    const value = e.target.value;
+    if (k === 'billing_address' && sameAsBilling) {
+      return { ...f, billing_address: value, shipping_address: value };
+    }
+    return { ...f, [k]: value };
+  });
 
   const handleSubmit = async (e) => {
     e.preventDefault(); setLoading(true);
     try {
+      const body = {
+        ...form,
+        shipping_address: sameAsBilling ? (form.billing_address || '') : (form.shipping_address || ''),
+      };
       if (customer) {
-        await api.patch(`/sales/customers/${customer.id}`, form);
+        await api.patch(`/sales/customers/${customer.id}`, body);
         show('Customer updated successfully', 'success');
       } else {
-        const body = { ...form };
         if (crmLeadPrefill?.id) body.lead_id = crmLeadPrefill.id;
         await api.post('/sales/customers', body);
         show('Customer created successfully', 'success');
@@ -541,10 +573,47 @@ function CustomerModal({ customer, crmLeadPrefill, onClose, onSaved }) {
           <Field label="Email"><input className={inputCls} type="email" value={form.email||''} onChange={set('email')} /></Field>
         </div>
         <Field label="GSTIN"><input className={inputCls} value={form.gstin||''} onChange={set('gstin')} placeholder="22AAAAA0000A1Z5" /></Field>
-        <Field label="Address"><textarea className={inputCls+' h-16 resize-none'} value={form.address||''} onChange={set('address')} /></Field>
+        <Field label="Billing Address"><textarea className={inputCls+' h-16 resize-none'} value={form.billing_address||''} onChange={set('billing_address')} /></Field>
+        <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+          <input
+            type="checkbox"
+            checked={sameAsBilling}
+            onChange={(e) => {
+              const checked = e.target.checked;
+              setSameAsBilling(checked);
+              if (checked) {
+                setForm((f) => ({ ...f, shipping_address: f.billing_address || '' }));
+              }
+            }}
+          />
+          Same as billing address
+        </label>
+        <Field label="Shipping Address">
+          <textarea
+            className={inputCls+' h-16 resize-none'}
+            value={sameAsBilling ? (form.billing_address||'') : (form.shipping_address||'')}
+            onChange={set('shipping_address')}
+            disabled={sameAsBilling}
+          />
+        </Field>
         <FormActions onCancel={onClose} submitLabel={customer ? 'Save' : 'Add Customer'} loading={loading} />
       </form>
     </Modal>
+  );
+}
+
+function CustomerAddressPreview({ customer }) {
+  if (!customer) return null;
+  const billing = (customer.billing_address || customer.address || '').trim();
+  const shipping = (customer.shipping_address || '').trim();
+  const gstin = (customer.gstin || '').trim();
+  if (!billing && !shipping && !gstin) return null;
+  return (
+    <div className="mt-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-3 text-xs text-slate-600 dark:text-slate-300 space-y-1">
+      {billing && <p><span className="font-semibold">Billing:</span> {billing}</p>}
+      {shipping && <p><span className="font-semibold">Shipping:</span> {shipping}</p>}
+      {gstin && <p><span className="font-semibold">GSTIN:</span> {gstin}</p>}
+    </div>
   );
 }
 
@@ -579,6 +648,10 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
   const [loadErr, setLoadErr]   = useState('');
   const [salesExecs, setSalesExecs] = useState([]);
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
+  const selectedCustomer = useMemo(
+    () => customers.find((c) => String(c.id) === String(form.customer_id)),
+    [customers, form.customer_id],
+  );
 
   const canPickOtherExecutive = ['Admin', 'Super Admin', 'Sales Manager'].includes(user?.role || '');
   const executiveOptions = (() => {
@@ -671,20 +744,6 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
       cancelled = true;
     };
   }, [isQuote, isInvoice, isOrder, existingId, user?.id]);
-
-  // Sync GST% on all lines when tax type changes
-  useEffect(() => {
-    if (form.tax_type === 'no_tax') {
-      setItems(prev => prev.map(l => ({ ...l, gst_rate: 0 })));
-    } else {
-      // Restore GST rate from the selected product for each line
-      setItems(prev => prev.map(l => {
-        if (!l.product_id) return l;
-        const p = products.find(p => String(p.id) === String(l.product_id));
-        return p ? { ...l, gst_rate: Number(p.gst_rate) } : l;
-      }));
-    }
-  }, [form.tax_type]);
 
   const handleItems = (newItems, _newTotals) => {
     setItems(newItems);
@@ -870,6 +929,7 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
                 {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </Field>
+            <CustomerAddressPreview customer={selectedCustomer} />
             {user?.id && (
               <Field label="Sales Executive *">
                 <select className={selectCls} value={form.created_by} onChange={set('created_by')} required
@@ -1004,6 +1064,7 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', exis
               {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </Field>
+          <CustomerAddressPreview customer={selectedCustomer} />
           {user?.id && (
             <Field label="Sales Executive *">
               <select className={selectCls} value={form.created_by} onChange={set('created_by')} required
@@ -1242,6 +1303,7 @@ function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation, onEditInv
             </div>
             <div className="flex items-center gap-2">
               <StatusBadge s={doc.status} />
+              <ApprovalBadge s={doc.approval_status} />
               {type === 'quotation' && onEditQuotation && (
                 <button
                   type="button"
@@ -1349,14 +1411,35 @@ function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation, onEditInv
                 </table>
               </div>
 
-              {/* Tax summary */}
+              {/* Tax details (PDF-style) */}
               <div className="mt-3 flex justify-end">
-                <div className="w-52 space-y-1 text-sm">
-                  {doc.subtotal    != null && <div className="flex justify-between text-slate-500 dark:text-slate-400"><span>Subtotal</span><span className="font-mono">{fmt(doc.subtotal)}</span></div>}
-                  {Number(doc.cgst)  > 0 && <div className="flex justify-between text-slate-500 dark:text-slate-400"><span>CGST</span><span className="font-mono">{fmt(doc.cgst)}</span></div>}
-                  {Number(doc.sgst)  > 0 && <div className="flex justify-between text-slate-500 dark:text-slate-400"><span>SGST</span><span className="font-mono">{fmt(doc.sgst)}</span></div>}
-                  {Number(doc.igst)  > 0 && <div className="flex justify-between text-slate-500 dark:text-slate-400"><span>IGST</span><span className="font-mono">{fmt(doc.igst)}</span></div>}
-                  <div className="flex justify-between font-bold text-slate-800 dark:text-slate-100 border-t border-slate-200 dark:border-slate-700 pt-1">
+                <div className="w-72 space-y-1.5 text-sm bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4">
+                  <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">Tax Details</p>
+                  {(() => {
+                    const subtotal = doc.subtotal != null
+                      ? Number(doc.subtotal || 0)
+                      : Number(doc.total_amount || 0) - Number(doc.cgst || 0) - Number(doc.sgst || 0) - Number(doc.igst || 0);
+                    const cgst = Number(doc.cgst || 0);
+                    const sgst = Number(doc.sgst || 0);
+                    const igst = Number(doc.igst || 0);
+                    const totalTax = cgst + sgst + igst;
+                    const showIgst = igst > 0;
+                    return (
+                      <>
+                        <div className="flex justify-between text-slate-500 dark:text-slate-400"><span>Sub Total</span><span className="font-mono">{fmt(subtotal)}</span></div>
+                        {showIgst ? (
+                          <div className="flex justify-between text-slate-500 dark:text-slate-400"><span>IGST</span><span className="font-mono">{fmt(igst)}</span></div>
+                        ) : (
+                          <>
+                            <div className="flex justify-between text-slate-500 dark:text-slate-400"><span>CGST</span><span className="font-mono">{fmt(cgst)}</span></div>
+                            <div className="flex justify-between text-slate-500 dark:text-slate-400"><span>SGST</span><span className="font-mono">{fmt(sgst)}</span></div>
+                          </>
+                        )}
+                        <div className="flex justify-between text-slate-500 dark:text-slate-400"><span>Total Tax Charges</span><span className="font-mono">{fmt(totalTax)}</span></div>
+                      </>
+                    );
+                  })()}
+                  <div className="flex justify-between font-bold text-slate-800 dark:text-slate-100 border-t border-slate-200 dark:border-slate-700 pt-1.5 mt-1.5">
                     <span>Total</span><span className="font-mono">{fmt(doc.total_amount)}</span>
                   </div>
                 </div>
@@ -1524,6 +1607,7 @@ const LIST_COLS = {
     { label: 'Number',   get: r => r.quotation_number },
     { label: 'Customer', get: r => r.customer_name },
     { label: 'Status',   get: r => r.status },
+    { label: 'Approval', get: r => r.approval_status || 'approved' },
     { label: 'Date',     get: r => fmtD(r.created_at) },
     { label: 'Sales executive', get: r => r.created_by_name || '' },
     { label: 'Amount',   get: r => fmt(r.total_amount) },
@@ -1532,6 +1616,7 @@ const LIST_COLS = {
     { label: 'Number',   get: r => r.order_number },
     { label: 'Customer', get: r => r.customer_name },
     { label: 'Status',   get: r => r.status },
+    { label: 'Approval', get: r => r.approval_status || 'approved' },
     { label: 'Date',     get: r => fmtD(r.order_date || r.created_at) },
     { label: 'Sales executive', get: r => r.created_by_name || '' },
     { label: 'Amount',   get: r => fmt(r.total_amount) },
@@ -1547,6 +1632,7 @@ const LIST_COLS = {
     { label: 'Grand Total', get: r => fmt(r.total_amount) },
     { label: 'Balance', get: r => fmt(r.balance) },
     { label: 'Status', get: r => r.status },
+    { label: 'Approval', get: r => r.approval_status || 'approved' },
     { label: 'Date', get: r => fmtD(r.invoice_date || r.created_at) },
   ],
 };
@@ -1815,7 +1901,7 @@ export function SalesListPage({ segment }) {
                     onChange={e => setSelected(e.target.checked ? pager.slice.map(r => r.id) : [])}
                   />
                 </th>
-                {['Invoice #','Customer','Sales executive','GSTIN','Before Tax','SGST','CGST','Grand Total','Balance','Status','Date',''].map(h => (
+                {['Invoice #','Customer','Sales executive','GSTIN','Before Tax','SGST','CGST','Grand Total','Balance','Status','Approval','Date',''].map(h => (
                   <th key={h} className="px-3 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">{h}</th>
                 ))}
               </tr></thead>
@@ -1844,6 +1930,7 @@ export function SalesListPage({ segment }) {
                       <td className="px-3 py-3 font-semibold font-mono text-xs">{fmt(r.total_amount)}</td>
                       <td className="px-3 py-3 font-mono text-xs text-amber-600 dark:text-amber-400">{fmt(r.balance)}</td>
                       <td className="px-3 py-3"><StatusBadge s={r.status} /></td>
+                      <td className="px-3 py-3"><ApprovalBadge s={r.approval_status} /></td>
                       <td className="px-3 py-3 text-xs text-slate-500">{fmtD(r.invoice_date || r.created_at)}</td>
                       <td className="px-3 py-3 text-right" onClick={e => e.stopPropagation()}>
                         <SettingsDropdown options={[
@@ -1878,7 +1965,7 @@ export function SalesListPage({ segment }) {
                   onChange={e => setSelected(e.target.checked ? pager.slice.map(r => r.id) : [])}
                 />
               </th>
-              {['Number','Customer','Status','Date','Sales executive','Amount',''].map(h => (
+              {['Number','Customer','Status','Approval','Date','Sales executive','Amount',''].map(h => (
                 <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">{h}</th>
               ))}
             </tr></thead>
@@ -1902,6 +1989,7 @@ export function SalesListPage({ segment }) {
                     </td>
                     <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-100">{r.customer_name}</td>
                     <td className="px-4 py-3"><StatusBadge s={r.status} /></td>
+                    <td className="px-4 py-3"><ApprovalBadge s={r.approval_status} /></td>
                     <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{fmtD(date)}</td>
                     <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{r.created_by_name || '—'}</td>
                     <td className="px-4 py-3 font-semibold font-mono text-slate-800 dark:text-slate-100">{fmt(r.total_amount)}</td>
@@ -1981,7 +2069,7 @@ export function SalesCustomersPage() {
   const [modal,     setModal]     = useState(null); // 'new' | 'edit'
   const [editCust,  setEditCust]  = useState(null);
   const [selected,  setSelected]  = useState([]);
-  const search = useSearch(customers, ['name','phone','email','gstin','address','created_by_name']);
+  const search = useSearch(customers, ['name','phone','email','gstin','billing_address','shipping_address','address','created_by_name']);
   const pager  = usePagination(search.filtered);
   const cols = [
     { label: 'Name',    get: r => r.name },
@@ -1990,7 +2078,8 @@ export function SalesCustomersPage() {
     { label: 'GSTIN',   get: r => r.gstin || '' },
     { label: 'Created by', get: r => r.created_by_name || '' },
     { label: 'Created at', get: r => fmtDT(r.created_at) },
-    { label: 'Address', get: r => r.address || '' },
+    { label: 'Billing Address', get: r => r.billing_address || r.address || '' },
+    { label: 'Shipping Address', get: r => r.shipping_address || '' },
   ];
 
   const load = useCallback(() => {
@@ -2040,7 +2129,7 @@ export function SalesCustomersPage() {
                   onChange={e => setSelected(e.target.checked ? pager.slice.map(r => r.id) : [])}
                 />
               </th>
-              {['Name','Phone','Email','GSTIN','Created by','Created at','Address',''].map(h => (
+              {['Name','Phone','Email','GSTIN','Created by','Created at','Billing Address','Shipping Address',''].map(h => (
                 <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">{h}</th>
               ))}
             </tr></thead>
@@ -2059,7 +2148,8 @@ export function SalesCustomersPage() {
                   <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs font-mono">{c.gstin || '—'}</td>
                   <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{c.created_by_name || '—'}</td>
                   <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{fmtDT(c.created_at)}</td>
-                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs max-w-[180px] truncate">{c.address || '—'}</td>
+                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs max-w-[180px] truncate">{c.billing_address || c.address || '—'}</td>
+                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs max-w-[180px] truncate">{c.shipping_address || '—'}</td>
                   <td className="px-4 py-3 text-right">
                     <SettingsDropdown options={[
                       { icon: '✏️', label: 'Edit', onClick: () => { setEditCust(c); setModal('edit'); } },

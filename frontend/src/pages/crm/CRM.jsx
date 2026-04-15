@@ -178,7 +178,7 @@ function leadPlatformLabel(lead) {
 
 const EMPTY = {
   name: '', email: '', phone: '', company: '', source_id: '', stage_id: '', assigned_to: '', assigned_manager_id: '', priority: 'warm', notes: '',
-  lead_segment: '', job_title: '', website: '', address: '', tags: '', deal_size: '', lead_score: '',
+  lead_segment: '', job_title: '', product_category: '', website: '', address: '', tags: '', deal_size: '', lead_score: '',
 };
 
 function leadToForm(row) {
@@ -196,6 +196,7 @@ function leadToForm(row) {
     notes: row.notes || '',
     lead_segment: row.lead_segment || '',
     job_title: row.job_title || '',
+    product_category: row.product_category || '',
     website: row.website || '',
     address: row.address || '',
     tags: tagsToString(row.tags),
@@ -204,7 +205,7 @@ function leadToForm(row) {
   };
 }
 
-function LeadModal({ lead, stages, sources, users, onClose, onSaved }) {
+function LeadModal({ lead, stages, sources, users, categories = [], onClose, onSaved }) {
   const { user } = useAuth();
   const { show } = useToast();
   const [form, setForm] = useState(() => leadToForm(lead));
@@ -242,6 +243,7 @@ function LeadModal({ lead, stages, sources, users, onClose, onSaved }) {
       notes: form.notes.trim() || null,
       lead_segment: form.lead_segment.trim() || null,
       job_title: form.job_title.trim() || null,
+      product_category: form.product_category.trim() || null,
       website: form.website.trim() || null,
       address: form.address.trim() || null,
       tags: tagsArr,
@@ -287,6 +289,15 @@ function LeadModal({ lead, stages, sources, users, onClose, onSaved }) {
             <input className={inputCls} value={form.job_title} onChange={set('job_title')} placeholder="Role / designation" />
           </Field>
         </div>
+        <Field label="Product category">
+          <select className={selectCls} value={form.product_category} onChange={set('product_category')}>
+            <option value="">Select…</option>
+            {form.product_category && !categories.some((c) => c.name === form.product_category) && (
+              <option value={form.product_category}>{form.product_category}</option>
+            )}
+            {categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+          </select>
+        </Field>
         <Field label="Website">
           <input className={inputCls} type="url" value={form.website} onChange={set('website')} placeholder="https://…" />
         </Field>
@@ -670,6 +681,7 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
                 ['Company',     detail?.company         || '—'],
                 ['Source',      detail?.source          || '—'],
                 ['Segment',     detail?.lead_segment    || '—'],
+                ['Product category', detail?.product_category || '—'],
                 ['Job Title',   detail?.job_title       || '—'],
                 ['Website',     detail?.website         || '—'],
                 ['Address',     detail?.address         || '—'],
@@ -998,6 +1010,7 @@ export default function CRM() {
   const [sources,  setSources]  = useState([]);
   const [segments, setSegments] = useState([]);
   const [priorities, setPriorities] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [users,    setUsers]    = useState([]);
   const [tab,      setTab]      = useState('List');
   const [drawer,   setDrawer]   = useState(null);
@@ -1015,7 +1028,7 @@ export default function CRM() {
   const [fCreatedTo, setFCreatedTo] = useState('');
   const [sourceCounts, setSourceCounts] = useState(null);
   const [listPage, setListPage] = useState(1);
-  const [listPageSize, setListPageSize] = useState(25);
+  const [listPageSize, setListPageSize] = useState(20);
   const [listTotal, setListTotal] = useState(0);
   const [leadsLoading, setLeadsLoading] = useState(false);
   const [rowMenu, setRowMenu] = useState(null); // { id, top, right, lead }
@@ -1077,6 +1090,7 @@ export default function CRM() {
     api.get('/crm/leads/source-counts').then((r) => setSourceCounts(r.data || null)).catch(() => setSourceCounts(null));
     api.get('/crm/leads/masters/segments').then(r => setSegments(Array.isArray(r.data) ? r.data : [])).catch(() => {});
     api.get('/crm/leads/masters/priorities').then(r => setPriorities(Array.isArray(r.data) ? r.data : [])).catch(() => {});
+    api.get('/inventory/categories').then(r => setCategories(Array.isArray(r.data) ? r.data : [])).catch(() => setCategories([]));
     api.get('/settings/dashboard').then((r) => setDashEx(r.data || null)).catch(() => {});
   }, []);
 
@@ -1368,82 +1382,84 @@ export default function CRM() {
           ) : leads.length === 0 ? (
             <p className="text-center py-12 text-slate-400 dark:text-slate-500 text-sm">No leads found</p>
           ) : (
-            <table className="w-full text-sm min-w-[1320px]">
-              <thead>
-                <tr className="border-b border-slate-100 dark:border-slate-700/50">
-                  {['Name / Email', 'Date', 'Phone', 'Company', 'City / State', 'Segment', 'Source', 'Stage', 'Score', 'Priority', 'Assigned', 'Actions'].map(h => (
-                    <th
-                      key={h}
-                      className={`px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide whitespace-nowrap ${
-                        h === 'Actions' ? 'sticky right-0 bg-white dark:bg-[#1a1d2e] z-10' : ''
-                      }`}
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-700/40">
-                {leads.map(l => (
-                  <tr key={l.id} onClick={() => openDrawer(l)}
-                    className="hover:bg-slate-50 dark:hover:bg-slate-800/40 cursor-pointer transition-colors group">
-                    <td className="px-4 py-3">
-                      <div>
-                        <p className="font-semibold text-slate-800 dark:text-slate-100">{leadDisplayTitle(l)}</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">{l.email || '—'}</p>
-                        {l.job_title && <p className="text-xs text-slate-400 dark:text-slate-500">{l.job_title}</p>}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs whitespace-nowrap">{formatDateTime(l.created_at)}</td>
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                      {l.phone ? (
-                        <a href={`tel:${l.phone}`} onClick={e => e.stopPropagation()}
-                          className="hover:text-brand-600 dark:hover:text-brand-400">{l.phone}</a>
-                      ) : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{l.company || '—'}</td>
-                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs whitespace-nowrap">
-                      {[leadValue(l, ['city']), leadValue(l, ['state'])].filter(Boolean).join(', ') || '—'}
-                    </td>
-                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{l.lead_segment || '—'}</td>
-                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{l.source || '—'}</td>
-                    <td className="px-4 py-3"><StageBadge s={l.stage} /></td>
-                    <td className="px-4 py-3 text-xs font-semibold tabular-nums text-slate-600 dark:text-slate-300">{scoreFmt(l.lead_score)}</td>
-                    <td className="px-4 py-3"><PriorityBadge p={l.priority} /></td>
-                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{l.assigned_name || '—'}</td>
-                    <td
-                      className="px-4 py-3 text-right sticky right-0 bg-white dark:bg-[#1a1d2e]"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div className="inline-flex items-center justify-end gap-0.5">
-                        {l.phone && (
-                          <a
-                            href={`https://wa.me/${l.phone.replace(/\D/g, '')}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors text-base"
-                          >
-                            💬
-                          </a>
-                        )}
-                        <button
-                          type="button"
-                          className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (rowMenu?.id === l.id) { setRowMenu(null); return; }
-                            const rect = e.currentTarget.getBoundingClientRect();
-                            setRowMenu({ id: l.id, lead: l, top: rect.bottom + 4, right: window.innerWidth - rect.right });
-                          }}
-                        >
-                          <span className="text-lg font-bold leading-none">⋮</span>
-                        </button>
-                      </div>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[1320px]">
+                <thead>
+                  <tr className="border-b border-slate-100 dark:border-slate-700/50">
+                    {['Name / Email', 'Date', 'Phone', 'Company', 'City', 'Segment', 'Product category', 'Source', 'Stage', 'Priority', 'Assigned', 'Actions'].map(h => (
+                      <th
+                        key={h}
+                        className={`px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide whitespace-nowrap ${
+                          h === 'Actions' ? 'sticky right-0 bg-white dark:bg-[#1a1d2e] z-10' : ''
+                        }`}
+                      >
+                        {h}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-700/40">
+                  {leads.map(l => (
+                    <tr key={l.id} onClick={() => openDrawer(l)}
+                      className="hover:bg-slate-50 dark:hover:bg-slate-800/40 cursor-pointer transition-colors group">
+                      <td className="px-4 py-3">
+                        <div>
+                          <p className="font-semibold text-slate-800 dark:text-slate-100">{leadDisplayTitle(l)}</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">{l.email || '—'}</p>
+                          {l.job_title && <p className="text-xs text-slate-400 dark:text-slate-500">{l.job_title}</p>}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs whitespace-nowrap">{formatDateTime(l.created_at)}</td>
+                      <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                        {l.phone ? (
+                          <a href={`tel:${l.phone}`} onClick={e => e.stopPropagation()}
+                            className="hover:text-brand-600 dark:hover:text-brand-400">{l.phone}</a>
+                        ) : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{l.company || '—'}</td>
+                      <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs whitespace-nowrap">
+                        {leadValue(l, ['city']) || '—'}
+                      </td>
+                      <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{l.lead_segment || '—'}</td>
+                      <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{l.product_category || '—'}</td>
+                      <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{l.source || '—'}</td>
+                      <td className="px-4 py-3"><StageBadge s={l.stage} /></td>
+                      <td className="px-4 py-3"><PriorityBadge p={l.priority} /></td>
+                      <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{l.assigned_name || '—'}</td>
+                      <td
+                        className="px-4 py-3 text-right sticky right-0 bg-white dark:bg-[#1a1d2e]"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="inline-flex items-center justify-end gap-0.5">
+                          {l.phone && (
+                            <a
+                              href={`https://wa.me/${l.phone.replace(/\D/g, '')}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors text-base"
+                            >
+                              💬
+                            </a>
+                          )}
+                          <button
+                            type="button"
+                            className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (rowMenu?.id === l.id) { setRowMenu(null); return; }
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              setRowMenu({ id: l.id, lead: l, top: rect.bottom + 4, right: window.innerWidth - rect.right });
+                            }}
+                          >
+                            <span className="text-lg font-bold leading-none">⋮</span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
           {tab === 'List' && listTotal > 0 && (
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-3 border-t border-slate-100 dark:border-slate-700/50 bg-slate-50/80 dark:bg-slate-900/30">
@@ -1470,6 +1486,7 @@ export default function CRM() {
                     }}
                   >
                     <option value={10}>10</option>
+                    <option value={20}>20</option>
                     <option value={25}>25</option>
                     <option value={50}>50</option>
                     <option value={100}>100</option>
@@ -1518,7 +1535,7 @@ export default function CRM() {
       {addModal && (
         <LeadModal
           key="crm-new-lead"
-          stages={stages} sources={sources} users={users}
+          stages={stages} sources={sources} users={users} categories={categories}
           onClose={() => setAddModal(false)}
           onSaved={() => { setAddModal(false); loadLeads(); loadStats(); }}
         />

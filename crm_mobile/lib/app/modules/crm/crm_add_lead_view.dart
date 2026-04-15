@@ -40,11 +40,14 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
   final RxnInt assignedManagerId = RxnInt();
   final priority = 'warm'.obs;
   final assignees = <Map<String, dynamic>>[].obs;
+  final categories = <Map<String, dynamic>>[].obs;
+  final productCategory = ''.obs;
 
   @override
   void initState() {
     super.initState();
     _loadAssignees();
+    _loadCategories();
   }
 
   Future<void> _loadAssignees() async {
@@ -55,6 +58,17 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
       );
     } catch (_) {
       assignees.clear();
+    }
+  }
+
+  Future<void> _loadCategories() async {
+    try {
+      final res = await _auth.authorizedRequest(method: 'GET', path: '/inventory/categories');
+      categories.assignAll(
+        (res as List).map((e) => Map<String, dynamic>.from(e as Map)).toList(),
+      );
+    } catch (_) {
+      categories.clear();
     }
   }
 
@@ -111,6 +125,7 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
       sourceId: sourceId.value,
       leadSegment: segmentCtrl.text.trim().isEmpty ? null : segmentCtrl.text.trim(),
       jobTitle: jobTitleCtrl.text.trim().isEmpty ? null : jobTitleCtrl.text.trim(),
+      productCategory: productCategory.value.trim().isEmpty ? null : productCategory.value.trim(),
       website: websiteCtrl.text.trim().isEmpty ? null : websiteCtrl.text.trim(),
       address: addressCtrl.text.trim().isEmpty ? null : addressCtrl.text.trim(),
       stageId: stageId.value,
@@ -158,6 +173,7 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
       sourceId: sourceId.value,
       leadSegment: segmentCtrl.text.trim().isEmpty ? null : segmentCtrl.text.trim(),
       jobTitle: jobTitleCtrl.text.trim().isEmpty ? null : jobTitleCtrl.text.trim(),
+      productCategory: productCategory.value.trim().isEmpty ? null : productCategory.value.trim(),
       website: websiteCtrl.text.trim().isEmpty ? null : websiteCtrl.text.trim(),
       address: addressCtrl.text.trim().isEmpty ? null : addressCtrl.text.trim(),
       stageId: stageId.value,
@@ -348,6 +364,36 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
                         ),
                       ),
                     ),
+                    const SizedBox(height: 8),
+                    Obx(() {
+                      final options = categories
+                          .map((c) => (c['name'] ?? '').toString().trim())
+                          .where((name) => name.isNotEmpty)
+                          .toSet()
+                          .toList()
+                        ..sort();
+                      final selected = productCategory.value.trim();
+                      final value = selected.isEmpty ? '' : selected;
+                      return DropdownButtonFormField<String>(
+                        value: value,
+                        decoration: InputDecoration(
+                          labelText: 'Product category',
+                          floatingLabelBehavior: FloatingLabelBehavior.always,
+                          labelStyle: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                        items: [
+                          const DropdownMenuItem<String>(value: '', child: Text('Select…')),
+                          if (value.isNotEmpty && !options.contains(value))
+                            DropdownMenuItem<String>(value: value, child: Text(value)),
+                          ...options.map((name) => DropdownMenuItem<String>(value: name, child: Text(name))),
+                        ],
+                        onChanged: (v) => productCategory.value = v ?? '',
+                      );
+                    }),
                     const SizedBox(height: 8),
                     TextField(
                       controller: websiteCtrl,

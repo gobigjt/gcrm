@@ -415,6 +415,16 @@ class _LeadCard extends StatelessWidget {
                             style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).hintColor),
                           ),
                         ],
+                        if (lead.productCategory.trim().isNotEmpty) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            'Category: ${lead.productCategory.trim()}',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Theme.of(context).hintColor,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                        ],
                         const SizedBox(height: 6),
                         InkWell(
                           onTap: onTap,

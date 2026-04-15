@@ -294,6 +294,26 @@ function canApproveSalesDocuments(role?: string): boolean {
   return r === 'Admin' || r === 'Super Admin' || r === 'Sales Manager';
 }
 
+function deriveTotalsFromLineItems(items: any[]): { subtotal: number; cgst: number; sgst: number; igst: number; total: number } {
+  let subtotal = 0;
+  let cgst = 0;
+  let sgst = 0;
+  let igst = 0;
+  for (const it of items || []) {
+    const lineTotal = Number(it.total ?? 0);
+    const lineCgst = Number(it.cgst || 0);
+    const lineSgst = Number(it.sgst || 0);
+    const lineIgst = Number(it.igst || 0);
+    const lineTax = lineCgst + lineSgst + lineIgst;
+    subtotal += lineTotal - lineTax;
+    cgst += lineCgst;
+    sgst += lineSgst;
+    igst += lineIgst;
+  }
+  const total = subtotal + cgst + sgst + igst;
+  return { subtotal, cgst, sgst, igst, total };
+}
+
 export type SalesActor = { id?: number; role?: string };
 type DbTxClient = { query: (sql: string, params?: any[]) => Promise<{ rows: any[] }> };
 
@@ -331,17 +351,38 @@ export class SalesService {
     ).rows[0];
   }
   async createCustomer(d: any) {
+    const billingAddress = d.billing_address ?? d.address ?? null;
+    const shippingAddress = d.shipping_address ?? null;
     const res = await this.db.query(
-      'INSERT INTO customers (name,email,phone,gstin,address,lead_id,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
-      [d.name, d.email, d.phone, d.gstin, d.address, d.lead_id, d.created_by ?? null],
+      `INSERT INTO customers
+        (name,email,phone,gstin,address,billing_address,shipping_address,lead_id,created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [
+        d.name,
+        d.email,
+        d.phone,
+        d.gstin,
+        billingAddress,
+        billingAddress,
+        shippingAddress,
+        d.lead_id,
+        d.created_by ?? null,
+      ],
     );
     await this.cache.delPattern('customers:*');
     return res.rows[0];
   }
   async updateCustomer(id: number, d: any) {
-    const fields = ['name','email','phone','gstin','address','is_active'];
+    const patch = { ...d };
+    if (patch.billing_address === undefined && patch.address !== undefined) {
+      patch.billing_address = patch.address;
+    }
+    if (patch.address === undefined && patch.billing_address !== undefined) {
+      patch.address = patch.billing_address;
+    }
+    const fields = ['name','email','phone','gstin','address','billing_address','shipping_address','is_active'];
     const sets: string[] = []; const vals: any[] = []; let i = 1;
-    for (const f of fields) { if(d[f]!==undefined){ sets.push(`${f}=$${i++}`); vals.push(d[f]); } }
+    for (const f of fields) { if(patch[f]!==undefined){ sets.push(`${f}=$${i++}`); vals.push(patch[f]); } }
     if(!sets.length) return null;
     vals.push(id);
     const res = await this.db.query(`UPDATE customers SET ${sets.join(',')} WHERE id=$${i} RETURNING *`, vals);
@@ -503,7 +544,8 @@ export class SalesService {
         }
       };
 
-      const customerAddress = String(docData.customer_address || '');
+      const customerBillingAddress = String(docData.customer_billing_address || docData.customer_address || '');
+      const customerShippingAddress = String(docData.customer_shipping_address || docData.customer_address || '');
       const customerGstin = String(docData.customer_gstin || '');
       const rawTerms = String([docData.notes || '', company.payment_terms || ''].filter(Boolean).join('\n'));
       const terms = stripBankDetailsFromTerms(rawTerms);
@@ -618,10 +660,10 @@ export class SalesService {
       pdf.text('Delivery Address', pageLeft + leftW + 6, y + 4);
       pdf.font('Helvetica').fontSize(8.5);
       pdf.text(String(docData.customer_name || '—'), pageLeft + 6, y + 22, { width: leftW - 12 });
-      pdf.text(customerAddress, pageLeft + 6, y + 34, { width: leftW - 12, height: 26 });
+      pdf.text(customerBillingAddress, pageLeft + 6, y + 34, { width: leftW - 12, height: 26 });
       if (customerGstin) pdf.text(`GSTIN : ${customerGstin}`, pageLeft + 6, y + 62, { width: leftW - 12 });
       pdf.text(String(docData.customer_name || '—'), pageLeft + leftW + 6, y + 22, { width: leftW - 12 });
-      pdf.text(customerAddress, pageLeft + leftW + 6, y + 34, { width: leftW - 12, height: 26 });
+      pdf.text(customerShippingAddress, pageLeft + leftW + 6, y + 34, { width: leftW - 12, height: 26 });
       if (customerGstin) pdf.text(`GSTIN : ${customerGstin}`, pageLeft + leftW + 6, y + 62, { width: leftW - 12 });
       y += boxH + 8;
 
@@ -808,7 +850,12 @@ export class SalesService {
       pdf.moveDown(1);
 
       pdf.fontSize(10).text(`Customer: ${docData.customer_name || '—'}`);
-      if (docData.customer_address) pdf.text(`Address: ${docData.customer_address}`);
+      if (docData.customer_billing_address || docData.customer_address) {
+        pdf.text(`Billing Address: ${docData.customer_billing_address || docData.customer_address}`);
+      }
+      if (docData.customer_shipping_address || docData.customer_address) {
+        pdf.text(`Shipping Address: ${docData.customer_shipping_address || docData.customer_address}`);
+      }
       if (docData.customer_gstin) pdf.text(`GSTIN: ${docData.customer_gstin}`);
       pdf.moveDown(0.4);
       pdf.text(`Sales Executive: ${docData.created_by_name || '—'}`);
@@ -962,7 +1009,10 @@ export class SalesService {
     const [q, items] = await Promise.all([
       this.db.query(
         `SELECT q.*, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
-                c.gstin AS customer_gstin, c.address AS customer_address,
+                c.gstin AS customer_gstin,
+                COALESCE(c.billing_address, c.address) AS customer_address,
+                COALESCE(c.billing_address, c.address) AS customer_billing_address,
+                c.shipping_address AS customer_shipping_address,
                 cu.name AS created_by_name
            FROM quotations q
            JOIN customers c ON c.id=q.customer_id
@@ -980,11 +1030,7 @@ export class SalesService {
   }
   async createQuotation(data: any, items: any[], actor?: SalesActor) {
     return this.db.transaction(async (client) => {
-      const subtotal = items.reduce((s, i) => s + Number(i.total), 0);
-      const cgst = items.reduce((s, i) => s + Number(i.cgst || 0), 0);
-      const sgst = items.reduce((s, i) => s + Number(i.sgst || 0), 0);
-      const igst = items.reduce((s, i) => s + Number(i.igst || 0), 0);
-      const total = subtotal + cgst + sgst + igst;
+      const { subtotal, cgst, sgst, igst, total } = deriveTotalsFromLineItems(items);
       const qn = await this.nextQuotationNumber(client);
       const approval = initialDocApprovalStatus(actor?.role);
       const approverId =
@@ -1078,7 +1124,10 @@ export class SalesService {
     const [o, items] = await Promise.all([
       this.db.query(
         `SELECT o.*, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
-                c.gstin AS customer_gstin, c.address AS customer_address,
+                c.gstin AS customer_gstin,
+                COALESCE(c.billing_address, c.address) AS customer_address,
+                COALESCE(c.billing_address, c.address) AS customer_billing_address,
+                c.shipping_address AS customer_shipping_address,
                 cu.name AS created_by_name
            FROM sales_orders o
            JOIN customers c ON c.id=o.customer_id
@@ -1103,11 +1152,7 @@ export class SalesService {
       }
     }
     return this.db.transaction(async (client) => {
-      const subtotal = items.reduce((s, i) => s + Number(i.total), 0);
-      const cgst = items.reduce((s, i) => s + Number(i.cgst || 0), 0);
-      const sgst = items.reduce((s, i) => s + Number(i.sgst || 0), 0);
-      const igst = items.reduce((s, i) => s + Number(i.igst || 0), 0);
-      const total = subtotal + cgst + sgst + igst;
+      const { subtotal, cgst, sgst, igst, total } = deriveTotalsFromLineItems(items);
       const on = `ORD-${Date.now()}`;
       const approval = initialDocApprovalStatus(actor?.role);
       const approverId =
@@ -1176,10 +1221,13 @@ export class SalesService {
         let subtotal = 0, cgst = 0, sgst = 0, igst = 0;
         for (const it of body.items) {
           const lineTotal = Number(it.total ?? 0);
-          subtotal += lineTotal;
-          cgst += Number(it.cgst || 0);
-          sgst += Number(it.sgst || 0);
-          igst += Number(it.igst || 0);
+          const lineCgst = Number(it.cgst || 0);
+          const lineSgst = Number(it.sgst || 0);
+          const lineIgst = Number(it.igst || 0);
+          subtotal += lineTotal - (lineCgst + lineSgst + lineIgst);
+          cgst += lineCgst;
+          sgst += lineSgst;
+          igst += lineIgst;
           await client.query(
             'INSERT INTO sales_order_items (order_id,product_id,description,quantity,unit_price,discount,gst_rate,cgst,sgst,igst,total) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
             [id, it.product_id ?? null, String(it.description ?? ''), Number(it.quantity),
@@ -1294,7 +1342,10 @@ export class SalesService {
     const [inv, items, pays] = await Promise.all([
       this.db.query(
         `SELECT i.*, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
-                c.gstin AS customer_gstin, c.address AS customer_address,
+                c.gstin AS customer_gstin,
+                COALESCE(c.billing_address, c.address) AS customer_address,
+                COALESCE(c.billing_address, c.address) AS customer_billing_address,
+                c.shipping_address AS customer_shipping_address,
                 cu.name AS created_by_name
            FROM invoices i
            JOIN customers c ON c.id=i.customer_id
@@ -1320,13 +1371,7 @@ export class SalesService {
       }
     }
     const row = await this.db.transaction(async (client) => {
-      let subtotal = 0, cgst = 0, sgst = 0, igst = 0;
-      for (const it of items) {
-        subtotal += Number(it.unit_price) * Number(it.quantity);
-        if (data.is_interstate) igst += Number(it.igst||0);
-        else { cgst += Number(it.cgst||0); sgst += Number(it.sgst||0); }
-      }
-      const total = subtotal + cgst + sgst + igst;
+      const { subtotal, cgst, sgst, igst, total } = deriveTotalsFromLineItems(items);
       const inv_no = `INV-${Date.now()}`;
       const approval = initialDocApprovalStatus(actor?.role);
       const approverId =
@@ -1607,10 +1652,13 @@ export class SalesService {
         let subtotal = 0, cgst = 0, sgst = 0, igst = 0;
         for (const it of body.items) {
           const lineTotal = Number(it.total ?? 0);
-          subtotal += lineTotal;
-          cgst += Number(it.cgst || 0);
-          sgst += Number(it.sgst || 0);
-          igst += Number(it.igst || 0);
+          const lineCgst = Number(it.cgst || 0);
+          const lineSgst = Number(it.sgst || 0);
+          const lineIgst = Number(it.igst || 0);
+          subtotal += lineTotal - (lineCgst + lineSgst + lineIgst);
+          cgst += lineCgst;
+          sgst += lineSgst;
+          igst += lineIgst;
           await client.query(
             'INSERT INTO quotation_items (quotation_id,product_id,description,quantity,unit_price,discount,gst_rate,cgst,sgst,igst,total) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
             [id, it.product_id ?? null, String(it.description ?? ''), Number(it.quantity),
@@ -1705,7 +1753,7 @@ export class SalesService {
           const lineIgst = Number(it.igst ?? (body.is_interstate ? gst : 0));
           const lineTotal = Number(it.total ?? (base + lineCgst + lineSgst + lineIgst));
 
-          subtotal += base;
+          subtotal += lineTotal - (lineCgst + lineSgst + lineIgst);
           cgst += lineCgst;
           sgst += lineSgst;
           igst += lineIgst;

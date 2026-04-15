@@ -85,6 +85,14 @@ class _InvoiceFormViewState extends State<InvoiceFormView> {
                   Builder(builder: (context) {
                     final auth = Get.find<AuthController>();
                     final wide = salesFormWideLayout(context);
+                    Map<String, dynamic>? selectedCustomerMap() {
+                      final sid = c.selectedCustomerId.value;
+                      if (sid == null) return null;
+                      for (final cu in c.customers) {
+                        if ((cu['id'] as num?)?.toInt() == sid) return cu;
+                      }
+                      return null;
+                    }
                     final billTo = SalesFormSectionCard(
                       title: 'Bill To',
                       child: Column(
@@ -138,6 +146,10 @@ class _InvoiceFormViewState extends State<InvoiceFormView> {
                             onExecutiveChanged: (v) => c.selectedCreatedById.value = v,
                             sectionLabelStyle: salesFieldSectionLabel,
                           ),
+                          Obx(() => salesCustomerAddressPreview(
+                                context,
+                                customer: selectedCustomerMap(),
+                              )),
                         ],
                       ),
                     );

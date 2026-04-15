@@ -269,11 +269,12 @@ class _SalesDocumentDetailViewState extends State<SalesDocumentDetailView> {
 }
 
 Widget _customerBlock(Map<String, dynamic> d, bool isDark, ColorScheme cs) {
-  final addr = (d['customer_address'] ?? '').toString().trim();
+  final billAddr = (d['customer_billing_address'] ?? d['customer_address'] ?? '').toString().trim();
+  final shipAddr = (d['customer_shipping_address'] ?? '').toString().trim();
   final phone = (d['customer_phone'] ?? '').toString().trim();
   final email = (d['customer_email'] ?? '').toString().trim();
   final gst = (d['customer_gstin'] ?? '').toString().trim();
-  if (addr.isEmpty && phone.isEmpty && email.isEmpty && gst.isEmpty) {
+  if (billAddr.isEmpty && shipAddr.isEmpty && phone.isEmpty && email.isEmpty && gst.isEmpty) {
     return const SizedBox.shrink();
   }
   return Card(
@@ -289,10 +290,18 @@ Widget _customerBlock(Map<String, dynamic> d, bool isDark, ColorScheme cs) {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Bill to', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: cs.onSurface)),
-          if (addr.isNotEmpty) ...[
+          if (billAddr.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text(addr, style: TextStyle(fontSize: 13, height: 1.35, color: cs.onSurface.withValues(alpha: 0.9))),
+            Text(
+              'Billing: $billAddr',
+              style: TextStyle(fontSize: 13, height: 1.35, color: cs.onSurface.withValues(alpha: 0.9)),
+            ),
           ],
+          if (shipAddr.isNotEmpty)
+            Text(
+              'Shipping: $shipAddr',
+              style: TextStyle(fontSize: 12, height: 1.3, color: isDark ? cs.onSurfaceVariant : Colors.grey.shade700),
+            ),
           if (phone.isNotEmpty)
             Text('Phone: $phone', style: TextStyle(fontSize: 12, color: isDark ? cs.onSurfaceVariant : Colors.grey.shade700)),
           if (email.isNotEmpty)

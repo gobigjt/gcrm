@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/auth/role_permissions.dart';
+import '../../core/network/error_utils.dart';
 import '../../core/utils/ui_format.dart';
 import '../../routes/app_routes.dart';
 import '../../shared/widgets/app_error_banner.dart';
@@ -103,6 +104,146 @@ class SalesView extends GetView<SalesController> {
     }
   }
 
+  Future<void> _openCustomerForm(BuildContext context, AuthController auth, {Map<String, dynamic>? existing}) async {
+    final nameCtrl = TextEditingController(text: (existing?['name'] ?? '').toString());
+    final phoneCtrl = TextEditingController(text: (existing?['phone'] ?? '').toString());
+    final emailCtrl = TextEditingController(text: (existing?['email'] ?? '').toString());
+    final gstinCtrl = TextEditingController(text: (existing?['gstin'] ?? '').toString());
+    final billingSeed = (existing?['billing_address'] ?? existing?['address'] ?? '').toString();
+    final shippingSeed = (existing?['shipping_address'] ?? '').toString();
+    final billingCtrl = TextEditingController(text: billingSeed);
+    final shippingCtrl = TextEditingController(text: shippingSeed);
+    bool sameAsBilling = shippingSeed.trim().isEmpty || shippingSeed.trim() == billingSeed.trim();
+    bool saving = false;
+
+    try {
+      final didSave = await showDialog<bool>(
+        context: context,
+        builder: (ctx) {
+          return StatefulBuilder(
+            builder: (ctx, setState) {
+              return AlertDialog(
+                title: Text(existing == null ? 'Add Customer' : 'Edit Customer'),
+                content: SizedBox(
+                  width: 520,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        TextField(
+                          controller: nameCtrl,
+                          decoration: const InputDecoration(labelText: 'Name *'),
+                          textCapitalization: TextCapitalization.words,
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(controller: phoneCtrl, decoration: const InputDecoration(labelText: 'Phone')),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: emailCtrl,
+                          decoration: const InputDecoration(labelText: 'Email'),
+                          keyboardType: TextInputType.emailAddress,
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(controller: gstinCtrl, decoration: const InputDecoration(labelText: 'GSTIN')),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: billingCtrl,
+                          decoration: const InputDecoration(labelText: 'Billing Address'),
+                          minLines: 2,
+                          maxLines: 4,
+                          onChanged: (v) {
+                            if (!sameAsBilling) return;
+                            shippingCtrl.text = v;
+                            setState(() {});
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        CheckboxListTile(
+                          value: sameAsBilling,
+                          contentPadding: EdgeInsets.zero,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          title: const Text('Same as billing address'),
+                          onChanged: (v) {
+                            setState(() {
+                              sameAsBilling = v == true;
+                              if (sameAsBilling) {
+                                shippingCtrl.text = billingCtrl.text;
+                              }
+                            });
+                          },
+                        ),
+                        TextField(
+                          controller: shippingCtrl,
+                          enabled: !sameAsBilling,
+                          decoration: const InputDecoration(labelText: 'Shipping Address'),
+                          minLines: 2,
+                          maxLines: 4,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: saving ? null : () => Navigator.of(ctx).pop(false),
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton(
+                    onPressed: saving
+                        ? null
+                        : () async {
+                            final name = nameCtrl.text.trim();
+                            if (name.isEmpty) {
+                              Get.snackbar('Missing name', 'Customer name is required.');
+                              return;
+                            }
+                            setState(() => saving = true);
+                            try {
+                              final body = <String, dynamic>{
+                                'name': name,
+                                'phone': phoneCtrl.text.trim().isEmpty ? null : phoneCtrl.text.trim(),
+                                'email': emailCtrl.text.trim().isEmpty ? null : emailCtrl.text.trim(),
+                                'gstin': gstinCtrl.text.trim().isEmpty ? null : gstinCtrl.text.trim(),
+                                'billing_address': billingCtrl.text.trim(),
+                                'shipping_address': (sameAsBilling ? billingCtrl.text : shippingCtrl.text).trim(),
+                              };
+                              if (existing == null) {
+                                await auth.authorizedRequest(method: 'POST', path: '/sales/customers', body: body);
+                              } else {
+                                final id = (existing['id'] as num?)?.toInt();
+                                if (id == null || id <= 0) throw Exception('Invalid customer id');
+                                await auth.authorizedRequest(method: 'PATCH', path: '/sales/customers/$id', body: body);
+                              }
+                              if (ctx.mounted) Navigator.of(ctx).pop(true);
+                            } catch (e) {
+                              if (ctx.mounted) {
+                                setState(() => saving = false);
+                              }
+                              Get.snackbar('Save failed', userFriendlyError(e));
+                            }
+                          },
+                    child: Text(existing == null ? 'Add' : 'Save'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+      if (didSave == true) {
+        await controller.load();
+      }
+    } finally {
+      nameCtrl.dispose();
+      phoneCtrl.dispose();
+      emailCtrl.dispose();
+      gstinCtrl.dispose();
+      billingCtrl.dispose();
+      shippingCtrl.dispose();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = Get.find<AuthController>();
@@ -152,10 +293,12 @@ class SalesView extends GetView<SalesController> {
           child: _SalesTabStrip(controller: controller),
         ),
       ),
-      floatingActionButton: controller.isCustomersTab
-          ? null
-          : FloatingActionButton(
+      floatingActionButton: FloatingActionButton(
         onPressed: () async {
+          if (controller.isCustomersTab) {
+            await _openCustomerForm(context, auth);
+            return;
+          }
           if (controller.isQuotationsTab) {
             final cid = controller.filterCustomerId.value;
             final r = await Get.toNamed(
@@ -258,8 +401,11 @@ class SalesView extends GetView<SalesController> {
                       name: (r['name'] ?? '—').toString(),
                       phone: (r['phone'] ?? '—').toString(),
                       email: (r['email'] ?? '—').toString(),
+                      billingAddress: (r['billing_address'] ?? r['address'] ?? '—').toString(),
+                      shippingAddress: (r['shipping_address'] ?? '').toString(),
                       createdBy: (r['created_by_name'] ?? '—').toString(),
                       createdDateTime: _formatCreatedDateTime(r['created_at']),
+                      onEdit: () => _openCustomerForm(context, auth, existing: r),
                       onDelete: canDeleteCustomer ? () => _confirmDelete(context, i) : null,
                     );
                   }
@@ -271,6 +417,7 @@ class SalesView extends GetView<SalesController> {
                   return _SalesDocumentCard(
                     title: controller.documentLabel(r),
                     customer: (r['customer_name'] ?? '—').toString(),
+                    approvalStatus: (r['approval_status'] ?? 'approved').toString(),
                     dateLine: controller.displayDate(r),
                     amountLine: formatInrLine(r['total_amount']),
                     onEdit: isQ && id > 0
@@ -384,16 +531,22 @@ class _CustomerCard extends StatelessWidget {
     required this.name,
     required this.phone,
     required this.email,
+    required this.billingAddress,
+    required this.shippingAddress,
     required this.createdBy,
     required this.createdDateTime,
+    this.onEdit,
     this.onDelete,
   });
 
   final String name;
   final String phone;
   final String email;
+  final String billingAddress;
+  final String shippingAddress;
   final String createdBy;
   final String createdDateTime;
+  final VoidCallback? onEdit;
   final VoidCallback? onDelete;
 
   @override
@@ -415,16 +568,28 @@ class _CustomerCard extends StatelessWidget {
             const SizedBox(height: 6),
             Text('Phone: $phone', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
             Text('Email: $email', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+            Text('Billing: ${billingAddress.trim().isEmpty ? '—' : billingAddress}',
+                style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+            Text('Shipping: ${shippingAddress.trim().isEmpty ? '—' : shippingAddress}',
+                style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
             Text('Created by: $createdBy', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
             Text('Created at: $createdDateTime', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
-            if (onDelete != null) ...[
+            if (onEdit != null || onDelete != null) ...[
               const SizedBox(height: 6),
-              Align(
-                alignment: Alignment.centerRight,
-                child: IconButton(
-                  onPressed: onDelete,
-                  icon: const Icon(Icons.delete_outline, color: Color(0xFFE53935)),
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  if (onEdit != null)
+                    IconButton(
+                      onPressed: onEdit,
+                      icon: const Icon(Icons.edit_outlined, color: Color(0xFF185FA5)),
+                    ),
+                  if (onDelete != null)
+                    IconButton(
+                      onPressed: onDelete,
+                      icon: const Icon(Icons.delete_outline, color: Color(0xFFE53935)),
+                    ),
+                ],
               ),
             ],
           ],
@@ -506,6 +671,7 @@ class _SalesDocumentCard extends StatelessWidget {
   const _SalesDocumentCard({
     required this.title,
     required this.customer,
+    required this.approvalStatus,
     required this.dateLine,
     required this.amountLine,
     required this.onEdit,
@@ -517,6 +683,7 @@ class _SalesDocumentCard extends StatelessWidget {
 
   final String title;
   final String customer;
+  final String approvalStatus;
   final String dateLine;
   final String amountLine;
   final VoidCallback onEdit;
@@ -599,6 +766,8 @@ class _SalesDocumentCard extends StatelessWidget {
                           color: _SalesChrome.teal,
                         ),
                       ),
+                      const SizedBox(height: 6),
+                      _ApprovalChip(status: approvalStatus),
                     ],
                   ),
                 ],
@@ -620,6 +789,40 @@ class _SalesDocumentCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ApprovalChip extends StatelessWidget {
+  const _ApprovalChip({required this.status});
+
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = status.trim().toLowerCase();
+    Color bg;
+    Color fg;
+    switch (s) {
+      case 'pending':
+        bg = Theme.of(context).brightness == Brightness.dark ? const Color(0xFF3D2E00) : const Color(0xFFFFF8E1);
+        fg = Theme.of(context).brightness == Brightness.dark ? Colors.amber.shade200 : Colors.amber.shade900;
+        break;
+      case 'rejected':
+        bg = Theme.of(context).brightness == Brightness.dark ? const Color(0xFF3D1518) : const Color(0xFFFCEBEB);
+        fg = Theme.of(context).brightness == Brightness.dark ? const Color(0xFFFDA4AF) : const Color(0xFF791F1F);
+        break;
+      default:
+        bg = Theme.of(context).brightness == Brightness.dark ? const Color(0xFF0D3D32) : const Color(0xFFE1F5EE);
+        fg = Theme.of(context).brightness == Brightness.dark ? const Color(0xFF6EE7C5) : const Color(0xFF085041);
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
+      child: Text(
+        'Approval: ${s.isEmpty ? 'approved' : s}',
+        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: fg),
       ),
     );
   }
