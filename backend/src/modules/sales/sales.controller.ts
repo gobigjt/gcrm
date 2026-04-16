@@ -85,7 +85,7 @@ export class SalesController {
   }
   @Get('quotations/:id')       async getQuotation(@Param('id') id: string, @CurrentUser() u: any) { const q=await this.svc.getQuotation(Number(id), u); if(!q) throw new NotFoundException(); return {quotation:q}; }
   @Get('quotations/:id/pdf') async getQuotationPdf(@Param('id') id: string, @CurrentUser() u: any) {
-    const out = await this.svc.generateSalesPdfFile('quotation', Number(id), { id: u?.id, role: u?.role });
+    const out = await this.svc.generateSalesPdfFile('quotation', Number(id), u);
     if (!out) throw new NotFoundException();
     return out;
   }
@@ -126,7 +126,7 @@ export class SalesController {
   }
   @Get('orders/:id')           async getOrder(@Param('id') id: string, @CurrentUser() u: any) { const o=await this.svc.getOrder(Number(id), u); if(!o) throw new NotFoundException(); return {order:o}; }
   @Get('orders/:id/pdf') async getOrderPdf(@Param('id') id: string, @CurrentUser() u: any) {
-    const out = await this.svc.generateSalesPdfFile('order', Number(id), { id: u?.id, role: u?.role });
+    const out = await this.svc.generateSalesPdfFile('order', Number(id), u);
     if (!out) throw new NotFoundException();
     return out;
   }
@@ -165,7 +165,7 @@ export class SalesController {
   }
   @Get('invoices/:id')         async getInvoice(@Param('id') id: string, @CurrentUser() u: any) { const inv=await this.svc.getInvoice(Number(id), u); if(!inv) throw new NotFoundException(); return {invoice:inv}; }
   @Get('invoices/:id/pdf') async getInvoicePdf(@Param('id') id: string, @CurrentUser() u: any) {
-    const out = await this.svc.generateSalesPdfFile('invoice', Number(id), { id: u?.id, role: u?.role });
+    const out = await this.svc.generateSalesPdfFile('invoice', Number(id), u);
     if (!out) throw new NotFoundException();
     return out;
   }
