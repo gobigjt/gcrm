@@ -300,7 +300,7 @@ function totalsForSalesPdf(docData: any, kind: 'quotation' | 'order' | 'invoice'
 
 function amountInWordsInr(n: number): string {
   const num = Math.round(Number(n || 0));
-  if (num === 0) return 'INR Zero only.';
+  if (num === 0) return '₹ Zero only.';
   const ones = [
     '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
     'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen',
@@ -329,7 +329,42 @@ function amountInWordsInr(n: number): string {
   if (lakh) parts.push(`${chunk(lakh)} Lakh`);
   if (thousand) parts.push(`${chunk(thousand)} Thousand`);
   if (hundred) parts.push(chunk(hundred));
-  return `INR ${parts.join(' ').replace(/\s+/g, ' ').trim()} only.`;
+  return `₹ ${parts.join(' ').replace(/\s+/g, ' ').trim()} only.`;
+}
+
+type PdfUnicodeFontSet = { regular: string; bold: string; italic: string };
+
+function firstExistingPath(paths: string[]): string | null {
+  for (const p of paths) {
+    if (existsSync(p)) return p;
+  }
+  return null;
+}
+
+function resolvePdfUnicodeFontSet(): PdfUnicodeFontSet | null {
+  const regular = firstExistingPath([
+    'C:/Windows/Fonts/arial.ttf',
+    'C:/Windows/Fonts/segoeui.ttf',
+    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+    '/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf',
+    '/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf',
+  ]);
+  if (!regular) return null;
+  const bold = firstExistingPath([
+    'C:/Windows/Fonts/arialbd.ttf',
+    'C:/Windows/Fonts/segoeuib.ttf',
+    '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+    '/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf',
+    '/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf',
+  ]) ?? regular;
+  const italic = firstExistingPath([
+    'C:/Windows/Fonts/ariali.ttf',
+    'C:/Windows/Fonts/segoeuii.ttf',
+    '/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf',
+    '/usr/share/fonts/truetype/noto/NotoSans-Italic.ttf',
+    '/usr/share/fonts/truetype/liberation2/LiberationSans-Italic.ttf',
+  ]) ?? regular;
+  return { regular, bold, italic };
 }
 
 function layoutColsToPageWidth(pageWidth: number, weights: number[]): number[] {
@@ -651,6 +686,14 @@ export class SalesService {
     const filePath = join(pdfDir, fileName);
 
     const pdf = new PDFDocument({ size: 'A4', margin: 40, bufferPages: true });
+    const unicodeFonts = resolvePdfUnicodeFontSet();
+    const fontRegular = unicodeFonts ? 'PdfUnicodeRegular' : 'Helvetica';
+    const fontBold = unicodeFonts ? 'PdfUnicodeBold' : 'Helvetica-Bold';
+    if (unicodeFonts) {
+      pdf.registerFont(fontRegular, unicodeFonts.regular);
+      pdf.registerFont(fontBold, unicodeFonts.bold);
+      pdf.registerFont('PdfUnicodeItalic', unicodeFonts.italic);
+    }
     const totalTaxDoc =
       kind === 'invoice'
         ? Number(docData.cgst || 0) + Number(docData.sgst || 0) + Number(docData.igst || 0)
@@ -672,19 +715,22 @@ export class SalesService {
 
     if (kind === 'quotation' || kind === 'order' || kind === 'invoice') {
       const m = pdf.page.margins;
-      const pageSidePad = 20;
+      const pageSidePad = 12;
       const pageLeft = m.left + pageSidePad;
       const pageRight = pdf.page.width - m.right - pageSidePad;
       const pageWidth = pageRight - pageLeft;
+      const borderColor = '#B9C3CF';
+      const borderColorSoft = '#C7CFD9';
+      const borderWidth = 0.6;
 
       const footerBody = singleLineFooterText(
         String(company.address || '').trim() || String(company.company_name || '').trim() || '—',
       );
-      const footerLines = [`Contact: ${footerBody}`];
-      if (company.gstin) {
-        footerLines.push(`GSTIN: ${String(company.gstin)}`);
-      }
-      const footerText = `${footerLines.join('\n')}\nPage 1 of 1`;
+      const footerMeta = company.gstin
+        ? `GSTIN: ${String(company.gstin)}`
+        : `Company: ${String(company.company_name || '—')}`;
+      const footerLine1 = `Contact: ${footerBody} | ${footerMeta}`;
+      const footerText = `${footerLine1}\nPage 1 of 1`;
       pdf.font('Helvetica').fontSize(7);
       const footerHeight = pdf.heightOfString(footerText, { width: pageWidth, align: 'center' });
       const footerBand = Math.max(footerHeight + 18, 44);
@@ -733,11 +779,24 @@ export class SalesService {
       const hasLogo = Boolean(logoPath || logoBuffer);
       const logoColW = 110;
       const addrLinesComp = topAddressTwoLines(String(company.address || ''));
-      let headerH = 22 + addrLinesComp.length * 11 + (company.gstin ? 12 : 0) + 8;
+      const rightBlkW = pageWidth - logoColW - 12;
+      const companyName = String(company.company_name || 'Company');
+      const headerCompanyFontSize = 13;
+      const headerAddressFontSize = 8;
+      // Measure right-column text with real wrapping to avoid overlaps.
+      pdf.font('Helvetica-Bold').fontSize(headerCompanyFontSize);
+      const companyNameH = pdf.heightOfString(companyName, { width: rightBlkW, align: 'right' });
+      pdf.font('Helvetica').fontSize(headerAddressFontSize);
+      const addrHeights = addrLinesComp.map((ln) => pdf.heightOfString(ln, { width: rightBlkW, align: 'right' }));
+      const addrTotalH = addrHeights.reduce((sum, h) => sum + h, 0);
+      const addrGapH = addrLinesComp.length > 1 ? (addrLinesComp.length - 1) * 2 : 0;
+      const gstText = company.gstin ? `GSTIN: ${String(company.gstin)}` : '';
+      const headerGstH = gstText.length === 0 ? 0 : pdf.heightOfString(gstText, { width: rightBlkW, align: 'right' });
+      let headerH = Math.ceil(6 + companyNameH + 4 + addrTotalH + addrGapH + (headerGstH > 0 ? 2 + headerGstH : 0) + 6);
       if (hasLogo) headerH = Math.max(headerH, 80);
       bumpPage(headerH + 36);
       const headerTop = y;
-      pdf.save().lineWidth(1).strokeColor('#333333');
+      pdf.save().lineWidth(borderWidth).strokeColor(borderColor);
       pdf.moveTo(pageLeft, headerTop).lineTo(pageRight, headerTop).stroke();
       pdf.moveTo(pageLeft, headerTop).lineTo(pageLeft, headerTop + headerH).stroke();
       pdf.moveTo(pageRight, headerTop).lineTo(pageRight, headerTop + headerH).stroke();
@@ -758,37 +817,37 @@ export class SalesService {
       pdf
         .moveTo(pageLeft + logoColW, headerTop)
         .lineTo(pageLeft + logoColW, headerTop + headerH)
-        .stroke('#333333');
+        .stroke(borderColor);
       let hy = headerTop + 6;
-      const rightBlkW = pageWidth - logoColW - 12;
       const rightX = pageLeft + logoColW + 6;
       pdf
-        .fontSize(15)
+        .fontSize(headerCompanyFontSize)
         .font('Helvetica-Bold')
         .fillColor('#000000')
-        .text(String(company.company_name || 'Company'), rightX, hy, { width: rightBlkW, align: 'right' });
-      hy += 18;
-      pdf.fontSize(9).font('Helvetica');
-      for (const ln of addrLinesComp) {
+        .text(companyName, rightX, hy, { width: rightBlkW, align: 'right' });
+      hy += companyNameH + 4;
+      pdf.fontSize(headerAddressFontSize).font('Helvetica');
+      for (let i = 0; i < addrLinesComp.length; i++) {
+        const ln = addrLinesComp[i];
         pdf.text(ln, rightX, hy, { width: rightBlkW, align: 'right' });
-        hy += 11;
+        hy += addrHeights[i] + 2;
       }
-      if (company.gstin) {
-        pdf.text(`GSTIN: ${String(company.gstin)}`, rightX, hy, { width: rightBlkW, align: 'right' });
-        hy += 12;
+      if (gstText.length > 0) {
+        pdf.text(gstText, rightX, hy, { width: rightBlkW, align: 'right' });
+        hy += headerGstH;
       }
       y = headerTop + headerH;
 
       bumpPage(36);
-      pdf.rect(pageLeft, y, pageWidth, 24).stroke('#333333');
+      pdf.rect(pageLeft, y, pageWidth, 24).lineWidth(borderWidth).stroke(borderColor);
       pdf.fontSize(12).font('Helvetica-Bold').text(title, pageLeft, y + 7, { width: pageWidth, align: 'center' });
       y += 32;
 
       const leftW = pageWidth / 2;
       const metaH = 56;
       bumpPage(metaH + 8);
-      pdf.rect(pageLeft, y, pageWidth, metaH).stroke('#333333');
-      pdf.moveTo(pageLeft + leftW, y).lineTo(pageLeft + leftW, y + metaH).stroke('#333333');
+      pdf.rect(pageLeft, y, pageWidth, metaH).lineWidth(borderWidth).stroke(borderColor);
+      pdf.moveTo(pageLeft + leftW, y).lineTo(pageLeft + leftW, y + metaH).lineWidth(borderWidth).stroke(borderColor);
       pdf.fontSize(9).font('Helvetica-Bold').text(metaNoLabel, pageLeft + 8, y + 8);
       pdf.font('Helvetica').text(`: ${docNo}`, pageLeft + 95, y + 8);
       pdf.font('Helvetica-Bold').text(metaDateLabel, pageLeft + 8, y + 22);
@@ -804,21 +863,49 @@ export class SalesService {
       pdf.font('Helvetica').text(`: ${docData.created_by_name || '—'}`, pageLeft + leftW + 92, y + 22);
       y += metaH + 8;
 
-      const boxH = 76;
-      bumpPage(boxH + 8);
-      pdf.rect(pageLeft, y, leftW, boxH).stroke('#333333');
-      pdf.rect(pageLeft + leftW, y, leftW, boxH).stroke('#333333');
-      pdf.rect(pageLeft, y, leftW, 16).fillAndStroke('#eaeaea', '#999999');
-      pdf.rect(pageLeft + leftW, y, leftW, 16).fillAndStroke('#eaeaea', '#999999');
-      pdf.fillColor('#000000').font('Helvetica-Bold').fontSize(9).text('Billing Address', pageLeft + 6, y + 4);
-      pdf.text('Delivery Address', pageLeft + leftW + 6, y + 4);
+      // Address blocks: use dynamic height to prevent overlap for long/wrapped addresses.
+      const addrPadX = 6;
+      const addrColW = leftW - addrPadX * 2;
+      const addrHeaderH = 16;
+      const addrTopPad = 6;
+      const addrNameY = y + addrHeaderH + addrTopPad;
+      const addrName = String(docData.customer_name || '—');
       pdf.font('Helvetica').fontSize(8.5);
-      pdf.text(String(docData.customer_name || '—'), pageLeft + 6, y + 22, { width: leftW - 12 });
-      pdf.text(customerBillingAddress, pageLeft + 6, y + 34, { width: leftW - 12, height: 26 });
-      if (customerGstin) pdf.text(`GSTIN : ${customerGstin}`, pageLeft + 6, y + 62, { width: leftW - 12 });
-      pdf.text(String(docData.customer_name || '—'), pageLeft + leftW + 6, y + 22, { width: leftW - 12 });
-      pdf.text(customerShippingAddress, pageLeft + leftW + 6, y + 34, { width: leftW - 12, height: 26 });
-      if (customerGstin) pdf.text(`GSTIN : ${customerGstin}`, pageLeft + leftW + 6, y + 62, { width: leftW - 12 });
+      const nameH = pdf.heightOfString(addrName, { width: addrColW });
+      const billH = pdf.heightOfString(customerBillingAddress, { width: addrColW });
+      const shipH = pdf.heightOfString(customerShippingAddress, { width: addrColW });
+      const gstH = customerGstin ? pdf.heightOfString(`GSTIN : ${customerGstin}`, { width: addrColW }) : 0;
+      const contentH = Math.max(nameH + 4 + billH + (customerGstin ? 4 + gstH : 0), nameH + 4 + shipH + (customerGstin ? 4 + gstH : 0));
+      const boxH = Math.max(76, addrHeaderH + addrTopPad + contentH + 8);
+      bumpPage(boxH + 8);
+
+      pdf.rect(pageLeft, y, leftW, boxH).lineWidth(borderWidth).stroke(borderColor);
+      pdf.rect(pageLeft + leftW, y, leftW, boxH).lineWidth(borderWidth).stroke(borderColor);
+      pdf.rect(pageLeft, y, leftW, addrHeaderH).lineWidth(borderWidth).fillAndStroke('#eaeaea', borderColorSoft);
+      pdf.rect(pageLeft + leftW, y, leftW, addrHeaderH).lineWidth(borderWidth).fillAndStroke('#eaeaea', borderColorSoft);
+      pdf.fillColor('#000000').font('Helvetica-Bold').fontSize(9).text('Billing Address', pageLeft + addrPadX, y + 4);
+      pdf.text('Delivery Address', pageLeft + leftW + addrPadX, y + 4);
+
+      pdf.font('Helvetica').fontSize(8.5);
+      // Left (billing)
+      let addrLy = addrNameY;
+      pdf.text(addrName, pageLeft + addrPadX, addrLy, { width: addrColW, ellipsis: true });
+      addrLy += nameH + 4;
+      pdf.text(customerBillingAddress, pageLeft + addrPadX, addrLy, { width: addrColW, height: boxH - (addrLy - y) - 10, ellipsis: true });
+      if (customerGstin) {
+        // Place GSTIN at bottom of the box to avoid overlapping wrapped address.
+        pdf.text(`GSTIN : ${customerGstin}`, pageLeft + addrPadX, y + boxH - 14, { width: addrColW, ellipsis: true });
+      }
+
+      // Right (shipping)
+      let addrRy = addrNameY;
+      pdf.text(addrName, pageLeft + leftW + addrPadX, addrRy, { width: addrColW, ellipsis: true });
+      addrRy += nameH + 4;
+      pdf.text(customerShippingAddress, pageLeft + leftW + addrPadX, addrRy, { width: addrColW, height: boxH - (addrRy - y) - 10, ellipsis: true });
+      if (customerGstin) {
+        pdf.text(`GSTIN : ${customerGstin}`, pageLeft + leftW + addrPadX, y + boxH - 14, { width: addrColW, ellipsis: true });
+      }
+
       y += boxH + 8;
 
       const colWeights = [28, 230, 66, 45, 82, 104];
@@ -834,7 +921,7 @@ export class SalesService {
       const headers = ['#', 'Item & Description', 'HSN', 'Qty', 'Rate', 'Amount'];
       bumpPage(18);
       let x = pageLeft;
-      pdf.rect(pageLeft, y, pageWidth, 18).fillAndStroke('#eaeaea', '#333333');
+      pdf.rect(pageLeft, y, pageWidth, 18).lineWidth(borderWidth).fillAndStroke('#eaeaea', borderColor);
       headers.forEach((h, i) => {
         pdf
           .fillColor('#000000')
@@ -847,18 +934,20 @@ export class SalesService {
       const items = Array.isArray(docData.items) ? docData.items : [];
       if (!items.length) {
         bumpPage(16);
-        pdf.rect(pageLeft, y, pageWidth, 16).stroke('#333333');
+        pdf.rect(pageLeft, y, pageWidth, 16).lineWidth(borderWidth).stroke(borderColor);
         pdf.font('Helvetica').fontSize(8.5).text('No line items', pageLeft, y + 4, { width: pageWidth, align: 'center' });
         y += 16;
       } else {
         items.forEach((it: any, idx: number) => {
-          const rowH = 16;
+          const desc = String(it.description || it.product_name || '—');
+          const descH = pdf.heightOfString(desc, { width: cols[1] - 8 });
+          const rowH = Math.max(16, Math.ceil(descH) + 8);
           bumpPage(rowH);
-          pdf.rect(pageLeft, y, pageWidth, rowH).stroke('#333333');
+          pdf.rect(pageLeft, y, pageWidth, rowH).lineWidth(borderWidth).stroke(borderColor);
           let cx = pageLeft;
           const vals = [
             String(idx + 1),
-            String(it.description || it.product_name || '—'),
+            desc,
             String(it.product_hsn_code || it.hsn_code || '—'),
             `${Number(it.quantity || 0)}`,
             this.money(it.unit_price),
@@ -868,7 +957,12 @@ export class SalesService {
             pdf
               .font('Helvetica')
               .fontSize(8.2)
-              .text(v, cx + 4, y + 4, { width: cols[i] - 8, align: i >= 4 ? 'right' : i === 0 || i === 2 || i === 3 ? 'center' : 'left' });
+              .text(v, cx + 4, y + 4, {
+                width: cols[i] - 8,
+                height: rowH - 8,
+                ellipsis: true,
+                align: i >= 4 ? 'right' : i === 0 || i === 2 || i === 3 ? 'center' : 'left',
+              });
             cx += cols[i];
           });
           y += rowH;
@@ -888,7 +982,7 @@ export class SalesService {
       const taxRowH = 16;
       const taxTableH = taxHdrH + displayTaxRows.length * taxRowH;
       bumpPage(taxTableH + 4);
-      pdf.rect(pageLeft, y, pageWidth, taxHdrH).fillAndStroke('#eaeaea', '#333333');
+      pdf.rect(pageLeft, y, pageWidth, taxHdrH).lineWidth(borderWidth).fillAndStroke('#eaeaea', borderColor);
       let taxX = pageLeft;
       const taxHdrs = interstate
         ? ['HSN/SAC', 'Taxable Amount', 'IGST']
@@ -904,7 +998,7 @@ export class SalesService {
       y += taxHdrH;
       for (const tr of displayTaxRows) {
         bumpPage(taxRowH);
-        pdf.rect(pageLeft, y, pageWidth, taxRowH).stroke('#333333');
+        pdf.rect(pageLeft, y, pageWidth, taxRowH).lineWidth(borderWidth).stroke(borderColor);
         taxX = pageLeft;
         if (interstate) {
           const vals = [tr.hsn, this.money(tr.taxable), `(${tr.rate}%) ${this.money(tr.igst)}`];
@@ -941,7 +1035,9 @@ export class SalesService {
       const amtColW = Math.min(230, Math.floor(pageWidth * 0.45));
       const wordsColW = pageWidth - amtColW;
       const boxPad = 8;
-      pdf.font('Helvetica').fontSize(11);
+      const totalsFontSize = 9.5;
+      const totalsLineGap = 12;
+      pdf.font(fontRegular).fontSize(totalsFontSize);
       const leftTextH = pdf.heightOfString(wordsStr, { width: wordsColW - boxPad * 2 });
       let rightLineCount = 1;
       if (t.cgst > 0) rightLineCount += 1;
@@ -950,24 +1046,24 @@ export class SalesService {
       if (totalTax > 0) rightLineCount += 1;
       rightLineCount += 1;
       if (kind === 'invoice' && t.balance != null) rightLineCount += 1;
-      const rightBlockH = boxPad * 2 + rightLineCount * 13 + 6;
-      const leftBlockH = boxPad * 2 + 14 + leftTextH;
+      const rightBlockH = boxPad * 2 + rightLineCount * totalsLineGap + 6;
+      const leftBlockH = boxPad * 2 + totalsLineGap + leftTextH;
       const totalsBoxH = Math.max(leftBlockH, rightBlockH, 52);
       bumpPage(totalsBoxH + 8);
-      pdf.rect(pageLeft, y, pageWidth, totalsBoxH).stroke('#333333');
-      pdf.moveTo(pageLeft + wordsColW, y).lineTo(pageLeft + wordsColW, y + totalsBoxH).stroke('#333333');
-      pdf.fillColor('#000000').font('Helvetica-Bold').fontSize(11).text('Total in Words', pageLeft + boxPad, y + boxPad);
-      pdf.font('Helvetica').fontSize(11).text(wordsStr, pageLeft + boxPad, y + boxPad + 14, { width: wordsColW - boxPad * 2 });
+      pdf.rect(pageLeft, y, pageWidth, totalsBoxH).lineWidth(borderWidth).stroke(borderColor);
+      pdf.moveTo(pageLeft + wordsColW, y).lineTo(pageLeft + wordsColW, y + totalsBoxH).lineWidth(borderWidth).stroke(borderColor);
+      pdf.fillColor('#000000').font(fontBold).fontSize(totalsFontSize).text('Total in Words', pageLeft + boxPad, y + boxPad);
+      pdf.font(fontRegular).fontSize(totalsFontSize).text(wordsStr, pageLeft + boxPad, y + boxPad + totalsLineGap, { width: wordsColW - boxPad * 2 });
       const ax = pageLeft + wordsColW + boxPad;
       const aw = amtColW - boxPad * 2;
       let ry = y + boxPad;
       const totalLine = (label: string, val: string, bold = false, red = false) => {
         if (red) pdf.fillColor('#cc0000');
         else pdf.fillColor('#000000');
-        pdf.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(11);
+        pdf.font(bold ? fontBold : fontRegular).fontSize(totalsFontSize);
         pdf.text(label, ax, ry, { width: aw - 80, align: 'left' });
-        pdf.text(`INR ${val}`, ax, ry, { width: aw, align: 'right' });
-        ry += 13;
+        pdf.text(`₹ ${val}`, ax, ry, { width: aw, align: 'right' });
+        ry += totalsLineGap;
       };
       totalLine('Sub Total', this.money(subTotal));
       if (t.cgst > 0) totalLine('CGST', this.money(t.cgst));
@@ -982,8 +1078,8 @@ export class SalesService {
       const colW = (pageWidth - 8) / 2;
       const blockH = 92;
       bumpPage(blockH + 48);
-      pdf.rect(pageLeft, y, colW, blockH).stroke('#333333');
-      pdf.rect(pageLeft + colW + 8, y, colW, blockH).stroke('#333333');
+      pdf.rect(pageLeft, y, colW, blockH).lineWidth(borderWidth).stroke(borderColor);
+      pdf.rect(pageLeft + colW + 8, y, colW, blockH).lineWidth(borderWidth).stroke(borderColor);
       pdf.font('Helvetica-Bold').fontSize(9).text('Terms And Conditions:', pageLeft + 6, y + 6);
       pdf.font('Helvetica').fontSize(8).text(terms || '—', pageLeft + 6, y + 18, { width: colW - 12, height: blockH - 24 });
       pdf.font('Helvetica-Bold').fontSize(9).text('Bank Details:', pageLeft + colW + 14, y + 6);
@@ -1031,13 +1127,13 @@ export class SalesService {
           const rate = this.money(it.unit_price);
           const total = this.money(it.total);
           pdf.fontSize(9).text(`${idx + 1}. ${desc}`);
-          pdf.fontSize(8).fillColor('gray').text(`Qty: ${qty}  Rate: INR ${rate}  Amount: INR ${total}`);
+          pdf.font(fontRegular).fontSize(8).fillColor('gray').text(`Qty: ${qty}  Rate: ₹ ${rate}  Amount: ₹ ${total}`);
           pdf.fillColor('black').moveDown(0.3);
         });
       }
 
       const total = this.money(docData.total_amount);
-      pdf.moveDown(0.6).fontSize(11).text(`Total: INR ${total}`, { align: 'right' });
+      pdf.font(fontBold).moveDown(0.6).fontSize(11).text(`Total: ₹ ${total}`, { align: 'right' });
       if (docData.notes) {
         pdf.moveDown(0.8).fontSize(9).text('Terms And Conditions:', { underline: true });
         pdf.fontSize(8).text(String(docData.notes));
@@ -1054,17 +1150,15 @@ export class SalesService {
       const footerBody = singleLineFooterText(
         String(company.address || '').trim() || String(company.company_name || '').trim() || '—',
       );
-      const footerLines = [`Contact: ${footerBody}`];
-      if (company.gstin) {
-        footerLines.push(`GSTIN: ${String(company.gstin)}`);
-      } else {
-        footerLines.push(`Company: ${String(company.company_name || '—')}`);
-      }
+      const footerMeta = company.gstin
+        ? `GSTIN: ${String(company.gstin)}`
+        : `Company: ${String(company.company_name || '—')}`;
+      const footerLine1 = `Contact: ${footerBody} | ${footerMeta}`;
       const fr = pdf.bufferedPageRange();
       for (let pi = fr.start; pi < fr.start + fr.count; pi++) {
         pdf.switchToPage(pi);
         pdf.font('Helvetica').fontSize(7);
-        const footerText = `${footerLines.join('\n')}\nPage ${pi - fr.start + 1} of ${fr.count}`;
+        const footerText = `${footerLine1}\nPage ${pi - fr.start + 1} of ${fr.count}`;
         const footerHeight = pdf.heightOfString(footerText, { width: footerWidth, align: 'center' });
         const fy = pdf.page.height - m.bottom - footerHeight - 10;
         pdf.fillColor('#666666').text(footerText, footerLeft, fy, {
