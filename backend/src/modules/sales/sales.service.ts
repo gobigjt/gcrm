@@ -354,8 +354,21 @@ function firstExistingPath(paths: string[]): string | null {
   return null;
 }
 
+function resolveNodeModulePath(specifier: string): string | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return require.resolve(specifier);
+  } catch {
+    return null;
+  }
+}
+
 function resolvePdfUnicodeFontSet(): PdfUnicodeFontSet | null {
+  const bundledRegular = resolveNodeModulePath('dejavu-fonts-ttf/ttf/DejaVuSans.ttf');
+  const bundledBold = resolveNodeModulePath('dejavu-fonts-ttf/ttf/DejaVuSans-Bold.ttf');
+  const bundledItalic = resolveNodeModulePath('dejavu-fonts-ttf/ttf/DejaVuSans-Oblique.ttf');
   const regular = firstExistingPath([
+    ...(bundledRegular ? [bundledRegular] : []),
     'C:/Windows/Fonts/arial.ttf',
     'C:/Windows/Fonts/segoeui.ttf',
     '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
@@ -364,6 +377,7 @@ function resolvePdfUnicodeFontSet(): PdfUnicodeFontSet | null {
   ]);
   if (!regular) return null;
   const bold = firstExistingPath([
+    ...(bundledBold ? [bundledBold] : []),
     'C:/Windows/Fonts/arialbd.ttf',
     'C:/Windows/Fonts/segoeuib.ttf',
     '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
@@ -371,6 +385,7 @@ function resolvePdfUnicodeFontSet(): PdfUnicodeFontSet | null {
     '/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf',
   ]) ?? regular;
   const italic = firstExistingPath([
+    ...(bundledItalic ? [bundledItalic] : []),
     'C:/Windows/Fonts/ariali.ttf',
     'C:/Windows/Fonts/segoeuii.ttf',
     '/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf',
