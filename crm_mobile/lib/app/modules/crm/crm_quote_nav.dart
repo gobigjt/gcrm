@@ -48,8 +48,31 @@ Future<bool> _confirmDialog(
       title: Text(title),
       content: Text(message),
       actions: [
-        TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: Text(noLabel)),
-        FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: Text(yesLabel)),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(44),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                child: Text(noLabel),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: FilledButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(44),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                child: Text(yesLabel),
+              ),
+            ),
+          ],
+        ),
       ],
     ),
   );
