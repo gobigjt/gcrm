@@ -12,6 +12,7 @@ import '../../showcase/showcase_widgets.dart';
 import 'crm_edit_lead_view.dart';
 import 'crm_lead_detail_controller.dart';
 import 'crm_quote_nav.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 String _priorityShort(String p) {
   switch (p) {
@@ -119,6 +120,26 @@ class CrmLeadDetailView extends StatelessWidget {
     return (parts[0].substring(0, 1) + parts[1].substring(0, 1)).toUpperCase();
   }
 
+  Future<void> _openDialer(String phone) async {
+    final p = phone.trim();
+    if (p.isEmpty) return;
+    final uri = Uri.parse('tel:$p');
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok) {
+      Get.snackbar('Call', 'Could not open dialer.');
+    }
+  }
+
+  Future<void> _openWhatsApp(String phone) async {
+    final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return;
+    final uri = Uri.parse('https://wa.me/$digits');
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok) {
+      Get.snackbar('WhatsApp', 'Could not open WhatsApp.');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (leadId <= 0) {
@@ -142,7 +163,7 @@ class CrmLeadDetailView extends StatelessWidget {
         );
       }
       final lead = controller.lead.value ?? CrmLead.placeholder;
-      final title = lead.source.trim().isNotEmpty ? lead.source : 'Lead detail';
+      final title = 'Lead details';
       final hues = [0xFF5C6BC0, 0xFF26A69A, 0xFFEC407A, 0xFFAB47BC, 0xFFFF7043];
       final avatarBg = Color(hues[lead.id.abs() % hues.length]);
       final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -310,7 +331,7 @@ class CrmLeadDetailView extends StatelessWidget {
                                 child: _InfoBlock(
                                   bg: isDark ? const Color(0xFF0D2818) : const Color(0xFFE1F5EE),
                                   fg: isDark ? const Color(0xFF6EE7B7) : const Color(0xFF085041),
-                                  label: 'Deal (INR)',
+                                  label: 'Deal (₹)',
                                   value: lead.dealSize != null
                                       ? formatCurrencyInr(lead.dealSize, decimals: 0)
                                       : '—',
@@ -318,23 +339,57 @@ class CrmLeadDetailView extends StatelessWidget {
                               ),
                             ],
                           ),
-                          if (lead.assignedName.trim().isNotEmpty) ...[
-                            const SizedBox(height: 10),
-                            Row(
-                              children: [
-                                Icon(Icons.person_outline_rounded, size: 18, color: Theme.of(context).hintColor),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    'Assigned to ${lead.assignedName}',
-                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
-                                  ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _MiniInfoCard(
+                                  label: 'Assigned',
+                                  value: lead.assignedName.trim().isEmpty ? 'Unassigned' : lead.assignedName.trim(),
                                 ),
-                              ],
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _MiniInfoCard(
+                                  label: 'Manager',
+                                  value: lead.assignedManagerName.trim().isEmpty ? 'Unassigned' : lead.assignedManagerName.trim(),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            'Move stage',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 6),
+                          Obx(
+                            () => Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: controller.stages.map((s) {
+                                final selected = s.name.trim().toLowerCase() == lead.stage.trim().toLowerCase();
+                                return ChoiceChip(
+                                  label: Text(s.name),
+                                  selected: selected,
+                                  onSelected: controller.isSubmitting.value || selected
+                                      ? null
+                                      : (_) async {
+                                          await controller.changeStage(s.id);
+                                          Get.snackbar('Stage updated', 'Lead moved to ${s.name}');
+                                        },
+                                  visualDensity: VisualDensity.compact,
+                                );
+                              }).toList(),
                             ),
-                          ],
+                          ),
                           const SizedBox(height: 8),
                           _DetailIconRow(icon: Icons.sell_outlined, label: 'Lead source', value: lead.source),
+                          _DetailIconRow(
+                            icon: Icons.category_outlined,
+                            label: 'Product category',
+                            value: lead.productCategory.trim().isEmpty ? '—' : lead.productCategory.trim(),
+                          ),
                           if (lead.tags.isNotEmpty) ...[
                             const SizedBox(height: 10),
                             Text('Tags', style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700)),
@@ -374,7 +429,18 @@ class CrmLeadDetailView extends StatelessWidget {
                         ),
                         childrenPadding: const EdgeInsets.only(bottom: 8),
                         children: [
-                          _DetailIconRow(icon: Icons.phone_android_rounded, label: 'Mobile / WhatsApp', value: lead.phone.trim().isEmpty ? '—' : lead.phone.trim()),
+                          _DetailIconRow(
+                            icon: Icons.phone_android_rounded,
+                            label: 'Mobile',
+                            value: lead.phone.trim().isEmpty ? '—' : lead.phone.trim(),
+                            onTap: lead.phone.trim().isEmpty ? null : () => _openDialer(lead.phone),
+                          ),
+                          _DetailIconRow(
+                            icon: Icons.chat_rounded,
+                            label: 'WhatsApp',
+                            value: lead.phone.trim().isEmpty ? '—' : lead.phone.trim(),
+                            onTap: lead.phone.trim().isEmpty ? null : () => _openWhatsApp(lead.phone),
+                          ),
                           _DetailIconRow(icon: Icons.email_outlined, label: 'Email', value: lead.email.trim().isEmpty ? '—' : lead.email.trim()),
                           _DetailIconRow(icon: Icons.language_rounded, label: 'Website', value: lead.website.trim().isEmpty ? '—' : lead.website.trim()),
                           _DetailIconRow(icon: Icons.place_outlined, label: 'Address', value: lead.address.trim().isEmpty ? '—' : lead.address.trim()),
@@ -405,20 +471,9 @@ class CrmLeadDetailView extends StatelessWidget {
                         bg: Theme.of(context).colorScheme.surfaceContainerHighest,
                         fg: Theme.of(context).colorScheme.onSurface,
                         outline: true,
-                        label: 'Sales',
+                        label: 'Sales / Quote',
                         icon: Icons.receipt_long_outlined,
                         onTap: () => navigateSalesFlowForLead(context, lead),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _LeadActionCard(
-                        bg: Theme.of(context).colorScheme.surfaceContainerHighest,
-                        fg: Theme.of(context).colorScheme.onSurface,
-                        outline: true,
-                        label: 'Quote',
-                        icon: Icons.receipt_long_rounded,
-                        onTap: () => navigateQuoteFlowForLead(context, lead),
                       ),
                     ),
                   ],
@@ -851,20 +906,59 @@ class _FollowupsSliver extends StatelessWidget {
   }
 }
 
-class _DetailIconRow extends StatelessWidget {
-  const _DetailIconRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
+class _MiniInfoCard extends StatelessWidget {
+  const _MiniInfoCard({required this.label, required this.value});
 
-  final IconData icon;
   final String label;
   final String value;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).hintColor,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailIconRow extends StatelessWidget {
+  const _DetailIconRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final content = Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -891,8 +985,20 @@ class _DetailIconRow extends StatelessWidget {
               ],
             ),
           ),
+          if (onTap != null)
+            Icon(
+              Icons.open_in_new_rounded,
+              size: 16,
+              color: Theme.of(context).hintColor,
+            ),
         ],
       ),
+    );
+    if (onTap == null) return content;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: content,
     );
   }
 }

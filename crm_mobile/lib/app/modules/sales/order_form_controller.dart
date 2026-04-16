@@ -8,10 +8,15 @@ import '../auth/auth_controller.dart';
 import 'sales_line_draft.dart';
 
 class OrderFormController extends GetxController {
-  OrderFormController({this.initialCustomerId});
+  OrderFormController({this.initialCustomerId, this.orderId});
 
   /// Pre-select customer (e.g. filtered Sales FAB / CRM handoff).
   final int? initialCustomerId;
+
+  /// When set, load and PATCH this order (matches web `orders/:id/edit`).
+  final int? orderId;
+
+  bool get isEdit => orderId != null && orderId! > 0;
 
   final AuthController _auth = Get.find<AuthController>();
 
@@ -27,22 +32,16 @@ class OrderFormController extends GetxController {
   final selectedCreatedById = Rxn<int>();
   late final TextEditingController orderDateCtrl;
   late final TextEditingController dueDateCtrl;
-  final notesCtrl       = TextEditingController();
-  final referenceNoCtrl = TextEditingController();
+  final notesCtrl = TextEditingController();
 
   // GST & tax type
   final gstTypeValue = 'intra_state'.obs; // 'intra_state' | 'inter_state'
   final taxTypeValue = 'exclusive'.obs;   // 'exclusive' | 'inclusive' | 'no_tax'
 
-  // Extra charges
+  /// Placeholders for [salesTotalsCard] (web order totals are line-only).
   final discountAmountCtrl = TextEditingController(text: '0');
   final shippingAmountCtrl = TextEditingController(text: '0');
-  final extraDiscountCtrl  = TextEditingController(text: '0');
   final roundOffCtrl       = TextEditingController(text: '0');
-
-  // Payment
-  final paymentTermsValue  = ''.obs;
-  final paymentMethodValue = ''.obs;
 
   final lines = <SalesLineDraft>[].obs;
 
@@ -67,10 +66,8 @@ class OrderFormController extends GetxController {
     orderDateCtrl.dispose();
     dueDateCtrl.dispose();
     notesCtrl.dispose();
-    referenceNoCtrl.dispose();
     discountAmountCtrl.dispose();
     shippingAmountCtrl.dispose();
-    extraDiscountCtrl.dispose();
     roundOffCtrl.dispose();
     super.onClose();
   }
@@ -85,8 +82,12 @@ class OrderFormController extends GetxController {
     errorMessage.value = '';
     try {
       await Future.wait([_loadCustomers(), _loadProducts(), _loadExecutives()]);
-      _syncCreatedBySelection();
-      if (lines.isEmpty) addLine();
+      if (isEdit) {
+        await _loadOrderIntoForm(orderId!);
+      } else {
+        selectedCreatedById.value = null;
+        if (lines.isEmpty) addLine();
+      }
     } catch (e) {
       errorMessage.value = userFriendlyError(e);
     } finally {
@@ -94,18 +95,44 @@ class OrderFormController extends GetxController {
     }
   }
 
+  Future<void> _loadOrderIntoForm(int id) async {
+    final res = await _auth.authorizedRequest(method: 'GET', path: '/sales/orders/$id');
+    final q   = Map<String, dynamic>.from((res as Map)['order'] as Map);
+
+    selectedCustomerId.value = (q['customer_id'] as num?)?.toInt();
+    orderDateCtrl.text       = formatIsoDate(q['order_date']);
+    if (orderDateCtrl.text == '—') orderDateCtrl.text = toYmd(DateTime.now());
+    dueDateCtrl.text         = formatIsoDate(q['due_date']);
+    if (dueDateCtrl.text == '—') dueDateCtrl.clear();
+    notesCtrl.text           = (q['notes'] ?? '').toString();
+    orderStatusValue.value   = (q['status'] ?? 'pending').toString();
+    selectedCreatedById.value = (q['created_by'] as num?)?.toInt();
+    _syncCreatedBySelection(selectedCreatedById.value);
+
+    final hasIgst = parseDynamicNum(q['igst']) > 0;
+    gstTypeValue.value  = hasIgst ? 'inter_state' : (q['gst_type'] ?? 'intra_state').toString();
+    taxTypeValue.value  = (q['tax_type'] ?? 'exclusive').toString();
+
+    for (final L in lines) { L.dispose(); }
+    lines.clear();
+    final rawItems = q['items'];
+    if (rawItems is List && rawItems.isNotEmpty) {
+      for (final e in rawItems) {
+        lines.add(SalesLineDraft.fromApiRow(Map<String, dynamic>.from(e as Map)));
+      }
+    } else {
+      addLine();
+    }
+    lines.refresh();
+  }
+
   Future<void> _loadCustomers() async {
     final res  = await _auth.authorizedRequest(method: 'GET', path: '/sales/customers');
     final list = _asList(res);
     customers.assignAll(list);
-    final init = initialCustomerId;
-    if (init != null && list.any((c) => (c['id'] as num?)?.toInt() == init)) {
-      selectedCustomerId.value = init;
-      return;
-    }
-    if (selectedCustomerId.value == null && list.isNotEmpty) {
-      final id = list.first['id'];
-      if (id != null) selectedCustomerId.value = (id as num).toInt();
+    if (!isEdit) {
+      // New orders should not pre-select customer.
+      selectedCustomerId.value = null;
     }
   }
 
@@ -182,6 +209,8 @@ class OrderFormController extends GetxController {
     lines.refresh();
   }
 
+  static const _orderStatuses = {'pending', 'processing', 'shipped', 'delivered', 'cancelled'};
+
   Future<void> submit() async {
     final cid = selectedCustomerId.value;
     if (cid == null) {
@@ -207,27 +236,25 @@ class OrderFormController extends GetxController {
     try {
       final od  = orderDateCtrl.text.trim();
       final due = dueDateCtrl.text.trim();
-      final ref = referenceNoCtrl.text.trim();
+      final st = _orderStatuses.contains(orderStatusValue.value) ? orderStatusValue.value : 'pending';
+      // Matches web `Sales.jsx` DocumentModal order POST/PATCH body.
       final body = <String, dynamic>{
         'customer_id':     cid,
         'order_date':      od.isEmpty  ? null : od,
         'due_date':        due.isEmpty ? null : due,
         'notes':           notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
-        'reference_no':    ref.isEmpty ? null : ref,
-        'status':          orderStatusValue.value,
+        'status':          st,
         'gst_type':        gstTypeValue.value,
         'tax_type':        taxTypeValue.value,
         'is_interstate':   interstate,
         'created_by':      selectedCreatedById.value,
-        'discount_amount': double.tryParse(discountAmountCtrl.text) ?? 0,
-        'shipping_amount': double.tryParse(shippingAmountCtrl.text) ?? 0,
-        'extra_discount':  double.tryParse(extraDiscountCtrl.text)  ?? 0,
-        'round_off':       double.tryParse(roundOffCtrl.text)       ?? 0,
-        'payment_terms':   paymentTermsValue.value.isEmpty  ? null : paymentTermsValue.value,
-        'payment_method':  paymentMethodValue.value.isEmpty ? null : paymentMethodValue.value,
         'items':           payloadLines,
       };
-      await _auth.authorizedRequest(method: 'POST', path: '/sales/orders', body: body);
+      if (isEdit) {
+        await _auth.authorizedRequest(method: 'PATCH', path: '/sales/orders/${orderId!}', body: body);
+      } else {
+        await _auth.authorizedRequest(method: 'POST', path: '/sales/orders', body: body);
+      }
       Get.back(result: true);
     } catch (e) {
       Get.snackbar('Save failed', userFriendlyError(e));

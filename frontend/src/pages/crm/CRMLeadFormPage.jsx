@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/client';
 import { Field, inputCls, selectCls } from '../../components/FormField';
+import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { apiErrorMessage } from '../../utils/apiErrorMessage';
 
 const EMPTY = {
   name: '', email: '', phone: '', company: '', source_id: '', stage_id: '', assigned_to: '', assigned_manager_id: '', priority: 'warm', notes: '',
-  lead_segment: '', job_title: '', website: '', address: '', tags: '', deal_size: '', lead_score: '',
+  lead_segment: '', job_title: '', product_category: '', website: '', address: '', tags: '', deal_size: '', lead_score: '',
 };
 
 function tagsToString(tags) {
@@ -31,6 +32,7 @@ function leadToForm(row) {
     notes: row.notes || '',
     lead_segment: row.lead_segment || '',
     job_title: row.job_title || '',
+    product_category: row.product_category || '',
     website: row.website || '',
     address: row.address || '',
     tags: tagsToString(row.tags),
@@ -43,14 +45,26 @@ export default function CRMLeadFormPage() {
   const { id } = useParams();
   const isEdit = useMemo(() => Boolean(id), [id]);
   const nav = useNavigate();
+  const { user } = useAuth();
   const { show } = useToast();
   const [stages, setStages] = useState([]);
   const [sources, setSources] = useState([]);
   const [users, setUsers] = useState([]);
   const [segments, setSegments] = useState([]);
   const [priorities, setPriorities] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [form, setForm] = useState({ ...EMPTY });
   const [loading, setLoading] = useState(false);
+  const roleName = String(user?.role || '').toLowerCase();
+  const isSalesManager = roleName === 'sales manager' || roleName === 'manager';
+  const salesExecutiveUsers = useMemo(
+    () =>
+      users.filter((u) => {
+        const r = String(u?.role || '').trim().toLowerCase();
+        return r === 'sales executive' || r === 'agent';
+      }),
+    [users],
+  );
 
   useEffect(() => {
     api.get('/crm/leads/stages').then((r) => setStages(r.data || [])).catch(() => setStages([]));
@@ -58,6 +72,7 @@ export default function CRMLeadFormPage() {
     api.get('/crm/leads/assignees').then((r) => setUsers(r.data || [])).catch(() => setUsers([]));
     api.get('/crm/leads/masters/segments').then((r) => setSegments(Array.isArray(r.data) ? r.data : [])).catch(() => setSegments([]));
     api.get('/crm/leads/masters/priorities').then((r) => setPriorities(Array.isArray(r.data) ? r.data : [])).catch(() => setPriorities([]));
+    api.get('/inventory/categories').then((r) => setCategories(Array.isArray(r.data) ? r.data : [])).catch(() => setCategories([]));
   }, []);
 
   useEffect(() => {
@@ -88,6 +103,7 @@ export default function CRMLeadFormPage() {
       notes: form.notes.trim() || null,
       lead_segment: form.lead_segment.trim() || null,
       job_title: form.job_title.trim() || null,
+      product_category: form.product_category.trim() || null,
       website: form.website.trim() || null,
       address: form.address.trim() || null,
       tags: tagsArr,
@@ -143,6 +159,15 @@ export default function CRMLeadFormPage() {
                 </Field>
               <Field label="Job title"><input className={inputCls} value={form.job_title} onChange={set('job_title')} /></Field>
             </div>
+            <Field label="Product category">
+              <select className={selectCls} value={form.product_category} onChange={set('product_category')}>
+                <option value="">Select…</option>
+                {form.product_category && !categories.some((c) => c.name === form.product_category) && (
+                  <option value={form.product_category}>{form.product_category}</option>
+                )}
+                {categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+              </select>
+            </Field>
             <Field label="Website"><input className={inputCls} value={form.website} onChange={set('website')} /></Field>
             <Field label="Address"><textarea className={inputCls + ' h-16 resize-none'} value={form.address} onChange={set('address')} /></Field>
           </section>
@@ -151,18 +176,20 @@ export default function CRMLeadFormPage() {
             <section className="space-y-3">
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Assignment</h3>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Assigned To">
+                <Field label="Assign to sales Executive">
                   <select className={selectCls} value={form.assigned_to} onChange={set('assigned_to')}>
                     <option value="">Unassigned</option>
-                    {users.map((u) => <option key={u.id} value={String(u.id)}>{assigneeLabel(u)}</option>)}
+                    {salesExecutiveUsers.map((u) => <option key={u.id} value={String(u.id)}>{assigneeLabel(u)}</option>)}
                   </select>
                 </Field>
-                <Field label="Assign Manager">
-                  <select className={selectCls} value={form.assigned_manager_id} onChange={set('assigned_manager_id')}>
-                    <option value="">Unassigned</option>
-                    {users.map((u) => <option key={u.id} value={String(u.id)}>{assigneeLabel(u)}</option>)}
-                  </select>
-                </Field>
+                {!isSalesManager && (
+                  <Field label="Assign Manager">
+                    <select className={selectCls} value={form.assigned_manager_id} onChange={set('assigned_manager_id')}>
+                      <option value="">Unassigned</option>
+                      {users.map((u) => <option key={u.id} value={String(u.id)}>{assigneeLabel(u)}</option>)}
+                    </select>
+                  </Field>
+                )}
               </div>
             </section>
 

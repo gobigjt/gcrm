@@ -26,7 +26,8 @@ class _CrmEditLeadViewState extends State<CrmEditLeadView> {
 
   List<CrmLookupItem> _stages = [];
   List<CrmLookupItem> _sources = [];
-  List<CrmLookupItem> _assignees = [];
+  List<Map<String, dynamic>> _assignees = [];
+  List<Map<String, dynamic>> _categories = [];
 
   final _name = TextEditingController();
   final _company = TextEditingController();
@@ -45,6 +46,7 @@ class _CrmEditLeadViewState extends State<CrmEditLeadView> {
   int? _stageId;
   int? _assignedTo;
   int? _assignedManagerId;
+  String _productCategory = '';
   String _priority = 'warm';
 
   @override
@@ -72,6 +74,16 @@ class _CrmEditLeadViewState extends State<CrmEditLeadView> {
         .toList();
   }
 
+  List<CrmLookupItem> _salesExecutiveAssignees() {
+    return _assignees.where((u) {
+      final role = (u['role'] ?? '').toString().trim().toLowerCase();
+      return role == 'sales executive' || role == 'agent';
+    }).map((u) => CrmLookupItem(
+      id: int.tryParse('${u['id']}') ?? 0,
+      name: (u['name'] ?? '').toString(),
+    )).where((u) => u.id > 0).toList();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -88,13 +100,15 @@ class _CrmEditLeadViewState extends State<CrmEditLeadView> {
       final stagesRes = await _auth.authorizedRequest(method: 'GET', path: '/crm/leads/stages');
       final sourcesRes = await _auth.authorizedRequest(method: 'GET', path: '/crm/leads/sources');
       final assignRes = await _auth.authorizedRequest(method: 'GET', path: '/crm/leads/assignees');
+      final categoriesRes = await _auth.authorizedRequest(method: 'GET', path: '/inventory/categories');
 
       final leadMap = Map<String, dynamic>.from((leadRes as Map)['lead'] as Map);
       final lead = CrmLead.fromJson(leadMap);
 
       _stages = (stagesRes as List).map((e) => CrmLookupItem.fromJson(Map<String, dynamic>.from(e as Map))).toList();
       _sources = (sourcesRes as List).map((e) => CrmLookupItem.fromJson(Map<String, dynamic>.from(e as Map))).toList();
-      _assignees = (assignRes as List).map((e) => CrmLookupItem.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+      _assignees = (assignRes as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      _categories = (categoriesRes as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
 
       _name.text = lead.name;
       _company.text = lead.company;
@@ -102,6 +116,7 @@ class _CrmEditLeadViewState extends State<CrmEditLeadView> {
       _email.text = lead.email;
       _segment.text = lead.leadSegment;
       _jobTitle.text = lead.jobTitle;
+      _productCategory = lead.productCategory;
       _website.text = lead.website;
       _address.text = lead.address;
       _tags.text = lead.tags.join(', ');
@@ -140,6 +155,7 @@ class _CrmEditLeadViewState extends State<CrmEditLeadView> {
       'notes': _notes.text.trim().isEmpty ? null : _notes.text.trim(),
       'lead_segment': _segment.text.trim().isEmpty ? null : _segment.text.trim(),
       'job_title': _jobTitle.text.trim().isEmpty ? null : _jobTitle.text.trim(),
+      'product_category': _productCategory.trim().isEmpty ? null : _productCategory.trim(),
       'website': _website.text.trim().isEmpty ? null : _website.text.trim(),
       'address': _address.text.trim().isEmpty ? null : _address.text.trim(),
       'tags': tags,
@@ -180,6 +196,8 @@ class _CrmEditLeadViewState extends State<CrmEditLeadView> {
 
   @override
   Widget build(BuildContext context) {
+    final role = _auth.role.value.trim().toLowerCase();
+    final isSalesManager = role == 'sales manager' || role == 'manager';
     final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final border = OutlineInputBorder(
@@ -286,23 +304,29 @@ class _CrmEditLeadViewState extends State<CrmEditLeadView> {
                           const SizedBox(height: 8),
                           DropdownButtonFormField<int?>(
                             value: _assignedTo,
-                            decoration: _dec(scheme, 'Assigned to', null),
+                            decoration: _dec(scheme, 'Assign to sales Executive', null),
                             items: [
                               const DropdownMenuItem<int?>(value: null, child: Text('Unassigned')),
-                              ..._assignees.map((u) => DropdownMenuItem<int?>(value: u.id, child: Text(u.name))),
+                              ..._salesExecutiveAssignees()
+                                  .map((u) => DropdownMenuItem<int?>(value: u.id, child: Text(u.name))),
                             ],
                             onChanged: _saving ? null : (v) => setState(() => _assignedTo = v),
                           ),
-                          const SizedBox(height: 8),
-                          DropdownButtonFormField<int?>(
-                            value: _assignedManagerId,
-                            decoration: _dec(scheme, 'Assign Manager', null),
-                            items: [
-                              const DropdownMenuItem<int?>(value: null, child: Text('Unassigned')),
-                              ..._assignees.map((u) => DropdownMenuItem<int?>(value: u.id, child: Text(u.name))),
-                            ],
-                            onChanged: _saving ? null : (v) => setState(() => _assignedManagerId = v),
-                          ),
+                          if (!isSalesManager) ...[
+                            const SizedBox(height: 8),
+                            DropdownButtonFormField<int?>(
+                              value: _assignedManagerId,
+                              decoration: _dec(scheme, 'Assign Manager', null),
+                              items: [
+                                const DropdownMenuItem<int?>(value: null, child: Text('Unassigned')),
+                                ..._assignees.map((u) => DropdownMenuItem<int?>(
+                                      value: int.tryParse('${u['id']}'),
+                                      child: Text((u['name'] ?? '').toString()),
+                                    )),
+                              ],
+                              onChanged: _saving ? null : (v) => setState(() => _assignedManagerId = v),
+                            ),
+                          ],
                           const SizedBox(height: 8),
                           DropdownButtonFormField<String>(
                             value: _priority,
@@ -324,6 +348,31 @@ class _CrmEditLeadViewState extends State<CrmEditLeadView> {
                           TextField(
                             controller: _jobTitle,
                             decoration: _dec(scheme, 'Job title', null),
+                          ),
+                          const SizedBox(height: 8),
+                          DropdownButtonFormField<String>(
+                            value: _productCategory.isEmpty ? '' : _productCategory,
+                            decoration: _dec(scheme, 'Product category', null),
+                            items: [
+                              const DropdownMenuItem<String>(value: '', child: Text('Select…')),
+                              if (_productCategory.isNotEmpty &&
+                                  !_categories.any((c) => (c['name'] ?? '').toString() == _productCategory))
+                                DropdownMenuItem<String>(value: _productCategory, child: Text(_productCategory)),
+                              ...(() {
+                                final names = _categories
+                                    .map((c) => (c['name'] ?? '').toString().trim())
+                                    .where((name) => name.isNotEmpty)
+                                    .toSet()
+                                    .toList()
+                                  ..sort();
+                                return names
+                                    .map((name) => DropdownMenuItem<String>(value: name, child: Text(name)))
+                                    .toList();
+                              })(),
+                            ],
+                            onChanged: _saving
+                                ? null
+                                : (v) => setState(() => _productCategory = v ?? ''),
                           ),
                           const SizedBox(height: 8),
                           TextField(
@@ -357,7 +406,7 @@ class _CrmEditLeadViewState extends State<CrmEditLeadView> {
                                 child: TextField(
                                   controller: _dealSize,
                                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                  decoration: _dec(scheme, 'Deal size (INR)', null),
+                                  decoration: _dec(scheme, 'Deal size (₹)', null),
                                 ),
                               ),
                               const SizedBox(width: 10),

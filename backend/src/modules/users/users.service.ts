@@ -22,6 +22,7 @@ export class UsersService {
         LEFT JOIN zones z ON z.id = u.zone_id
         LEFT JOIN users sm ON sm.id = u.sales_manager_id
         LEFT JOIN user_permissions up ON up.user_id = u.id
+       WHERE LOWER(TRIM(COALESCE(r.name, u.role, ''))) <> 'super admin'
        GROUP BY u.id, r.id, z.id, sm.id
        ORDER BY u.created_at DESC
     `);

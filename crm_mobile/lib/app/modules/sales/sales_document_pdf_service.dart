@@ -1,24 +1,30 @@
 import '../auth/auth_controller.dart';
+import 'package:http/http.dart' as http;
 import '../../core/storage/save_pdf.dart';
+import '../../core/utils/media_url.dart';
 import 'sales_document_kind.dart';
-import 'sales_document_pdf_builder.dart';
+
+bool _isGeneratedPdfPath(String url) {
+  final u = url.trim();
+  return u.contains('/sales/generated-pdfs/');
+}
 
 class SalesDocumentPdfService {
   SalesDocumentPdfService._();
 
-  static String _detailPath(SalesDocumentKind kind, int id) {
+  static String _pdfPath(SalesDocumentKind kind, int id) {
     return switch (kind) {
-      SalesDocumentKind.quotation => '/sales/quotations/$id',
-      SalesDocumentKind.order => '/sales/orders/$id',
-      SalesDocumentKind.invoice => '/sales/invoices/$id',
+      SalesDocumentKind.quotation => '/sales/quotations/$id/pdf',
+      SalesDocumentKind.order => '/sales/orders/$id/pdf',
+      SalesDocumentKind.invoice => '/sales/invoices/$id/pdf',
     };
   }
 
-  static String _responseKey(SalesDocumentKind kind) {
+  static String _defaultFileName(SalesDocumentKind kind, int id) {
     return switch (kind) {
-      SalesDocumentKind.quotation => 'quotation',
-      SalesDocumentKind.order => 'order',
-      SalesDocumentKind.invoice => 'invoice',
+      SalesDocumentKind.quotation => 'quotation-$id.pdf',
+      SalesDocumentKind.order => 'order-$id.pdf',
+      SalesDocumentKind.invoice => 'invoice-$id.pdf',
     };
   }
 
@@ -29,27 +35,45 @@ class SalesDocumentPdfService {
     required int id,
   }) async {
     if (id <= 0) return;
-    final res = await auth.authorizedRequest(method: 'GET', path: _detailPath(kind, id));
-    final root = res as Map;
-    final raw = root[_responseKey(kind)];
-    if (raw is! Map) {
-      throw StateError('Invalid document response');
+    final res = await auth.authorizedRequest(method: 'GET', path: _pdfPath(kind, id));
+    final root = Map<String, dynamic>.from(res as Map);
+    final relUrl = (root['url'] ?? '').toString().trim();
+    if (relUrl.isEmpty) {
+      throw StateError('PDF url missing from API response');
     }
-    final doc = Map<String, dynamic>.from(raw);
-    await download(auth: auth, doc: doc, kind: kind);
+    final fileName = (root['file_name'] ?? '').toString().trim();
+    final name = fileName.isEmpty ? _defaultFileName(kind, id) : fileName;
+
+    late final List<int> bytes;
+    if (_isGeneratedPdfPath(relUrl)) {
+      var path = relUrl.trim();
+      if (path.startsWith('/api/')) {
+        path = path.substring('/api'.length);
+      }
+      if (!path.startsWith('/')) path = '/$path';
+      bytes = await auth.authorizedGetBytes(path: path);
+    } else {
+      final publicUrl = resolveUploadsPublicUrl(relUrl);
+      if (publicUrl.isEmpty) {
+        throw StateError('Invalid public PDF url');
+      }
+      final fileRes = await http.get(Uri.parse(publicUrl));
+      if (fileRes.statusCode < 200 || fileRes.statusCode >= 300) {
+        throw StateError('Failed to download generated PDF');
+      }
+      bytes = fileRes.bodyBytes;
+    }
+    await savePdfDownload(fileName: name, bytes: bytes);
   }
 
-  /// Fetches company settings, builds a PDF, then opens the share sheet (mobile/desktop)
-  /// or browser download (web).
+  /// Uses backend PDF generator endpoint and downloads returned file URL.
   static Future<void> download({
     required AuthController auth,
     required Map<String, dynamic> doc,
     required SalesDocumentKind kind,
   }) async {
-    final raw = await auth.authorizedRequest(method: 'GET', path: '/settings/company');
-    final company = Map<String, dynamic>.from(raw as Map);
-    final bytes = await SalesDocumentPdfBuilder.build(doc: doc, company: company, kind: kind);
-    final name = SalesDocumentPdfBuilder.suggestedFileName(doc: doc, kind: kind);
-    await savePdfDownload(fileName: name, bytes: bytes);
+    final id = (doc['id'] as num?)?.toInt() ?? 0;
+    if (id <= 0) throw StateError('Invalid document id for PDF');
+    await downloadById(auth: auth, kind: kind, id: id);
   }
 }

@@ -1,12 +1,18 @@
+import 'dart:async';
+
 import 'package:get/get.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/widgets.dart';
 
 import '../../core/models/notification_item.dart';
 import '../../core/network/error_utils.dart';
 import '../../core/utils/ui_format.dart';
 import '../auth/auth_controller.dart';
 
-class NotificationsController extends GetxController {
+class NotificationsController extends GetxController with WidgetsBindingObserver {
   final AuthController _auth = Get.find<AuthController>();
+  StreamSubscription<RemoteMessage>? _onMessageSub;
+  StreamSubscription<RemoteMessage>? _onMessageOpenedSub;
 
   final errorMessage = ''.obs;
   final isLoading = false.obs;
@@ -17,7 +23,36 @@ class NotificationsController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    WidgetsBinding.instance.addObserver(this);
+    _bindPushListeners();
     load();
+  }
+
+  @override
+  void onClose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _onMessageSub?.cancel();
+    _onMessageOpenedSub?.cancel();
+    super.onClose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Refresh after app returns to foreground so newly delivered pushes are shown.
+      load();
+    }
+  }
+
+  void _bindPushListeners() {
+    _onMessageSub = FirebaseMessaging.onMessage.listen((_) {
+      // Foreground push received while app is open.
+      load();
+    });
+    _onMessageOpenedSub = FirebaseMessaging.onMessageOpenedApp.listen((_) {
+      // User tapped system notification and returned to app.
+      load();
+    });
   }
 
   Future<void> load() async {

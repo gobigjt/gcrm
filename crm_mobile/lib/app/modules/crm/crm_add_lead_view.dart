@@ -40,11 +40,14 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
   final RxnInt assignedManagerId = RxnInt();
   final priority = 'warm'.obs;
   final assignees = <Map<String, dynamic>>[].obs;
+  final categories = <Map<String, dynamic>>[].obs;
+  final productCategory = ''.obs;
 
   @override
   void initState() {
     super.initState();
     _loadAssignees();
+    _loadCategories();
   }
 
   Future<void> _loadAssignees() async {
@@ -58,10 +61,28 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
     }
   }
 
+  Future<void> _loadCategories() async {
+    try {
+      final res = await _auth.authorizedRequest(method: 'GET', path: '/inventory/categories');
+      categories.assignAll(
+        (res as List).map((e) => Map<String, dynamic>.from(e as Map)).toList(),
+      );
+    } catch (_) {
+      categories.clear();
+    }
+  }
+
   String _assigneeLabel(Map<String, dynamic> u) {
     final role = (u['role'] ?? '').toString().toLowerCase();
     final name = (u['name'] ?? '').toString();
     return role == 'manager' ? '$name (Manager)' : name;
+  }
+
+  List<Map<String, dynamic>> _salesExecutiveAssignees() {
+    return assignees.where((u) {
+      final role = (u['role'] ?? '').toString().trim().toLowerCase();
+      return role == 'sales executive' || role == 'agent';
+    }).toList();
   }
 
   List<String> _parseTags(String raw) {
@@ -104,6 +125,7 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
       sourceId: sourceId.value,
       leadSegment: segmentCtrl.text.trim().isEmpty ? null : segmentCtrl.text.trim(),
       jobTitle: jobTitleCtrl.text.trim().isEmpty ? null : jobTitleCtrl.text.trim(),
+      productCategory: productCategory.value.trim().isEmpty ? null : productCategory.value.trim(),
       website: websiteCtrl.text.trim().isEmpty ? null : websiteCtrl.text.trim(),
       address: addressCtrl.text.trim().isEmpty ? null : addressCtrl.text.trim(),
       stageId: stageId.value,
@@ -151,6 +173,7 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
       sourceId: sourceId.value,
       leadSegment: segmentCtrl.text.trim().isEmpty ? null : segmentCtrl.text.trim(),
       jobTitle: jobTitleCtrl.text.trim().isEmpty ? null : jobTitleCtrl.text.trim(),
+      productCategory: productCategory.value.trim().isEmpty ? null : productCategory.value.trim(),
       website: websiteCtrl.text.trim().isEmpty ? null : websiteCtrl.text.trim(),
       address: addressCtrl.text.trim().isEmpty ? null : addressCtrl.text.trim(),
       stageId: stageId.value,
@@ -190,6 +213,8 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
   @override
   Widget build(BuildContext context) {
     final canManageTasks = canManageCrmFollowupTasks(Get.find<AuthController>().role.value);
+    final role = _auth.role.value.trim().toLowerCase();
+    final isSalesManager = role == 'sales manager' || role == 'manager';
     final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final border = OutlineInputBorder(
@@ -340,6 +365,36 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
                       ),
                     ),
                     const SizedBox(height: 8),
+                    Obx(() {
+                      final options = categories
+                          .map((c) => (c['name'] ?? '').toString().trim())
+                          .where((name) => name.isNotEmpty)
+                          .toSet()
+                          .toList()
+                        ..sort();
+                      final selected = productCategory.value.trim();
+                      final value = selected.isEmpty ? '' : selected;
+                      return DropdownButtonFormField<String>(
+                        value: value,
+                        decoration: InputDecoration(
+                          labelText: 'Product category',
+                          floatingLabelBehavior: FloatingLabelBehavior.always,
+                          labelStyle: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                        items: [
+                          const DropdownMenuItem<String>(value: '', child: Text('Select…')),
+                          if (value.isNotEmpty && !options.contains(value))
+                            DropdownMenuItem<String>(value: value, child: Text(value)),
+                          ...options.map((name) => DropdownMenuItem<String>(value: name, child: Text(name))),
+                        ],
+                        onChanged: (v) => productCategory.value = v ?? '',
+                      );
+                    }),
+                    const SizedBox(height: 8),
                     TextField(
                       controller: websiteCtrl,
                       keyboardType: TextInputType.url,
@@ -406,7 +461,7 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
                             controller: dealSizeCtrl,
                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
                             decoration: InputDecoration(
-                              labelText: 'Deal size (INR)',
+                              labelText: 'Deal size (₹)',
                               floatingLabelBehavior: FloatingLabelBehavior.always,
                               labelStyle: TextStyle(
                                 fontSize: 10,
@@ -444,8 +499,10 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
               Theme(
                 data: Theme.of(context).copyWith(inputDecorationTheme: denseInput),
                 child: Obx(
-                  () => Column(
-                    children: [
+                  () {
+                    final salesExecutiveAssignees = _salesExecutiveAssignees();
+                    return Column(
+                      children: [
                       DropdownButtonFormField<int?>(
                         value: sourceId.value,
                         decoration: const InputDecoration(labelText: 'Source'),
@@ -468,29 +525,31 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
                       const SizedBox(height: 8),
                       DropdownButtonFormField<int?>(
                         value: assignedTo.value,
-                        decoration: const InputDecoration(labelText: 'Assigned To'),
+                        decoration: const InputDecoration(labelText: 'Assign to sales Executive'),
                         items: [
                           const DropdownMenuItem<int?>(value: null, child: Text('Unassigned')),
-                          ...assignees.map((u) => DropdownMenuItem<int?>(
+                          ...salesExecutiveAssignees.map((u) => DropdownMenuItem<int?>(
                                 value: int.tryParse('${u['id']}'),
                                 child: Text(_assigneeLabel(u)),
                               )),
                         ],
                         onChanged: (v) => assignedTo.value = v,
                       ),
-                      const SizedBox(height: 8),
-                      DropdownButtonFormField<int?>(
-                        value: assignedManagerId.value,
-                        decoration: const InputDecoration(labelText: 'Assign Manager'),
-                        items: [
-                          const DropdownMenuItem<int?>(value: null, child: Text('Unassigned')),
-                          ...assignees.map((u) => DropdownMenuItem<int?>(
-                                value: int.tryParse('${u['id']}'),
-                                child: Text(_assigneeLabel(u)),
-                              )),
-                        ],
-                        onChanged: (v) => assignedManagerId.value = v,
-                      ),
+                      if (!isSalesManager) ...[
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<int?>(
+                          value: assignedManagerId.value,
+                          decoration: const InputDecoration(labelText: 'Assign Manager'),
+                          items: [
+                            const DropdownMenuItem<int?>(value: null, child: Text('Unassigned')),
+                            ...assignees.map((u) => DropdownMenuItem<int?>(
+                                  value: int.tryParse('${u['id']}'),
+                                  child: Text(_assigneeLabel(u)),
+                                )),
+                          ],
+                          onChanged: (v) => assignedManagerId.value = v,
+                        ),
+                      ],
                       const SizedBox(height: 8),
                       DropdownButtonFormField<String>(
                         value: priority.value,
@@ -502,8 +561,9 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
                         ],
                         onChanged: (v) => priority.value = v ?? 'warm',
                       ),
-                    ],
-                  ),
+                      ],
+                    );
+                  },
                 ),
               ),
               if (canManageTasks) ...[

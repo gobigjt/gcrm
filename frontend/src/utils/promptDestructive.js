@@ -12,6 +12,7 @@ export function promptDestructive(show, {
   confirmVariant = 'danger',
 }) {
   show(message, 'warning', {
+    position: 'top-center',
     actions: [
       { label: cancelLabel, variant: 'secondary', onClick: () => {} },
       {

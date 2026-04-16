@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS leads (
   assigned_to   INTEGER REFERENCES users(id) ON DELETE SET NULL,
   assigned_manager_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
   custom_fields JSONB,
+  product_category VARCHAR(150),
   notes         TEXT,
   is_converted  BOOLEAN NOT NULL DEFAULT FALSE,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -266,15 +267,17 @@ CREATE TABLE IF NOT EXISTS purchase_invoices (
 
 -- ── Sales ────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS customers (
-  id         SERIAL PRIMARY KEY,
-  name       VARCHAR(200) NOT NULL,
-  email      VARCHAR(255),
-  phone      VARCHAR(20),
-  gstin      VARCHAR(15),
-  address    TEXT,
-  lead_id    INTEGER REFERENCES leads(id) ON DELETE SET NULL,
-  is_active  BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id               SERIAL PRIMARY KEY,
+  name             VARCHAR(200) NOT NULL,
+  email            VARCHAR(255),
+  phone            VARCHAR(20),
+  gstin            VARCHAR(15),
+  address          TEXT,
+  billing_address  TEXT,
+  shipping_address TEXT,
+  lead_id          INTEGER REFERENCES leads(id) ON DELETE SET NULL,
+  is_active        BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS proposals (

@@ -41,15 +41,20 @@ bool salesCanAssignOtherExecutive(String role) {
 }
 
 /// Web-style `SectionCard`: rounded panel + titled header rule.
+/// Set [hideTitle] for web-style untitled panels (e.g. invoice note + totals).
 class SalesFormSectionCard extends StatelessWidget {
   const SalesFormSectionCard({
     super.key,
     required this.title,
     required this.child,
+    this.hideTitle = false,
   });
 
   final String title;
   final Widget child;
+
+  /// When true, omit the title row and divider (matches web `<SectionCard>` without a title).
+  final bool hideTitle;
 
   @override
   Widget build(BuildContext context) {
@@ -67,19 +72,21 @@ class SalesFormSectionCard extends StatelessWidget {
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+        padding: EdgeInsets.fromLTRB(16, hideTitle ? 16 : 14, 16, 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: isDark ? cs.onSurface : const Color(0xFF334155),
+            if (!hideTitle) ...[
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? cs.onSurface : const Color(0xFF334155),
+                ),
               ),
-            ),
-            Divider(height: 20, thickness: 1, color: isDark ? cs.outlineVariant.withValues(alpha: 0.45) : const Color(0xFFF1F5F9)),
+              Divider(height: 20, thickness: 1, color: isDark ? cs.outlineVariant.withValues(alpha: 0.45) : const Color(0xFFF1F5F9)),
+            ],
             child,
           ],
         ),
@@ -87,6 +94,10 @@ class SalesFormSectionCard extends StatelessWidget {
     );
   }
 }
+
+/// Web `Sales.jsx` two-column breakpoint (`lg:grid-cols-2`).
+bool salesFormWideLayout(BuildContext context) =>
+    MediaQuery.sizeOf(context).width >= 1024;
 
 /// Customer + sales executive (matches web Bill To).
 class SalesBillToFields extends StatelessWidget {
@@ -161,14 +172,18 @@ class SalesBillToFields extends StatelessWidget {
               decoration: customerDecoration(context),
               dropdownColor: Theme.of(context).brightness == Brightness.dark ? cs.surfaceContainerHighest : null,
               style: TextStyle(color: cs.onSurface, fontSize: 15, fontWeight: FontWeight.w500),
-              items: executives
-                  .map(
-                    (u) => DropdownMenuItem<int>(
-                      value: (u['id'] as num).toInt(),
-                      child: Text((u['name'] ?? '—').toString(), overflow: TextOverflow.ellipsis),
-                    ),
-                  )
-                  .toList(),
+              items: [
+                const DropdownMenuItem<int>(
+                  value: null,
+                  child: Text('Select sales executive'),
+                ),
+                ...executives.map(
+                  (u) => DropdownMenuItem<int>(
+                    value: (u['id'] as num).toInt(),
+                    child: Text((u['name'] ?? '—').toString(), overflow: TextOverflow.ellipsis),
+                  ),
+                ),
+              ],
               onChanged: canPick ? onExecutiveChanged : null,
             ),
           if (!canPick)

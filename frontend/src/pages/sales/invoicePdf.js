@@ -67,6 +67,13 @@ export function resolvePublicUrl(pathOrUrl) {
   const s = String(pathOrUrl).trim();
   if (/^https?:\/\//i.test(s)) return s;
   const p = s.startsWith('/') ? s : `/${s}`;
+  const apiBase = String(import.meta.env.VITE_API_BASE_URL || '').trim();
+  if (apiBase) {
+    const apiOrigin = apiBase.replace(/\/api\/?$/i, '').replace(/\/$/, '');
+    if (/^https?:\/\//i.test(apiOrigin)) {
+      return `${apiOrigin}${p}`;
+    }
+  }
   if (typeof window !== 'undefined' && window.location?.origin) {
     return `${window.location.origin}${p}`;
   }

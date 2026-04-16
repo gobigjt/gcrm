@@ -8,7 +8,13 @@ import '../auth/auth_controller.dart';
 import 'sales_line_draft.dart';
 
 class QuotationFormController extends GetxController {
-  QuotationFormController({this.quotationId, this.copyFromId, this.initialCustomerId});
+  QuotationFormController({
+    this.quotationId,
+    this.copyFromId,
+    this.initialCustomerId,
+    this.initialCreatedById,
+    this.forceCustomerPrefill = false,
+  });
 
   /// Edit existing quotation.
   final int? quotationId;
@@ -18,6 +24,8 @@ class QuotationFormController extends GetxController {
 
   /// New quotation: pre-select customer (e.g. CRM lead handoff).
   final int? initialCustomerId;
+  final int? initialCreatedById;
+  final bool forceCustomerPrefill;
 
   final AuthController _auth = Get.find<AuthController>();
 
@@ -33,21 +41,15 @@ class QuotationFormController extends GetxController {
   final selectedCreatedById = Rxn<int>();
   final validUntilCtrl     = TextEditingController();
   final notesCtrl          = TextEditingController();
-  final referenceNoCtrl    = TextEditingController();
 
   // GST & tax type
   final gstTypeValue  = 'intra_state'.obs; // 'intra_state' | 'inter_state'
   final taxTypeValue  = 'exclusive'.obs;   // 'exclusive' | 'inclusive' | 'no_tax'
 
-  // Extra charges
+  /// Placeholders for [salesTotalsCard] (web quote totals are line-only).
   final discountAmountCtrl  = TextEditingController(text: '0');
   final shippingAmountCtrl  = TextEditingController(text: '0');
-  final extraDiscountCtrl   = TextEditingController(text: '0');
   final roundOffCtrl        = TextEditingController(text: '0');
-
-  // Payment
-  final paymentTermsValue  = ''.obs;
-  final paymentMethodValue = ''.obs;
 
   final lines       = <SalesLineDraft>[].obs;
 
@@ -68,10 +70,8 @@ class QuotationFormController extends GetxController {
     _disposeAllLines();
     validUntilCtrl.dispose();
     notesCtrl.dispose();
-    referenceNoCtrl.dispose();
     discountAmountCtrl.dispose();
     shippingAmountCtrl.dispose();
-    extraDiscountCtrl.dispose();
     roundOffCtrl.dispose();
     super.onClose();
   }
@@ -98,7 +98,12 @@ class QuotationFormController extends GetxController {
           statusValue.value = 'draft';
         }
       } else {
-        _syncCreatedBySelection();
+        // Keep new form unselected by default; prefill only for explicit lead handoff.
+        if (initialCreatedById != null && initialCreatedById! > 0) {
+          _syncCreatedBySelection(initialCreatedById);
+        } else {
+          selectedCreatedById.value = null;
+        }
         if (lines.isEmpty) addLine();
       }
     } catch (e) {
@@ -112,16 +117,15 @@ class QuotationFormController extends GetxController {
     final res  = await _auth.authorizedRequest(method: 'GET', path: '/sales/customers');
     final list = _asList(res);
     customers.assignAll(list);
-    final init = initialCustomerId;
-    if (init != null && list.any((c) => (c['id'] as num?)?.toInt() == init)) {
-      selectedCustomerId.value = init;
+    final sourceMode = quotationId != null || copyFromId != null;
+    if (sourceMode) return;
+    // New quotations should not pre-select customer unless explicitly requested.
+    if (forceCustomerPrefill && initialCustomerId != null) {
+      final ids = list.map((c) => (c['id'] as num?)?.toInt()).whereType<int>().toSet();
+      selectedCustomerId.value = ids.contains(initialCustomerId) ? initialCustomerId : null;
       return;
     }
-    final skipDefaultCustomer = quotationId != null || copyFromId != null;
-    if (!skipDefaultCustomer && selectedCustomerId.value == null && list.isNotEmpty) {
-      final id = list.first['id'];
-      if (id != null) selectedCustomerId.value = (id as num).toInt();
-    }
+    selectedCustomerId.value = null;
   }
 
   Future<void> _loadProducts() async {
@@ -162,7 +166,6 @@ class QuotationFormController extends GetxController {
     validUntilCtrl.text      = formatIsoDate(q['valid_until']);
     if (validUntilCtrl.text == '—') validUntilCtrl.clear();
     notesCtrl.text       = (q['notes'] ?? '').toString();
-    referenceNoCtrl.text = (q['reference_no'] ?? '').toString();
     statusValue.value    = (q['status'] ?? 'draft').toString();
     selectedCreatedById.value = (q['created_by'] as num?)?.toInt();
     _syncCreatedBySelection(selectedCreatedById.value);
@@ -171,16 +174,6 @@ class QuotationFormController extends GetxController {
     final hasIgst = parseDynamicNum(q['igst']) > 0;
     gstTypeValue.value  = hasIgst ? 'inter_state' : (q['gst_type'] ?? 'intra_state').toString();
     taxTypeValue.value  = (q['tax_type'] ?? 'exclusive').toString();
-
-    // Extra charges
-    discountAmountCtrl.text = parseDynamicNum(q['discount_amount']).toString();
-    shippingAmountCtrl.text = parseDynamicNum(q['shipping_amount']).toString();
-    extraDiscountCtrl.text  = parseDynamicNum(q['extra_discount']).toString();
-    roundOffCtrl.text       = parseDynamicNum(q['round_off']).toString();
-
-    // Payment
-    paymentTermsValue.value  = (q['payment_terms'] ?? '').toString();
-    paymentMethodValue.value = (q['payment_method'] ?? '').toString();
 
     final rawItems = q['items'];
     _disposeAllLines();
@@ -260,23 +253,16 @@ class QuotationFormController extends GetxController {
     isSaving.value = true;
     try {
       final vu  = validUntilCtrl.text.trim();
-      final ref = referenceNoCtrl.text.trim();
+      // Matches web `Sales.jsx` DocumentModal quote POST/PATCH body.
       final body = <String, dynamic>{
         'customer_id':      cid,
         'valid_until':      vu.isEmpty ? null : vu,
         'notes':            notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
-        'reference_no':     ref.isEmpty ? null : ref,
         'status':           isEdit ? statusValue.value : 'draft',
         'gst_type':         gstTypeValue.value,
         'tax_type':         taxTypeValue.value,
         'is_interstate':    interstate,
         'created_by':       selectedCreatedById.value,
-        'discount_amount':  double.tryParse(discountAmountCtrl.text) ?? 0,
-        'shipping_amount':  double.tryParse(shippingAmountCtrl.text) ?? 0,
-        'extra_discount':   double.tryParse(extraDiscountCtrl.text)  ?? 0,
-        'round_off':        double.tryParse(roundOffCtrl.text)       ?? 0,
-        'payment_terms':    paymentTermsValue.value.isEmpty ? null : paymentTermsValue.value,
-        'payment_method':   paymentMethodValue.value.isEmpty ? null : paymentMethodValue.value,
         'items':            payloadLines,
       };
 

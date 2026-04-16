@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/auth/role_home_route.dart';
-import '../../widgets/crm_suite_logo_mark.dart';
 import 'auth_controller.dart';
 
 /// Login screen — dark-mode optimised with gradient hero section.
@@ -174,6 +173,7 @@ class AuthView extends GetView<AuthController> {
                             ),
                           ),
                         ),
+                        const SizedBox(height: 8),
                         Align(
                           alignment: Alignment.centerRight,
                           child: TextButton(
@@ -199,7 +199,7 @@ class AuthView extends GetView<AuthController> {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 8),
                         Obx(
                           () => _SignInButton(
                             isLoading: controller.isLoading.value,
@@ -207,39 +207,6 @@ class AuthView extends GetView<AuthController> {
                                 ? null
                                 : controller.login,
                           ),
-                        ),
-                        const SizedBox(height: 20),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Divider(
-                                  color: borderColor,
-                                  thickness: 0.8,
-                                  height: 1),
-                            ),
-                            Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 12),
-                              child: Text(
-                                'or',
-                                style: TextStyle(
-                                    fontSize: 11, color: subtitleColor),
-                              ),
-                            ),
-                            Expanded(
-                              child: Divider(
-                                  color: borderColor,
-                                  thickness: 0.8,
-                                  height: 1),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        _BiometricButton(
-                          isDark: isDark,
-                          borderColor: borderColor,
-                          textColor: textColor,
-                          fieldFill: fieldFill,
                         ),
                       ],
                     ),
@@ -276,19 +243,13 @@ class _HeroSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Logo mark
-          const CrmSuiteLogoMark(
-            size: 100,
-            preset: CrmSuiteLogoMarkPreset.login,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'EzCRM',
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
-              letterSpacing: -0.4,
+          // Same logo asset used on splash screen.
+          const SizedBox(
+            width: 200,
+            height: 100,
+            child: Image(
+              image: AssetImage('assets/images/ezcrm-logo.png'),
+              fit: BoxFit.contain,
             ),
           ),
           const SizedBox(height: 6),
@@ -370,52 +331,3 @@ class _SignInButton extends StatelessWidget {
   }
 }
 
-class _BiometricButton extends StatelessWidget {
-  const _BiometricButton({
-    required this.isDark,
-    required this.borderColor,
-    required this.textColor,
-    required this.fieldFill,
-  });
-
-  final bool isDark;
-  final Color borderColor;
-  final Color textColor;
-  final Color fieldFill;
-
-  @override
-  Widget build(BuildContext context) {
-    return OutlinedButton(
-      style: OutlinedButton.styleFrom(
-        foregroundColor: textColor,
-        backgroundColor: fieldFill,
-        side: BorderSide(color: borderColor),
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
-      ),
-      onPressed: () {
-        Get.snackbar(
-          'Biometric login',
-          'Not implemented in this prototype. You can still sign in with password.',
-          snackPosition: SnackPosition.BOTTOM,
-        );
-      },
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.fingerprint_rounded, size: 20, color: textColor),
-          const SizedBox(width: 10),
-          Text(
-            'Continue with biometrics',
-            style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: textColor),
-          ),
-        ],
-      ),
-    );
-  }
-}

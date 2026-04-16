@@ -121,18 +121,26 @@ abstract class AppPages {
         int? quotationId;
         int? copyFromId;
         int? initialCustomerId;
+        int? initialCreatedById;
+        bool forceCustomerPrefill = false;
         if (args is Map) {
           final q = args['quotationId'];
           final c = args['copyFromId'];
           final ic = args['initialCustomerId'];
+          final cb = args['initialCreatedById'];
+          final fp = args['forceCustomerPrefill'];
           if (q is num) quotationId = q.toInt();
           if (c is num) copyFromId = c.toInt();
           if (ic is num) initialCustomerId = ic.toInt();
+          if (cb is num) initialCreatedById = cb.toInt();
+          if (fp is bool) forceCustomerPrefill = fp;
         }
         return QuotationFormView(
           quotationId: quotationId,
           copyFromId: copyFromId,
           initialCustomerId: initialCustomerId,
+          initialCreatedById: initialCreatedById,
+          forceCustomerPrefill: forceCustomerPrefill,
         );
       },
       middlewares: [PermissionMiddleware(permission: AppPermissions.sales)],
@@ -141,12 +149,15 @@ abstract class AppPages {
       name: AppRoutes.orderForm,
       page: () {
         int? initialCustomerId;
+        int? orderId;
         final args = Get.arguments;
         if (args is Map) {
           final ic = args['initialCustomerId'];
           if (ic is num) initialCustomerId = ic.toInt();
+          final oid = args['orderId'];
+          if (oid is num) orderId = oid.toInt();
         }
-        return OrderFormView(initialCustomerId: initialCustomerId);
+        return OrderFormView(initialCustomerId: initialCustomerId, orderId: orderId);
       },
       middlewares: [PermissionMiddleware(permission: AppPermissions.sales)],
     ),

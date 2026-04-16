@@ -9,9 +9,10 @@ import 'sales_document_form_ui.dart';
 import 'sales_form_layout_widgets.dart';
 
 class OrderFormView extends StatefulWidget {
-  const OrderFormView({super.key, this.initialCustomerId});
+  const OrderFormView({super.key, this.initialCustomerId, this.orderId});
 
   final int? initialCustomerId;
+  final int? orderId;
 
   @override
   State<OrderFormView> createState() => _OrderFormViewState();
@@ -25,7 +26,10 @@ class _OrderFormViewState extends State<OrderFormView> {
   void initState() {
     super.initState();
     _tag = 'of_${identityHashCode(this)}';
-    c = Get.put(OrderFormController(initialCustomerId: widget.initialCustomerId), tag: _tag);
+    c = Get.put(
+      OrderFormController(initialCustomerId: widget.initialCustomerId, orderId: widget.orderId),
+      tag: _tag,
+    );
   }
 
   @override
@@ -36,14 +40,23 @@ class _OrderFormViewState extends State<OrderFormView> {
 
   @override
   Widget build(BuildContext context) {
-    const title = 'New Sales Order';
+    final isEdit = widget.orderId != null && widget.orderId! > 0;
+    final title = isEdit ? 'Edit Order' : 'New Sales Order';
+    final subtitle = isEdit ? null : 'New sales order for customer';
     final pageBg = Theme.of(context).scaffoldBackgroundColor;
 
     return Obx(() {
       if (c.isLoading.value) {
         return Scaffold(
           backgroundColor: pageBg,
-          appBar: salesDocAppBar(context, title: title, showSave: false, isSaving: false, onSave: null),
+          appBar: salesDocAppBar(
+            context,
+            title: title,
+            subtitle: subtitle,
+            showSave: false,
+            isSaving: false,
+            onSave: null,
+          ),
           body: Center(child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary)),
         );
       }
@@ -53,6 +66,7 @@ class _OrderFormViewState extends State<OrderFormView> {
         appBar: salesDocAppBar(
           context,
           title: title,
+          subtitle: subtitle,
           showSave: true,
           isSaving: c.isSaving.value,
           onSave: c.isSaving.value ? null : c.submit,
@@ -71,194 +85,201 @@ class _OrderFormViewState extends State<OrderFormView> {
 
                   Builder(builder: (context) {
                     final auth = Get.find<AuthController>();
+                    final wide = salesFormWideLayout(context);
+                    Map<String, dynamic>? selectedCustomerMap() {
+                      final sid = c.selectedCustomerId.value;
+                      if (sid == null) return null;
+                      for (final cu in c.customers) {
+                        if ((cu['id'] as num?)?.toInt() == sid) return cu;
+                      }
+                      return null;
+                    }
+                    final billTo = SalesFormSectionCard(
+                      title: 'Bill To',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Obx(() {
+                            String? name;
+                            final sid = c.selectedCustomerId.value;
+                            if (sid != null) {
+                              for (final cu in c.customers) {
+                                if ((cu['id'] as num?)?.toInt() == sid) {
+                                  name = (cu['name'] ?? '').toString();
+                                  break;
+                                }
+                              }
+                            }
+                            final hint = (name == null || name.isEmpty) ? 'Select customer' : 'for M/s. $name';
+                            final cs2 = Theme.of(context).colorScheme;
+                            return Text(
+                              hint,
+                              style: TextStyle(
+                                color: Theme.of(context).brightness == Brightness.dark
+                                    ? cs2.onSurfaceVariant
+                                    : Colors.grey.shade900,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            );
+                          }),
+                          const SizedBox(height: 12),
+                          SalesBillToFields(
+                            auth: auth,
+                            customers: c.customers,
+                            selectedCustomerId: c.selectedCustomerId,
+                            executives: c.executives,
+                            selectedCreatedById: c.selectedCreatedById,
+                            customerDecoration: (ctx) => salesCustomerDropdownDecoration(
+                              ctx,
+                              hint: Text(
+                                'Choose customer',
+                                style: TextStyle(
+                                  color: Theme.of(ctx).brightness == Brightness.dark
+                                      ? Theme.of(ctx).colorScheme.onSurfaceVariant
+                                      : const Color(0xFF475569),
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                            onCustomerChanged: (v) => c.selectedCustomerId.value = v,
+                            onExecutiveChanged: (v) => c.selectedCreatedById.value = v,
+                            sectionLabelStyle: salesFieldSectionLabel,
+                          ),
+                          Obx(() => salesCustomerAddressPreview(
+                                context,
+                                customer: selectedCustomerMap(),
+                              )),
+                        ],
+                      ),
+                    );
+                    final props = SalesFormSectionCard(
+                      title: 'Order Properties',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text('Order date', style: salesFieldSectionLabel(context)),
+                          const SizedBox(height: 6),
+                          TextField(
+                            controller: c.orderDateCtrl,
+                            readOnly: true,
+                            style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15),
+                            decoration: salesOutlineField(
+                              context,
+                              hintText: 'Tap calendar to pick a date',
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  Icons.calendar_today_rounded,
+                                  color: Theme.of(context).brightness == Brightness.dark
+                                      ? Theme.of(context).colorScheme.onSurfaceVariant
+                                      : Colors.grey.shade700,
+                                ),
+                                onPressed: () =>
+                                    pickDateIntoController(context: context, controller: c.orderDateCtrl),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text('Due date', style: salesFieldSectionLabel(context)),
+                          const SizedBox(height: 6),
+                          TextField(
+                            controller: c.dueDateCtrl,
+                            readOnly: true,
+                            style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15),
+                            decoration: salesOutlineField(
+                              context,
+                              hintText: 'Tap calendar to pick a date',
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  Icons.event_rounded,
+                                  color: Theme.of(context).brightness == Brightness.dark
+                                      ? Theme.of(context).colorScheme.onSurfaceVariant
+                                      : Colors.grey.shade700,
+                                ),
+                                onPressed: () =>
+                                    pickDateIntoController(context: context, controller: c.dueDateCtrl),
+                              ),
+                            ),
+                          ),
+                          if (isEdit) ...[
+                            const SizedBox(height: 12),
+                            Text('Status', style: salesFieldSectionLabel(context)),
+                            const SizedBox(height: 6),
+                            Obx(() {
+                              const opts = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
+                              final cur =
+                                  opts.contains(c.orderStatusValue.value) ? c.orderStatusValue.value : 'pending';
+                              return DropdownButtonFormField<String>(
+                                value: cur,
+                                decoration: salesCustomerDropdownDecoration(context, hint: const Text('Status')),
+                                dropdownColor: Theme.of(context).brightness == Brightness.dark
+                                    ? Theme.of(context).colorScheme.surfaceContainerHighest
+                                    : null,
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.onSurface,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                items: opts
+                                    .map(
+                                      (s) => DropdownMenuItem<String>(
+                                        value: s,
+                                        child: Text(s[0].toUpperCase() + s.substring(1)),
+                                      ),
+                                    )
+                                    .toList(),
+                                onChanged: (v) {
+                                  if (v != null) c.orderStatusValue.value = v;
+                                },
+                              );
+                            }),
+                          ],
+                          const SizedBox(height: 12),
+                          Obx(() => salesRadioGroup(
+                                context: context,
+                                label: 'GST TYPE',
+                                options: const [
+                                  ('intra_state', 'Intra State (CGST+SGST)'),
+                                  ('inter_state', 'Inter State (IGST)'),
+                                ],
+                                selected: c.gstTypeValue.value,
+                                onChanged: (v) {
+                                  c.gstTypeValue.value = v;
+                                  c.lines.refresh();
+                                },
+                              )),
+                          const SizedBox(height: 12),
+                          Obx(() => salesRadioGroup(
+                                context: context,
+                                label: 'TAX',
+                                options: const [
+                                  ('exclusive', 'Tax Exclusive'),
+                                  ('inclusive', 'Tax Inclusive'),
+                                  ('no_tax', 'No Tax'),
+                                ],
+                                selected: c.taxTypeValue.value,
+                                onChanged: (v) {
+                                  c.taxTypeValue.value = v;
+                                  c.lines.refresh();
+                                },
+                              )),
+                        ],
+                      ),
+                    );
+                    if (wide) {
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: billTo),
+                          const SizedBox(width: 12),
+                          Expanded(child: props),
+                        ],
+                      );
+                    }
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        SalesFormSectionCard(
-                          title: 'Bill To',
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Obx(() {
-                                String? name;
-                                final sid = c.selectedCustomerId.value;
-                                if (sid != null) {
-                                  for (final cu in c.customers) {
-                                    if ((cu['id'] as num?)?.toInt() == sid) {
-                                      name = (cu['name'] ?? '').toString();
-                                      break;
-                                    }
-                                  }
-                                }
-                                final hint = (name == null || name.isEmpty) ? 'Select customer' : 'for M/s. $name';
-                                final cs2 = Theme.of(context).colorScheme;
-                                return Text(
-                                  hint,
-                                  style: TextStyle(
-                                    color: Theme.of(context).brightness == Brightness.dark
-                                        ? cs2.onSurfaceVariant
-                                        : Colors.grey.shade900,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                );
-                              }),
-                              const SizedBox(height: 12),
-                              SalesBillToFields(
-                                auth: auth,
-                                customers: c.customers,
-                                selectedCustomerId: c.selectedCustomerId,
-                                executives: c.executives,
-                                selectedCreatedById: c.selectedCreatedById,
-                                customerDecoration: (ctx) => salesCustomerDropdownDecoration(
-                                  ctx,
-                                  hint: Text(
-                                    'Choose customer',
-                                    style: TextStyle(
-                                      color: Theme.of(ctx).brightness == Brightness.dark
-                                          ? Theme.of(ctx).colorScheme.onSurfaceVariant
-                                          : const Color(0xFF475569),
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ),
-                                onCustomerChanged: (v) => c.selectedCustomerId.value = v,
-                                onExecutiveChanged: (v) => c.selectedCreatedById.value = v,
-                                sectionLabelStyle: salesFieldSectionLabel,
-                              ),
-                            ],
-                          ),
-                        ),
-                        SalesFormSectionCard(
-                          title: 'Order properties',
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Text('Order date', style: salesFieldSectionLabel(context)),
-                              const SizedBox(height: 6),
-                              TextField(
-                                controller: c.orderDateCtrl,
-                                readOnly: true,
-                                style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15),
-                                decoration: salesOutlineField(
-                                  context,
-                                  hintText: 'Tap calendar to pick a date',
-                                  suffixIcon: IconButton(
-                                    icon: Icon(
-                                      Icons.calendar_today_rounded,
-                                      color: Theme.of(context).brightness == Brightness.dark
-                                          ? Theme.of(context).colorScheme.onSurfaceVariant
-                                          : Colors.grey.shade700,
-                                    ),
-                                    onPressed: () =>
-                                        pickDateIntoController(context: context, controller: c.orderDateCtrl),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Text('Due date', style: salesFieldSectionLabel(context)),
-                              const SizedBox(height: 6),
-                              TextField(
-                                controller: c.dueDateCtrl,
-                                readOnly: true,
-                                style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15),
-                                decoration: salesOutlineField(
-                                  context,
-                                  hintText: 'Tap calendar to pick a date',
-                                  suffixIcon: IconButton(
-                                    icon: Icon(
-                                      Icons.event_rounded,
-                                      color: Theme.of(context).brightness == Brightness.dark
-                                          ? Theme.of(context).colorScheme.onSurfaceVariant
-                                          : Colors.grey.shade700,
-                                    ),
-                                    onPressed: () =>
-                                        pickDateIntoController(context: context, controller: c.dueDateCtrl),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Text('Reference No.', style: salesFieldSectionLabel(context)),
-                              const SizedBox(height: 6),
-                              TextField(
-                                controller: c.referenceNoCtrl,
-                                style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15),
-                                decoration: salesOutlineField(context, hintText: 'Optional reference number'),
-                              ),
-                              const SizedBox(height: 12),
-                              Text('Status', style: salesFieldSectionLabel(context)),
-                              const SizedBox(height: 6),
-                              Obx(() {
-                                const opts = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
-                                final cur =
-                                    opts.contains(c.orderStatusValue.value) ? c.orderStatusValue.value : 'pending';
-                                return DropdownButtonFormField<String>(
-                                  value: cur,
-                                  decoration: salesCustomerDropdownDecoration(context, hint: const Text('Status')),
-                                  dropdownColor: Theme.of(context).brightness == Brightness.dark
-                                      ? Theme.of(context).colorScheme.surfaceContainerHighest
-                                      : null,
-                                  style: TextStyle(
-                                    color: Theme.of(context).colorScheme.onSurface,
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                  items: opts
-                                      .map(
-                                        (s) => DropdownMenuItem<String>(
-                                          value: s,
-                                          child: Text(s[0].toUpperCase() + s.substring(1)),
-                                        ),
-                                      )
-                                      .toList(),
-                                  onChanged: (v) {
-                                    if (v != null) c.orderStatusValue.value = v;
-                                  },
-                                );
-                              }),
-                              const SizedBox(height: 12),
-                              Obx(() => salesRadioGroup(
-                                    context: context,
-                                    label: 'GST TYPE',
-                                    options: const [
-                                      ('intra_state', 'Intra State (CGST+SGST)'),
-                                      ('inter_state', 'Inter State (IGST)'),
-                                    ],
-                                    selected: c.gstTypeValue.value,
-                                    onChanged: (v) {
-                                      c.gstTypeValue.value = v;
-                                      c.lines.refresh();
-                                    },
-                                  )),
-                              const SizedBox(height: 12),
-                              Obx(() => salesRadioGroup(
-                                    context: context,
-                                    label: 'TAX',
-                                    options: const [
-                                      ('exclusive', 'Tax Exclusive'),
-                                      ('inclusive', 'Tax Inclusive'),
-                                      ('no_tax', 'No Tax'),
-                                    ],
-                                    selected: c.taxTypeValue.value,
-                                    onChanged: (v) {
-                                      c.taxTypeValue.value = v;
-                                      c.lines.refresh();
-                                    },
-                                  )),
-                              const SizedBox(height: 12),
-                              Text('Notes', style: salesFieldSectionLabel(context)),
-                              const SizedBox(height: 6),
-                              TextField(
-                                controller: c.notesCtrl,
-                                maxLines: 3,
-                                style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15),
-                                decoration: salesOutlineField(context, hintText: 'Optional notes for this order'),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                      children: [billTo, props],
                     );
                   }),
 
@@ -305,6 +326,25 @@ class _OrderFormViewState extends State<OrderFormView> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
+                                salesLineProductDropdown(
+                                  context: context,
+                                  products: c.products.toList(),
+                                  selectedProductId: line.productId,
+                                  onChanged: (v) {
+                                    if (v == null) {
+                                      line.productId = null;
+                                      c.lines.refresh();
+                                      return;
+                                    }
+                                    for (final e in c.products) {
+                                      if ((e['id'] as num).toInt() == v) {
+                                        c.applyProductToLine(i, e);
+                                        return;
+                                      }
+                                    }
+                                  },
+                                ),
+                                const SizedBox(height: 8),
                                 Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
@@ -326,15 +366,6 @@ class _OrderFormViewState extends State<OrderFormView> {
                                     ),
                                   ],
                                 ),
-                                if (c.products.isNotEmpty)
-                                  Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: TextButton.icon(
-                                      onPressed: () => _pickProduct(context, i),
-                                      icon: const Icon(Icons.inventory_2_outlined, size: 18),
-                                      label: const Text('Fill from product'),
-                                    ),
-                                  ),
                                 const SizedBox(height: 8),
                                 Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -381,23 +412,34 @@ class _OrderFormViewState extends State<OrderFormView> {
                     ),
                   ),
 
-                  _extraChargesCard(context),
-                  const SizedBox(height: 12),
-
-                  // ── Payment ────────────────────────────────────────
-                  _paymentCard(context),
-                  const SizedBox(height: 20),
-
-                  // ── Totals card ────────────────────────────────────
-                  Obx(() => salesTotalsCard(
-                        context: context,
-                        lines: c.lines,
-                        gstType: c.gstTypeValue.value,
-                        taxType: c.taxTypeValue.value,
-                        discountAmountCtrl: c.discountAmountCtrl,
-                        shippingAmountCtrl: c.shippingAmountCtrl,
-                        roundOffCtrl: c.roundOffCtrl,
-                      )),
+                  SalesFormSectionCard(
+                    title: '',
+                    hideTitle: true,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text('Order note', style: salesFieldSectionLabel(context)),
+                        const SizedBox(height: 6),
+                        TextField(
+                          controller: c.notesCtrl,
+                          maxLines: 3,
+                          style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15),
+                          decoration: salesOutlineField(context, hintText: 'Optional notes for this order'),
+                        ),
+                        const SizedBox(height: 16),
+                        Obx(() => salesTotalsCard(
+                              context: context,
+                              lines: c.lines,
+                              gstType: c.gstTypeValue.value,
+                              taxType: c.taxTypeValue.value,
+                              discountAmountCtrl: c.discountAmountCtrl,
+                              shippingAmountCtrl: c.shippingAmountCtrl,
+                              roundOffCtrl: c.roundOffCtrl,
+                              includeDocumentCharges: false,
+                            )),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -430,8 +472,10 @@ class _OrderFormViewState extends State<OrderFormView> {
                               width: 22,
                               child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
                             )
-                          : const Text('Create order',
-                              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                          : Text(
+                              isEdit ? 'Save Order' : 'Create Sales Order',
+                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                            ),
                     ),
                   ),
                 ),
@@ -457,70 +501,4 @@ class _OrderFormViewState extends State<OrderFormView> {
     ]);
   }
 
-  Widget _extraChargesCard(BuildContext context) {
-    return SalesFormSectionCard(
-      title: 'Extra charges',
-      child: Column(
-        children: [
-          salesTwoColRow(
-            context: context,
-            label1: 'Discount (₹)',
-            ctrl1: c.discountAmountCtrl,
-            label2: 'Shipping (₹)',
-            ctrl2: c.shippingAmountCtrl,
-            onChanged: () => c.lines.refresh(),
-          ),
-          const SizedBox(height: 10),
-          salesTwoColRow(
-            context: context,
-            label1: 'Extra Discount (₹)',
-            ctrl1: c.extraDiscountCtrl,
-            label2: 'Round Off (₹)',
-            ctrl2: c.roundOffCtrl,
-            onChanged: () => c.lines.refresh(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _paymentCard(BuildContext context) {
-    return SalesFormSectionCard(
-      title: 'Payment',
-      child: Column(
-        children: [
-          Obx(() => salesDropdownRow(
-                context: context,
-                label: 'Payment Terms',
-                options: kPaymentTermsOptions,
-                value: c.paymentTermsValue.value,
-                onChanged: (v) => c.paymentTermsValue.value = v,
-                hint: 'Select terms…',
-              )),
-          const SizedBox(height: 10),
-          Obx(() => salesDropdownRow(
-                context: context,
-                label: 'Payment Method',
-                options: kPaymentMethodOptions,
-                value: c.paymentMethodValue.value,
-                onChanged: (v) => c.paymentMethodValue.value = v,
-                hint: 'Select method…',
-              )),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _pickProduct(BuildContext context, int lineIndex) async {
-    final picked = await showModalBottomSheet<Map<String, dynamic>>(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => salesProductPickerSheet(
-        context: ctx,
-        products: c.products.toList(),
-        onPick: (p) => Navigator.pop(ctx, p),
-      ),
-    );
-    if (picked != null) c.applyProductToLine(lineIndex, picked);
-  }
 }

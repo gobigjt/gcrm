@@ -20,7 +20,7 @@ int? tryParseDynamicInt(dynamic value) {
 
 String formatCurrencyInr(dynamic value, {int decimals = 0}) {
   final n = parseDynamicNum(value);
-  return 'Rs ${n.toStringAsFixed(decimals)}';
+  return '₹${n.toStringAsFixed(decimals)}';
 }
 
 String toYmd(DateTime d) {
@@ -103,7 +103,21 @@ String formatSalesCardDate(dynamic value) {
   return '$dd-${months[d.month - 1]}-${d.year}';
 }
 
-String formatInrLine(dynamic value) => 'INR ${formatInrAmountDisplay(value)}';
+String formatInrLine(dynamic value) => '₹${formatInrAmountDisplay(value)}';
+
+/// UI label for company currency (ISO codes other than INR shown as-is).
+String displayCurrencyLabel(String currency) {
+  final t = currency.trim();
+  if (t.isEmpty || t.toUpperCase() == 'INR') return '₹';
+  return t;
+}
+
+/// Normalizes Indian rupee display tokens to ISO `INR` for the settings API.
+String normalizeCompanyCurrencyForApi(String raw) {
+  final t = raw.trim();
+  if (t.isEmpty || t == '₹' || t.toUpperCase() == 'INR') return 'INR';
+  return t;
+}
 
 Future<void> pickDateIntoController({
   required BuildContext context,

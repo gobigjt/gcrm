@@ -1,11 +1,24 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
+import { LeadsService } from './leads.service';
 
 @Injectable()
 export class LeadPlatformsService {
   private readonly log = new Logger(LeadPlatformsService.name);
 
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly leads: LeadsService,
+  ) {}
+
+  private async notifyLeadCreated(crmLeadId: number | null | undefined): Promise<void> {
+    if (!crmLeadId) return;
+    try {
+      await this.leads.notifyAfterLeadRowPull(Number(crmLeadId));
+    } catch {
+      /* notifications must not break imports */
+    }
+  }
 
   private GRAPH_VERSION = process.env.FACEBOOK_GRAPH_API_VERSION || 'v20.0';
   private GRAPH_BASE = `https://graph.facebook.com/${this.GRAPH_VERSION}`;
@@ -530,6 +543,7 @@ export class LeadPlatformsService {
           ],
         );
         const crmLeadId = insertLeadRes.rows[0]?.id;
+        await this.notifyLeadCreated(crmLeadId);
 
         // 4) Store mapping row
         await this.db.query(
@@ -678,6 +692,7 @@ export class LeadPlatformsService {
       );
 
       const crmLeadId = insertLeadRes.rows[0]?.id ?? null;
+      await this.notifyLeadCreated(crmLeadId);
 
       await this.db.query(
         `
@@ -1109,6 +1124,7 @@ export class LeadPlatformsService {
       if (id) {
         createdLeads.push(id);
         importedCount++;
+        await this.notifyLeadCreated(id);
       }
     }
 
@@ -1315,6 +1331,7 @@ export class LeadPlatformsService {
           createdLeads.push(newId);
           importedCount++;
           existingBySheetId.set(sheetLeadId, { id: newId, custom_fields: sheetMeta });
+          await this.notifyLeadCreated(newId);
         }
         continue;
       }
@@ -1349,6 +1366,7 @@ export class LeadPlatformsService {
         importedCount++;
         if (emailKey) existingEmails.add(emailKey);
         if (phone) existingPhones.add(phone);
+        await this.notifyLeadCreated(newId);
       }
     }
 

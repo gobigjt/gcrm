@@ -13,6 +13,12 @@ bool canManageCrmFollowupTasks(String role) {
   return r == AppRoles.admin || r == AppRoles.superAdmin || r == AppRoles.salesManager;
 }
 
+/// Approve or reject quotations / orders / invoices submitted by sales executives.
+bool canApproveSalesDocuments(String role) {
+  final r = role.trim();
+  return r == AppRoles.admin || r == AppRoles.superAdmin || r == AppRoles.salesManager;
+}
+
 class AppPermissions {
   static const dashboard = 'screen.dashboard';
   static const crm = 'screen.crm';

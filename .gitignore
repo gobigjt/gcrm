@@ -52,3 +52,6 @@ backend/uploads/
 # Misc
 *.tmp
 *.temp
+
+backend/secrets/
+db_exports/

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
+import '../config/web_app_config.dart';
 import 'api_exception.dart';
 
 class ApiClient {
@@ -14,19 +15,15 @@ class ApiClient {
   /// Avoid hanging forever on cold start / splash when the host is wrong or offline.
   static const Duration requestTimeout = Duration(seconds: 20);
 
-  // Android emulator localhost mapping; override with --dart-define=API_BASE_URL=...
-  // Use a full absolute URL, e.g. http://127.0.0.1:4000/api (note the double slash after http:).
-  static const String baseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: 'http://10.0.2.2:4000/api',
-  );
+  // Centralized app API URL from WebAppConfig (override with --dart-define=API_BASE_URL=...).
+  static String get baseUrl => WebAppConfig.apiBaseUrl;
 
   /// Ensures [raw] becomes an absolute http(s) URL. On Flutter Web, a host without a scheme
   /// is treated as a path on the app origin (e.g. localhost:port/127.0.0.1:4000/...).
   static String normalizeApiBase(String raw) {
     var s = raw.trim();
     if (s.isEmpty) {
-      return 'http://10.0.2.2:4000/api';
+      return WebAppConfig.apiBaseUrl;
     }
     while (s.endsWith('/')) {
       s = s.substring(0, s.length - 1);
@@ -115,6 +112,31 @@ class ApiClient {
     return _decodeJson(res);
   }
 
+  /// Authenticated GET returning raw bytes (e.g. PDF). Does not JSON-decode the body.
+  Future<List<int>> getBytes({
+    required String path,
+    Map<String, String>? headers,
+  }) async {
+    final res = await _client
+        .get(_uri(path), headers: headers ?? const {})
+        .timeout(
+      requestTimeout,
+      onTimeout: () => throw ApiException(
+        message:
+            'Connection timed out. Check Wi‑Fi/mobile data and that the app points to your API '
+            '(build with --dart-define=API_BASE_URL=…).',
+        statusCode: 408,
+      ),
+    );
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw ApiException(
+        message: 'Request failed',
+        statusCode: res.statusCode,
+      );
+    }
+    return res.bodyBytes;
+  }
+
   Future<Map<String, dynamic>> login({
     required String email,
     required String password,
@@ -157,6 +179,34 @@ class ApiClient {
       headers: {'Authorization': 'Bearer $accessToken'},
     );
     return Map<String, dynamic>.from(data as Map);
+  }
+
+  Future<void> registerPushToken({
+    required String accessToken,
+    required String token,
+    required String platform,
+  }) async {
+    await request(
+      method: 'POST',
+      path: '/notifications/push-token',
+      headers: {'Authorization': 'Bearer $accessToken'},
+      body: {
+        'token': token,
+        'platform': platform,
+      },
+    );
+  }
+
+  Future<void> unregisterPushToken({
+    required String accessToken,
+    String? token,
+  }) async {
+    await request(
+      method: 'DELETE',
+      path: '/notifications/push-token',
+      headers: {'Authorization': 'Bearer $accessToken'},
+      body: token == null ? <String, dynamic>{} : {'token': token},
+    );
   }
 
   static MediaType _imageMediaTypeForFilename(String name) {

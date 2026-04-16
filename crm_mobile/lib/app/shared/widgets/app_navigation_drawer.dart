@@ -174,6 +174,12 @@ class AppNavigationDrawer extends StatelessWidget {
                         selected: _selected(AppRoutes.sales, sec: 'orders'),
                         onTap: () => _closeAndGo(AppRoutes.sales, arguments: const {'initialTab': 2}),
                       ),
+                      _DrawerTile(
+                        icon: Icons.groups_outlined,
+                        label: 'Customers',
+                        selected: _selected(AppRoutes.sales, sec: 'customers'),
+                        onTap: () => _closeAndGo(AppRoutes.sales, arguments: const {'initialTab': 3}),
+                      ),
                     ],
                     if (auth.hasPermission(AppPermissions.inventory)) ...[
                       _DrawerTile(

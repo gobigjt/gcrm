@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/auth/role_permissions.dart';
+import '../../core/network/error_utils.dart';
 import '../../core/models/crm_models.dart';
 import '../../routes/app_routes.dart';
 import '../auth/auth_controller.dart';
@@ -32,6 +33,27 @@ Future<Map<String, dynamic>?> fetchCustomerLinkedToLead(AuthController auth, int
     }
   }
   return null;
+}
+
+Future<bool> _confirmDialog(
+  BuildContext context, {
+  required String title,
+  required String message,
+  String yesLabel = 'Yes',
+  String noLabel = 'No',
+}) async {
+  final res = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(title),
+      content: Text(message),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: Text(noLabel)),
+        FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: Text(yesLabel)),
+      ],
+    ),
+  );
+  return res == true;
 }
 
 /// From CRM lead: open quotes for the linked customer, or new quotation if none / no customer.
@@ -86,28 +108,121 @@ Future<void> navigateSalesFlowForLead(BuildContext context, CrmLead lead) async 
     Get.snackbar('Unavailable', "You don't have access to Sales.");
     return;
   }
-  try {
-    final linked = await fetchCustomerLinkedToLead(auth, lead.id);
+  var loaderVisible = false;
+  void showLoader() {
+    if (!context.mounted || loaderVisible) return;
+    loaderVisible = true;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+  }
 
-    if (linked == null) {
-      await Get.toNamed(AppRoutes.sales);
+  void hideLoader() {
+    if (!loaderVisible) return;
+    loaderVisible = false;
+    if (context.mounted) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
+  }
+
+  try {
+    final okCreateQuote = await _confirmDialog(
+      context,
+      title: 'Open Sales / Quote',
+      message: 'Open Sales / Quote for this lead?',
+      yesLabel: 'Yes',
+      noLabel: 'No',
+    );
+    if (!okCreateQuote) {
+      Get.snackbar('Cancelled', 'Sales / Quote action cancelled.', snackPosition: SnackPosition.BOTTOM);
       return;
+    }
+
+    showLoader();
+    Map<String, dynamic>? linked = await fetchCustomerLinkedToLead(auth, lead.id);
+    if (linked == null) {
+      if (!context.mounted) return;
+      // Pause loader while asking user confirmation.
+      hideLoader();
+      final okCreateCustomer = await _confirmDialog(
+        context,
+        title: 'Create customer',
+        message: 'No customer linked to this lead. Create customer now?',
+        yesLabel: 'Yes',
+        noLabel: 'No',
+      );
+      if (!okCreateCustomer) {
+        Get.snackbar('Cancelled', 'Customer creation cancelled. Quotation not opened.', snackPosition: SnackPosition.BOTTOM);
+        return;
+      }
+
+      if (!context.mounted) return;
+      showLoader();
+      final conv = await auth.authorizedRequest(method: 'POST', path: '/crm/leads/${lead.id}/convert-customer');
+      final customer = conv is Map ? conv['customer'] : null;
+      if (customer is Map) {
+        linked = Map<String, dynamic>.from(customer);
+      } else {
+        linked = await fetchCustomerLinkedToLead(auth, lead.id);
+      }
+      if (linked == null) {
+        hideLoader();
+        Get.snackbar('Sales', 'Customer could not be created from this lead.', snackPosition: SnackPosition.BOTTOM);
+        return;
+      }
+      Get.snackbar('Sales', 'Customer created from lead.', snackPosition: SnackPosition.BOTTOM);
     }
 
     final customerId = (linked['id'] as num).toInt();
     final customerName = (linked['name'] ?? '').toString().trim();
+    final quotesRes = await auth.authorizedRequest(method: 'GET', path: '/sales/quotations');
+    final quotes = _asCustomerOrQuotationList(quotesRes);
+    final hasExistingQuotes = quotes.any((q) => (q['customer_id'] as num?)?.toInt() == customerId);
 
+    if (hasExistingQuotes) {
+      hideLoader();
+      await Get.toNamed(
+        AppRoutes.sales,
+        arguments: {
+          'initialTab': 'quotes',
+          'filterCustomerId': customerId,
+          if (customerName.isNotEmpty) 'filterCustomerName': customerName,
+        },
+      );
+      return;
+    }
+
+    int? assignee = lead.assignedTo;
+    try {
+      final leadRes = await auth.authorizedRequest(method: 'GET', path: '/crm/leads/${lead.id}');
+      final row = leadRes is Map ? (leadRes['lead'] ?? leadRes) : null;
+      final raw = row is Map ? row['assigned_to'] : null;
+      if (raw is num) {
+        assignee = raw.toInt();
+      } else if (raw != null) {
+        assignee = int.tryParse(raw.toString());
+      }
+    } catch (_) {
+      // Fallback to current lead payload if refresh fails.
+    }
+    if (assignee != null && assignee <= 0) assignee = null;
+
+    // Dismiss loader before route transition to avoid overlay lingering.
+    hideLoader();
     await Get.toNamed(
-      AppRoutes.sales,
+      AppRoutes.quotationForm,
       arguments: {
-        'initialTab': 'quotes',
-        'filterCustomerId': customerId,
-        if (customerName.isNotEmpty) 'filterCustomerName': customerName,
+        'initialCustomerId': customerId,
+        'forceCustomerPrefill': true,
+        if (assignee != null) 'initialCreatedById': assignee,
       },
     );
   } catch (e) {
+    hideLoader();
     if (context.mounted) {
-      Get.snackbar('Sales', e.toString(), snackPosition: SnackPosition.BOTTOM);
+      Get.snackbar('Sales', userFriendlyError(e), snackPosition: SnackPosition.BOTTOM);
     }
   }
 }

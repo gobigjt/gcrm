@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/config/web_app_config.dart';
+import '../../core/auth/role_permissions.dart';
 import '../../core/utils/ui_format.dart'
     show formatInrAmountDisplay, formatIsoDate, formatSalesCardDate, parseDynamicNum;
 import '../../routes/app_routes.dart';
@@ -39,15 +38,6 @@ String _numberLabel(Map<String, dynamic> d, SalesDocumentKind k) {
   };
 }
 
-Uri? _webDetailUri(SalesDocumentKind kind, int id) {
-  final segment = switch (kind) {
-    SalesDocumentKind.quotation => 'quotes',
-    SalesDocumentKind.order => 'orders',
-    SalesDocumentKind.invoice => 'invoices',
-  };
-  return WebAppConfig.salesDetailWebUri(segment: segment, id: id);
-}
-
 class SalesDocumentDetailView extends StatefulWidget {
   const SalesDocumentDetailView({super.key, required this.kind, required this.documentId});
 
@@ -79,20 +69,6 @@ class _SalesDocumentDetailViewState extends State<SalesDocumentDetailView> {
     super.dispose();
   }
 
-  Future<void> _openInBrowser() async {
-    final uri = _webDetailUri(widget.kind, widget.documentId);
-    if (uri == null) {
-      Get.snackbar(
-        'Web app URL',
-        'Set WEB_APP_ORIGIN when building (e.g. --dart-define=WEB_APP_ORIGIN=https://your-crm.example).',
-      );
-      return;
-    }
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      Get.snackbar('Browser', 'Could not open link.');
-    }
-  }
-
   Future<void> _downloadPdf(Map<String, dynamic> doc) async {
     if (_pdfBusy) return;
     setState(() => _pdfBusy = true);
@@ -122,6 +98,14 @@ class _SalesDocumentDetailViewState extends State<SalesDocumentDetailView> {
       final r = await Get.toNamed(
         AppRoutes.invoiceForm,
         arguments: {'invoiceId': widget.documentId},
+      );
+      if (r == true) await c.load();
+      return;
+    }
+    if (widget.kind == SalesDocumentKind.order) {
+      final r = await Get.toNamed(
+        AppRoutes.orderForm,
+        arguments: {'orderId': widget.documentId},
       );
       if (r == true) await c.load();
     }
@@ -187,7 +171,12 @@ class _SalesDocumentDetailViewState extends State<SalesDocumentDetailView> {
       final fg = _appBarFg(context);
       final cs = Theme.of(context).colorScheme;
       final isDark = Theme.of(context).brightness == Brightness.dark;
-      final canEdit = widget.kind == SalesDocumentKind.quotation || widget.kind == SalesDocumentKind.invoice;
+      final auth = Get.find<AuthController>();
+      final approval = SalesDocumentDetailController.approvalStatusOf(d);
+      final blockPdf = approval == 'pending' && !canApproveSalesDocuments(auth.role.value);
+      final canEdit = widget.kind == SalesDocumentKind.quotation ||
+          widget.kind == SalesDocumentKind.invoice ||
+          widget.kind == SalesDocumentKind.order;
       final saving = c.isSaving.value;
 
       return Scaffold(
@@ -202,8 +191,8 @@ class _SalesDocumentDetailViewState extends State<SalesDocumentDetailView> {
           title: Text(_titleForKind(widget.kind)),
           actions: [
             IconButton(
-              tooltip: 'Download PDF',
-              onPressed: _pdfBusy ? null : () => _downloadPdf(d),
+              tooltip: blockPdf ? 'PDF available after approval' : 'Download PDF',
+              onPressed: (blockPdf || _pdfBusy) ? null : () => _downloadPdf(d),
               icon: _pdfBusy
                   ? SizedBox(
                       width: 22,
@@ -211,12 +200,6 @@ class _SalesDocumentDetailViewState extends State<SalesDocumentDetailView> {
                       child: CircularProgressIndicator(strokeWidth: 2, color: fg),
                     )
                   : const Icon(Icons.picture_as_pdf_outlined),
-              color: fg,
-            ),
-            IconButton(
-              tooltip: 'Open in browser (print / PDF)',
-              onPressed: _openInBrowser,
-              icon: const Icon(Icons.open_in_browser_rounded),
               color: fg,
             ),
             if (canEdit)
@@ -257,7 +240,7 @@ class _SalesDocumentDetailViewState extends State<SalesDocumentDetailView> {
             const SizedBox(height: 12),
             _customerBlock(d, isDark, cs),
             const SizedBox(height: 12),
-            _statusAndMeta(c, widget.kind, d, isDark, cs),
+            _statusAndMeta(c, widget.kind, d, isDark, cs, approval),
             if ((d['notes'] ?? '').toString().trim().isNotEmpty) ...[
               const SizedBox(height: 12),
               Text('Notes', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: cs.onSurface)),
@@ -286,11 +269,12 @@ class _SalesDocumentDetailViewState extends State<SalesDocumentDetailView> {
 }
 
 Widget _customerBlock(Map<String, dynamic> d, bool isDark, ColorScheme cs) {
-  final addr = (d['customer_address'] ?? '').toString().trim();
+  final billAddr = (d['customer_billing_address'] ?? d['customer_address'] ?? '').toString().trim();
+  final shipAddr = (d['customer_shipping_address'] ?? '').toString().trim();
   final phone = (d['customer_phone'] ?? '').toString().trim();
   final email = (d['customer_email'] ?? '').toString().trim();
   final gst = (d['customer_gstin'] ?? '').toString().trim();
-  if (addr.isEmpty && phone.isEmpty && email.isEmpty && gst.isEmpty) {
+  if (billAddr.isEmpty && shipAddr.isEmpty && phone.isEmpty && email.isEmpty && gst.isEmpty) {
     return const SizedBox.shrink();
   }
   return Card(
@@ -306,10 +290,18 @@ Widget _customerBlock(Map<String, dynamic> d, bool isDark, ColorScheme cs) {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Bill to', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: cs.onSurface)),
-          if (addr.isNotEmpty) ...[
+          if (billAddr.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text(addr, style: TextStyle(fontSize: 13, height: 1.35, color: cs.onSurface.withValues(alpha: 0.9))),
+            Text(
+              'Billing: $billAddr',
+              style: TextStyle(fontSize: 13, height: 1.35, color: cs.onSurface.withValues(alpha: 0.9)),
+            ),
           ],
+          if (shipAddr.isNotEmpty)
+            Text(
+              'Shipping: $shipAddr',
+              style: TextStyle(fontSize: 12, height: 1.3, color: isDark ? cs.onSurfaceVariant : Colors.grey.shade700),
+            ),
           if (phone.isNotEmpty)
             Text('Phone: $phone', style: TextStyle(fontSize: 12, color: isDark ? cs.onSurfaceVariant : Colors.grey.shade700)),
           if (email.isNotEmpty)
@@ -328,11 +320,93 @@ Widget _statusAndMeta(
   Map<String, dynamic> d,
   bool isDark,
   ColorScheme cs,
+  String approval,
 ) {
   final status = SalesDocumentDetailController.statusOf(d, kind);
+  final auth = Get.find<AuthController>();
+  final canApprove = canApproveSalesDocuments(auth.role.value);
+  final showWorkflowMenus = approval == 'approved';
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
+      if (approval == 'pending')
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Material(
+            color: isDark ? const Color(0xFF3D2E00) : const Color(0xFFFFF8E1),
+            borderRadius: BorderRadius.circular(10),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.hourglass_top_rounded, size: 20, color: isDark ? Colors.amber.shade200 : Colors.amber.shade900),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Awaiting approval from a sales manager or admin before this document can be sent, fulfilled, or paid.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.35,
+                        color: isDark ? Colors.amber.shade100 : Colors.brown.shade900,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      if (approval == 'rejected')
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Material(
+            color: isDark ? const Color(0xFF3D1518) : const Color(0xFFFCEBEB),
+            borderRadius: BorderRadius.circular(10),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                children: [
+                  Icon(Icons.cancel_outlined, size: 20, color: isDark ? const Color(0xFFFDA4AF) : const Color(0xFF791F1F)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'This document was rejected. Edit and resubmit, or contact your manager.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.35,
+                        color: isDark ? const Color(0xFFFDA4AF) : const Color(0xFF791F1F),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      if (approval == 'pending' && canApprove)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Obx(() {
+            final saving = c.isSaving.value;
+            return Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton(
+                  onPressed: saving ? null : () => c.setDocumentApproval('approved'),
+                  child: const Text('Approve'),
+                ),
+                OutlinedButton(
+                  onPressed: saving ? null : () => c.setDocumentApproval('rejected'),
+                  child: const Text('Reject'),
+                ),
+              ],
+            );
+          }),
+        ),
       Wrap(
         spacing: 8,
         runSpacing: 8,
@@ -340,7 +414,7 @@ Widget _statusAndMeta(
         children: [
           Text('Status:', style: TextStyle(color: isDark ? cs.onSurface : Colors.grey.shade800, fontWeight: FontWeight.w600)),
           _statusChip(kind, status, isDark),
-          if (kind == SalesDocumentKind.quotation)
+          if (kind == SalesDocumentKind.quotation && showWorkflowMenus)
             Obx(() {
               final saving = c.isSaving.value;
               return PopupMenuButton<String>(
@@ -363,7 +437,7 @@ Widget _statusAndMeta(
                 ),
               );
             }),
-          if (kind == SalesDocumentKind.order)
+          if (kind == SalesDocumentKind.order && showWorkflowMenus)
             Obx(() {
               final saving = c.isSaving.value;
               return PopupMenuButton<String>(
@@ -566,7 +640,7 @@ Widget _lineItemsCard(BuildContext context, List<Map<String, dynamic>> items, bo
                 Expanded(child: Text('Qty x Price', textAlign: TextAlign.center, style: _lineHdr(context))),
                 Expanded(
                   flex: 2,
-                  child: Text('Amount (INR)', textAlign: TextAlign.right, style: _lineHdr(context)),
+                  child: Text('Amount (₹)', textAlign: TextAlign.right, style: _lineHdr(context)),
                 ),
               ],
             ),

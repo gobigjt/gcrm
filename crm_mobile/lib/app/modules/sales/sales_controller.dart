@@ -6,7 +6,7 @@ import '../auth/auth_controller.dart';
 class SalesController extends GetxController {
   final AuthController _auth = Get.find<AuthController>();
 
-  /// 0 = quotations, 1 = invoices, 2 = orders
+  /// 0 = quotations, 1 = invoices, 2 = orders, 3 = customers
   final tabIndex = 0.obs;
   final rows = <Map<String, dynamic>>[].obs;
   final loading = false.obs;
@@ -22,6 +22,7 @@ class SalesController extends GetxController {
   bool get isQuotationsTab => tabIndex.value == 0;
   bool get isInvoicesTab => tabIndex.value == 1;
   bool get isOrdersTab => tabIndex.value == 2;
+  bool get isCustomersTab => tabIndex.value == 3;
 
   @override
   void onInit() {
@@ -55,6 +56,10 @@ class SalesController extends GetxController {
       tabIndex.value = 2;
       return;
     }
+    if (t == 3 || t == 'customers') {
+      tabIndex.value = 3;
+      return;
+    }
     if (t == 1 || t == 'invoices') {
       tabIndex.value = 1;
       return;
@@ -71,7 +76,7 @@ class SalesController extends GetxController {
   }
 
   void selectTab(int i) {
-    if (i < 0 || i > 2) return;
+    if (i < 0 || i > 3) return;
     tabIndex.value = i;
     load();
   }
@@ -82,6 +87,8 @@ class SalesController extends GetxController {
         return '/sales/invoices';
       case 2:
         return '/sales/orders';
+      case 3:
+        return '/sales/customers';
       case 0:
       default:
         return '/sales/quotations';
@@ -118,7 +125,7 @@ class SalesController extends GetxController {
       if (res['data'] is List) {
         return (res['data'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
       }
-      for (final key in ['quotations', 'invoices', 'orders']) {
+      for (final key in ['quotations', 'invoices', 'orders', 'customers']) {
         if (res[key] is List) {
           return (res[key] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
         }
@@ -173,6 +180,7 @@ class SalesController extends GetxController {
       0 => '/sales/quotations/$id',
       1 => '/sales/invoices/$id',
       2 => '/sales/orders/$id',
+      3 => '/sales/customers/$id',
       _ => null,
     };
     if (path == null) return;

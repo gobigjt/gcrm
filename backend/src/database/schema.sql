@@ -273,6 +273,7 @@ CREATE TABLE IF NOT EXISTS leads (
   lead_score      NUMERIC(6,2) NOT NULL DEFAULT 0,
   lead_segment    VARCHAR(10),
   job_title       VARCHAR(150),
+  product_category VARCHAR(150),
   deal_size       NUMERIC(15,2),
   website         VARCHAR(500),
   address         TEXT,
@@ -461,15 +462,18 @@ CREATE TABLE IF NOT EXISTS purchase_invoices (
 -- SALES MODULE
 -- ============================================================
 CREATE TABLE IF NOT EXISTS customers (
-  id          SERIAL PRIMARY KEY,
-  name        VARCHAR(200) NOT NULL,
-  email       VARCHAR(255),
-  phone       VARCHAR(20),
-  gstin       VARCHAR(15),
-  address     TEXT,
-  lead_id     INTEGER REFERENCES leads(id) ON DELETE SET NULL,
-  is_active   BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id               SERIAL PRIMARY KEY,
+  name             VARCHAR(200) NOT NULL,
+  email            VARCHAR(255),
+  phone            VARCHAR(20),
+  gstin            VARCHAR(15),
+  address          TEXT,
+  billing_address  TEXT,
+  shipping_address TEXT,
+  lead_id          INTEGER REFERENCES leads(id) ON DELETE SET NULL,
+  created_by       INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  is_active        BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS proposals (
