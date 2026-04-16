@@ -74,9 +74,22 @@ function resolveUploadsFilePath(urlOrPath: string, uploadsRoot: string): string 
       return null;
     }
   }
-  const p = pathname.startsWith('/') ? pathname : `/${pathname}`;
+  // Normalize variants:
+  // - /uploads/...
+  // - /api/uploads/...   (common API-prefixed path)
+  // - uploads/...
+  // - Windows slashes from stored paths
+  let p = pathname.replace(/\\/g, '/').trim();
+  if (!p.startsWith('/')) p = `/${p}`;
+  if (p.startsWith('/api/uploads/')) {
+    p = `/uploads/${p.slice('/api/uploads/'.length)}`;
+  }
+  const uploadsIdx = p.indexOf('/uploads/');
+  if (uploadsIdx >= 0 && !p.startsWith('/uploads/')) {
+    p = p.slice(uploadsIdx);
+  }
   if (!p.startsWith('/uploads/')) return null;
-  const rel = p.slice('/uploads/'.length);
+  const rel = decodeURIComponent(p.slice('/uploads/'.length));
   const local = join(uploadsRoot, rel);
   return existsSync(local) ? local : null;
 }
@@ -298,9 +311,9 @@ function totalsForSalesPdf(docData: any, kind: 'quotation' | 'order' | 'invoice'
   };
 }
 
-function amountInWordsInr(n: number): string {
+function amountInWordsInr(n: number, currencyLabel = 'INR'): string {
   const num = Math.round(Number(n || 0));
-  if (num === 0) return '₹ Zero only.';
+  if (num === 0) return `${currencyLabel} Zero only.`;
   const ones = [
     '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
     'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen',
@@ -329,7 +342,7 @@ function amountInWordsInr(n: number): string {
   if (lakh) parts.push(`${chunk(lakh)} Lakh`);
   if (thousand) parts.push(`${chunk(thousand)} Thousand`);
   if (hundred) parts.push(chunk(hundred));
-  return `₹ ${parts.join(' ').replace(/\s+/g, ' ').trim()} only.`;
+  return `${currencyLabel} ${parts.join(' ').replace(/\s+/g, ' ').trim()} only.`;
 }
 
 type PdfUnicodeFontSet = { regular: string; bold: string; italic: string };
@@ -341,8 +354,21 @@ function firstExistingPath(paths: string[]): string | null {
   return null;
 }
 
+function resolveNodeModulePath(specifier: string): string | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return require.resolve(specifier);
+  } catch {
+    return null;
+  }
+}
+
 function resolvePdfUnicodeFontSet(): PdfUnicodeFontSet | null {
+  const bundledRegular = resolveNodeModulePath('dejavu-fonts-ttf/ttf/DejaVuSans.ttf');
+  const bundledBold = resolveNodeModulePath('dejavu-fonts-ttf/ttf/DejaVuSans-Bold.ttf');
+  const bundledItalic = resolveNodeModulePath('dejavu-fonts-ttf/ttf/DejaVuSans-Oblique.ttf');
   const regular = firstExistingPath([
+    ...(bundledRegular ? [bundledRegular] : []),
     'C:/Windows/Fonts/arial.ttf',
     'C:/Windows/Fonts/segoeui.ttf',
     '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
@@ -351,6 +377,7 @@ function resolvePdfUnicodeFontSet(): PdfUnicodeFontSet | null {
   ]);
   if (!regular) return null;
   const bold = firstExistingPath([
+    ...(bundledBold ? [bundledBold] : []),
     'C:/Windows/Fonts/arialbd.ttf',
     'C:/Windows/Fonts/segoeuib.ttf',
     '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
@@ -358,6 +385,7 @@ function resolvePdfUnicodeFontSet(): PdfUnicodeFontSet | null {
     '/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf',
   ]) ?? regular;
   const italic = firstExistingPath([
+    ...(bundledItalic ? [bundledItalic] : []),
     'C:/Windows/Fonts/ariali.ttf',
     'C:/Windows/Fonts/segoeuii.ttf',
     '/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf',
@@ -689,6 +717,7 @@ export class SalesService {
     const unicodeFonts = resolvePdfUnicodeFontSet();
     const fontRegular = unicodeFonts ? 'PdfUnicodeRegular' : 'Helvetica';
     const fontBold = unicodeFonts ? 'PdfUnicodeBold' : 'Helvetica-Bold';
+    const currencyLabel = unicodeFonts ? '₹' : 'INR';
     if (unicodeFonts) {
       pdf.registerFont(fontRegular, unicodeFonts.regular);
       pdf.registerFont(fontBold, unicodeFonts.bold);
@@ -1031,7 +1060,7 @@ export class SalesService {
       const t = totalsForSalesPdf(docData, kind);
       const totalTax = t.cgst + t.sgst + t.igst;
       const subTotal = t.subtotal != null ? t.subtotal : t.total - totalTax;
-      const wordsStr = amountInWordsInr(t.total);
+      const wordsStr = amountInWordsInr(t.total, currencyLabel);
       const amtColW = Math.min(230, Math.floor(pageWidth * 0.45));
       const wordsColW = pageWidth - amtColW;
       const boxPad = 8;
@@ -1062,7 +1091,7 @@ export class SalesService {
         else pdf.fillColor('#000000');
         pdf.font(bold ? fontBold : fontRegular).fontSize(totalsFontSize);
         pdf.text(label, ax, ry, { width: aw - 80, align: 'left' });
-        pdf.text(`₹ ${val}`, ax, ry, { width: aw, align: 'right' });
+        pdf.text(`${currencyLabel} ${val}`, ax, ry, { width: aw, align: 'right' });
         ry += totalsLineGap;
       };
       totalLine('Sub Total', this.money(subTotal));
@@ -1127,13 +1156,13 @@ export class SalesService {
           const rate = this.money(it.unit_price);
           const total = this.money(it.total);
           pdf.fontSize(9).text(`${idx + 1}. ${desc}`);
-          pdf.font(fontRegular).fontSize(8).fillColor('gray').text(`Qty: ${qty}  Rate: ₹ ${rate}  Amount: ₹ ${total}`);
+          pdf.font(fontRegular).fontSize(8).fillColor('gray').text(`Qty: ${qty}  Rate: ${currencyLabel} ${rate}  Amount: ${currencyLabel} ${total}`);
           pdf.fillColor('black').moveDown(0.3);
         });
       }
 
       const total = this.money(docData.total_amount);
-      pdf.font(fontBold).moveDown(0.6).fontSize(11).text(`Total: ₹ ${total}`, { align: 'right' });
+      pdf.font(fontBold).moveDown(0.6).fontSize(11).text(`Total: ${currencyLabel} ${total}`, { align: 'right' });
       if (docData.notes) {
         pdf.moveDown(0.8).fontSize(9).text('Terms And Conditions:', { underline: true });
         pdf.fontSize(8).text(String(docData.notes));
