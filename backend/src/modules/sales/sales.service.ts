@@ -160,9 +160,72 @@ async function fetchRemoteLogoBuffer(urlStr: string): Promise<Buffer | null> {
   }
 }
 
-function lineGstAmountForPdf(it: any): number {
-  const base = Number(it.quantity ?? 0) * Number(it.unit_price ?? 0);
-  return Math.max(0, Number(it.total ?? 0) - base);
+function lineTaxAmountForPdf(it: any, taxType?: 'exclusive' | 'inclusive' | 'no_tax'): number {
+  const cgst = Number(it.cgst || 0);
+  const sgst = Number(it.sgst || 0);
+  const igst = Number(it.igst || 0);
+  if (cgst || sgst || igst) {
+    return cgst + sgst + igst;
+  }
+
+  const rate = Number(it.gst_rate || 0);
+  const qty = Number(it.quantity ?? 0);
+  const unitPrice = Number(it.unit_price ?? 0);
+  const discount = Number(it.discount || 0);
+  const total = Number(it.total ?? 0);
+  const base = Math.max(0, qty * unitPrice - discount);
+  const mode = taxType || inferTaxTypeFromLineItems([it]);
+
+  if (mode === 'no_tax') {
+    return 0;
+  }
+  if (mode === 'inclusive') {
+    if (total > 0) {
+      return rate > 0 ? Math.max(0, total * rate / (100 + rate)) : 0;
+    }
+    return rate > 0 ? Math.max(0, base * rate / (100 + rate)) : 0;
+  }
+
+  if (total > 0) {
+    return Math.max(0, total - base);
+  }
+  return rate > 0 ? Math.max(0, base * rate / 100) : 0;
+}
+
+function lineTaxableAmountForPdf(it: any, taxType?: 'exclusive' | 'inclusive' | 'no_tax'): number {
+  const total = Number(it.total ?? 0);
+  const tax = lineTaxAmountForPdf(it, taxType);
+  if (Number.isFinite(total) && Number.isFinite(tax)) {
+    return Math.max(0, total - tax);
+  }
+  const qty = Number(it.quantity ?? 0);
+  const unitPrice = Number(it.unit_price ?? 0);
+  const discount = Number(it.discount || 0);
+  return Math.max(0, qty * unitPrice - discount);
+}
+
+function inferTaxTypeFromLineItems(items: any[]): 'exclusive' | 'inclusive' | 'no_tax' {
+  const lines = items || [];
+  let hasTax = false;
+  for (const it of lines) {
+    const cgst = Number(it.cgst || 0);
+    const sgst = Number(it.sgst || 0);
+    const igst = Number(it.igst || 0);
+    const rate = Number(it.gst_rate || 0);
+    const qty = Number(it.quantity ?? 0);
+    const unitPrice = Number(it.unit_price ?? 0);
+    const discount = Number(it.discount || 0);
+    const total = Number(it.total ?? 0);
+    const base = Math.max(0, qty * unitPrice - discount);
+    const tax = cgst + sgst + igst;
+    if (tax > 0) {
+      hasTax = true;
+      if (Math.abs(total - base) < 0.01 && rate > 0) {
+        return 'inclusive';
+      }
+    }
+  }
+  return hasTax ? 'exclusive' : 'no_tax';
 }
 
 function isInterstateForPdf(docData: any, kind: 'quotation' | 'order' | 'invoice'): boolean {
@@ -174,11 +237,12 @@ type HsnTaxRowPdf = { hsn: string; taxable: number; cgst: number; sgst: number; 
 
 function hsnSummaryRowsForPdf(docData: any, kind: 'quotation' | 'order' | 'invoice'): HsnTaxRowPdf[] {
   const interstate = isInterstateForPdf(docData, kind);
+  const taxType = String(docData.tax_type || inferTaxTypeFromLineItems(docData.items || [])) as 'exclusive' | 'inclusive' | 'no_tax';
   const byHsn = new Map<string, HsnTaxRowPdf>();
   for (const it of docData.items || []) {
     const hsn = String(it.product_hsn_code || it.hsn_code || '—');
-    const taxable = Number(it.quantity || 0) * Number(it.unit_price || 0);
-    const gstAmt = lineGstAmountForPdf(it);
+    const taxable = lineTaxableAmountForPdf(it, taxType);
+    const gstAmt = lineTaxAmountForPdf(it, taxType);
     const row = byHsn.get(hsn) || { hsn, taxable: 0, cgst: 0, sgst: 0, igst: 0, rate: Number(it.gst_rate || 0) };
     row.taxable += taxable;
     if (interstate) row.igst += gstAmt;
@@ -198,20 +262,31 @@ function invoiceBalanceDueForPdf(doc: any): number {
 
 function totalsForSalesPdf(docData: any, kind: 'quotation' | 'order' | 'invoice') {
   if (kind === 'invoice') {
+    const storedSubtotal = docData.subtotal != null ? Number(docData.subtotal) : null;
+    const storedCgst = Number(docData.cgst || 0);
+    const storedSgst = Number(docData.sgst || 0);
+    const storedIgst = Number(docData.igst || 0);
+    const storedTotal = Number(docData.total_amount || 0);
+    const storedTax = storedCgst + storedSgst + storedIgst;
+    const interstate = isInterstateForPdf(docData, kind);
+    const taxType = String(docData.tax_type || inferTaxTypeFromLineItems(docData.items || [])) as 'exclusive' | 'inclusive' | 'no_tax';
+    const derived = deriveTotalsFromLineItems(docData.items || [], interstate, taxType);
+    const useDerived = !storedSubtotal && storedTotal > 0 && storedTax === 0 && derived.total > 0;
     return {
-      subtotal: docData.subtotal != null ? Number(docData.subtotal) : null,
-      cgst: Number(docData.cgst || 0),
-      sgst: Number(docData.sgst || 0),
-      igst: Number(docData.igst || 0),
-      total: Number(docData.total_amount || 0),
+      subtotal: useDerived ? derived.subtotal : storedSubtotal != null ? storedSubtotal : derived.subtotal,
+      cgst: useDerived ? derived.cgst : storedCgst || derived.cgst,
+      sgst: useDerived ? derived.sgst : storedSgst || derived.sgst,
+      igst: useDerived ? derived.igst : storedIgst || derived.igst,
+      total: storedTotal > 0 ? storedTotal : derived.total,
       balance: invoiceBalanceDueForPdf(docData),
     };
   }
+  const taxType = String(docData.tax_type || inferTaxTypeFromLineItems(docData.items || [])) as 'exclusive' | 'inclusive' | 'no_tax';
   let subtotal = 0;
   let gst = 0;
   for (const it of docData.items || []) {
-    subtotal += Number(it.quantity ?? 0) * Number(it.unit_price ?? 0);
-    gst += lineGstAmountForPdf(it);
+    subtotal += lineTaxableAmountForPdf(it, taxType);
+    gst += lineTaxAmountForPdf(it, taxType);
   }
   return {
     subtotal,
@@ -295,17 +370,44 @@ function canApproveSalesDocuments(role?: string): boolean {
   return r === 'Admin' || r === 'Super Admin' || r === 'Sales Manager';
 }
 
-function deriveTotalsFromLineItems(items: any[]): { subtotal: number; cgst: number; sgst: number; igst: number; total: number } {
+function deriveTotalsFromLineItems(
+  items: any[],
+  interstate = false,
+  taxType: 'exclusive' | 'inclusive' | 'no_tax' = 'exclusive',
+): { subtotal: number; cgst: number; sgst: number; igst: number; total: number } {
   let subtotal = 0;
   let cgst = 0;
   let sgst = 0;
   let igst = 0;
   for (const it of items || []) {
-    const lineTotal = Number(it.total ?? 0);
-    const lineCgst = Number(it.cgst || 0);
-    const lineSgst = Number(it.sgst || 0);
-    const lineIgst = Number(it.igst || 0);
-    const lineTax = lineCgst + lineSgst + lineIgst;
+    let lineTotal = Number(it.total ?? 0);
+    let lineCgst = Number(it.cgst || 0);
+    let lineSgst = Number(it.sgst || 0);
+    let lineIgst = Number(it.igst || 0);
+    let lineTax = lineCgst + lineSgst + lineIgst;
+    if (!lineTax) {
+      const qty = Number(it.quantity ?? 0);
+      const unit = Number(it.unit_price ?? 0);
+      const rate = Number(it.gst_rate ?? 0);
+      const discount = Number(it.discount || 0);
+      const base = Math.max(0, qty * unit - discount);
+      if (taxType === 'inclusive') {
+        lineTax = rate > 0 ? lineTotal * rate / (100 + rate) : 0;
+      } else if (taxType === 'no_tax') {
+        lineTax = 0;
+      } else {
+        lineTax = base * rate / 100;
+      }
+      if (interstate) {
+        lineIgst = lineTax;
+      } else {
+        lineCgst = lineTax / 2;
+        lineSgst = lineTax / 2;
+      }
+      if (!lineTotal) {
+        lineTotal = taxType === 'inclusive' ? base : base + lineTax;
+      }
+    }
     subtotal += lineTotal - lineTax;
     cgst += lineCgst;
     sgst += lineSgst;
@@ -326,12 +428,30 @@ export class SalesService {
     private readonly salesNotifications: SalesNotificationsService,
   ) {}
 
+  private isSuperAdmin(actor?: SalesActor): boolean {
+    return String(actor?.role || '').trim().toLowerCase() === 'super admin';
+  }
+
+  private requireTenantId(actor?: SalesActor): number {
+    if (this.isSuperAdmin(actor)) return 0;
+    const tenantId = Number((actor as any)?.tenant_id);
+    if (!Number.isInteger(tenantId) || tenantId <= 0) {
+      throw new ForbiddenException('Tenant context is required');
+    }
+    return tenantId;
+  }
+
   // ─── Customers ────────────────────────────────────────────
-  async listCustomers(search?: string) {
+  async listCustomers(search?: string, actor?: SalesActor) {
+    const tenantId = this.requireTenantId(actor);
     const cached = await this.cache.get<any[]>(`customers:${search||''}`);
     if (cached) return cached;
-    const vals = search ? [`%${search}%`] : [];
-    const where = search ? 'WHERE c.name ILIKE $1 OR c.email ILIKE $1 OR c.phone ILIKE $1' : '';
+    const vals: any[] = [tenantId];
+    let where = 'WHERE ($1::integer = 0 OR c.tenant_id = $1)';
+    if (search) {
+      vals.push(`%${search}%`);
+      where += ' AND (c.name ILIKE $2 OR c.email ILIKE $2 OR c.phone ILIKE $2)';
+    }
     const res = await this.db.query(
       `SELECT c.*, u.name AS created_by_name
        FROM customers c
@@ -344,24 +464,26 @@ export class SalesService {
     return res.rows;
   }
 
-  async getCustomer(id: number) {
+  async getCustomer(id: number, actor?: SalesActor) {
+    const tenantId = this.requireTenantId(actor);
     return (
       await this.db.query(
         `SELECT c.*, u.name AS created_by_name
          FROM customers c
          LEFT JOIN users u ON u.id = c.created_by
-         WHERE c.id=$1`,
-        [id],
+         WHERE c.id=$1 AND ($2::integer = 0 OR c.tenant_id = $2)`,
+        [id, tenantId],
       )
     ).rows[0];
   }
-  async createCustomer(d: any) {
+  async createCustomer(d: any, actor?: SalesActor) {
+    const tenantId = this.requireTenantId(actor);
     const billingAddress = d.billing_address ?? d.address ?? null;
     const shippingAddress = d.shipping_address ?? null;
     const res = await this.db.query(
       `INSERT INTO customers
-        (name,email,phone,gstin,address,billing_address,shipping_address,lead_id,created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        (name,email,phone,gstin,address,billing_address,shipping_address,lead_id,created_by,tenant_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
       [
         d.name,
         d.email,
@@ -372,12 +494,14 @@ export class SalesService {
         shippingAddress,
         d.lead_id,
         d.created_by ?? null,
+        tenantId > 0 ? tenantId : null,
       ],
     );
     await this.cache.delPattern('customers:*');
     return res.rows[0];
   }
-  async updateCustomer(id: number, d: any) {
+  async updateCustomer(id: number, d: any, actor?: SalesActor) {
+    const tenantId = this.requireTenantId(actor);
     const patch = { ...d };
     if (patch.billing_address === undefined && patch.address !== undefined) {
       patch.billing_address = patch.address;
@@ -389,35 +513,42 @@ export class SalesService {
     const sets: string[] = []; const vals: any[] = []; let i = 1;
     for (const f of fields) { if(patch[f]!==undefined){ sets.push(`${f}=$${i++}`); vals.push(patch[f]); } }
     if(!sets.length) return null;
-    vals.push(id);
-    const res = await this.db.query(`UPDATE customers SET ${sets.join(',')} WHERE id=$${i} RETURNING *`, vals);
+    vals.push(id, tenantId);
+    const res = await this.db.query(
+      `UPDATE customers SET ${sets.join(',')} WHERE id=$${i} AND ($${i + 1}::integer = 0 OR tenant_id = $${i + 1}) RETURNING *`,
+      vals,
+    );
     await this.cache.delPattern('customers:*');
     return res.rows[0];
   }
 
   /** Active users who can own quotes/orders/invoices (sales module filters). */
-  async listSalesExecutives() {
+  async listSalesExecutives(actor?: SalesActor) {
+    const tenantId = this.requireTenantId(actor);
     return (
       await this.db.query(
         `SELECT DISTINCT u.id, u.name
          FROM users u
          INNER JOIN roles r ON r.id = u.role_id
          WHERE u.is_active = TRUE
-           AND r.name = 'Sales Executive'
+           AND r.name IN ('Sales Executive', 'Sales Manager', 'Admin')
+           AND ($1::integer = 0 OR u.tenant_id = $1)
          ORDER BY u.name`,
+        [tenantId],
       )
     ).rows;
   }
 
   /** Whether this user may be stored as document owner (created_by). */
-  private async isAssignableSalesUser(userId: number): Promise<boolean> {
+  private async isAssignableSalesUser(userId: number, tenantId: number): Promise<boolean> {
     const r = await this.db.query(
       `SELECT 1 FROM users u
        INNER JOIN roles ro ON ro.id = u.role_id
        WHERE u.id = $1 AND u.is_active = TRUE
+         AND ($2::integer = 0 OR u.tenant_id = $2)
          AND ro.name IN ('Sales Executive', 'Sales Manager', 'Admin', 'Super Admin')
        LIMIT 1`,
-      [userId],
+      [userId, tenantId],
     );
     return r.rows.length > 0;
   }
@@ -427,6 +558,7 @@ export class SalesService {
    * Admins / Super Admins / Sales Managers may assign another sales user; others always self.
    */
   async resolveDocumentCreatedBy(actor: { id: number; role?: string }, requested: unknown): Promise<number> {
+    const tenantId = this.requireTenantId(actor as any);
     const self = Number(actor.id);
     if (requested === undefined || requested === null || requested === '') return self;
     const rid = Number(requested);
@@ -434,7 +566,7 @@ export class SalesService {
     if (rid === self) return self;
     const assignerRoles = new Set(['Admin', 'Super Admin', 'Sales Manager']);
     if (!assignerRoles.has(String(actor.role || ''))) return self;
-    const ok = await this.isAssignableSalesUser(rid);
+    const ok = await this.isAssignableSalesUser(rid, tenantId);
     return ok ? rid : self;
   }
 
@@ -444,10 +576,14 @@ export class SalesService {
     requested: 'approved' | 'rejected',
     actor: SalesActor,
   ): Promise<void> {
+    const tenantId = this.requireTenantId(actor);
     if (!canApproveSalesDocuments(actor?.role)) {
       throw new ForbiddenException('Only Admin, Super Admin, or Sales Manager can approve or reject this document.');
     }
-    const cur = await this.db.query(`SELECT approval_status FROM ${table} WHERE id=$1`, [id]);
+    const cur = await this.db.query(
+      `SELECT approval_status FROM ${table} WHERE id=$1 AND ($2::integer = 0 OR tenant_id = $2)`,
+      [id, tenantId],
+    );
     if (!cur.rows[0]) throw new NotFoundException();
     if (cur.rows[0].approval_status !== 'pending') {
       throw new BadRequestException('Document is not awaiting approval.');
@@ -455,8 +591,8 @@ export class SalesService {
     const ab = Number(actor.id);
     const approver = Number.isFinite(ab) && ab > 0 ? ab : null;
     await this.db.query(
-      `UPDATE ${table} SET approval_status=$1, approved_by=$2, approved_at=NOW() WHERE id=$3`,
-      [requested, approver, id],
+      `UPDATE ${table} SET approval_status=$1, approved_by=$2, approved_at=NOW() WHERE id=$3 AND ($4::integer = 0 OR tenant_id = $4)`,
+      [requested, approver, id, tenantId],
     );
   }
 
@@ -493,10 +629,10 @@ export class SalesService {
     const company = (await this.db.query('SELECT * FROM company_settings LIMIT 1')).rows[0] || {};
     const docData =
       kind === 'quotation'
-        ? await this.getQuotation(id)
+        ? await this.getQuotation(id, actor)
         : kind === 'order'
-          ? await this.getOrder(id)
-          : await this.getInvoice(id);
+          ? await this.getOrder(id, actor)
+          : await this.getInvoice(id, actor);
     if (!docData) return null;
     const ap = String((docData as { approval_status?: string }).approval_status ?? 'approved');
     if (ap === 'pending' && !canApproveSalesDocuments(actor?.role)) {
@@ -536,14 +672,27 @@ export class SalesService {
 
     if (kind === 'quotation' || kind === 'order' || kind === 'invoice') {
       const m = pdf.page.margins;
-      const pageLeft = m.left;
-      const pageRight = pdf.page.width - m.right;
+      const pageSidePad = 20;
+      const pageLeft = m.left + pageSidePad;
+      const pageRight = pdf.page.width - m.right - pageSidePad;
       const pageWidth = pageRight - pageLeft;
-      const footerBand = 42;
+
+      const footerBody = singleLineFooterText(
+        String(company.address || '').trim() || String(company.company_name || '').trim() || '—',
+      );
+      const footerLines = [`Contact: ${footerBody}`];
+      if (company.gstin) {
+        footerLines.push(`GSTIN: ${String(company.gstin)}`);
+      }
+      const footerText = `${footerLines.join('\n')}\nPage 1 of 1`;
+      pdf.font('Helvetica').fontSize(7);
+      const footerHeight = pdf.heightOfString(footerText, { width: pageWidth, align: 'center' });
+      const footerBand = Math.max(footerHeight + 18, 44);
       let y = m.top;
+      const bottomLimit = pdf.page.height - m.bottom - footerBand;
 
       const bumpPage = (need: number) => {
-        while (y + need > pdf.page.maxY() - footerBand) {
+        while (y + need > bottomLimit) {
           pdf.addPage();
           y = pdf.page.margins.top;
         }
@@ -899,23 +1048,28 @@ export class SalesService {
 
     {
       const m = pdf.page.margins;
-      const pl = m.left;
-      const pr = pdf.page.width - m.right;
-      const pw = pr - pl;
+      const pageSidePad = 12;
+      const footerLeft = m.left + pageSidePad;
+      const footerWidth = Math.max(0, pdf.page.width - m.left - m.right - pageSidePad * 2);
       const footerBody = singleLineFooterText(
         String(company.address || '').trim() || String(company.company_name || '').trim() || '—',
       );
-      const footerLine = `Contact: ${footerBody}`;
+      const footerLines = [`Contact: ${footerBody}`];
+      if (company.gstin) {
+        footerLines.push(`GSTIN: ${String(company.gstin)}`);
+      } else {
+        footerLines.push(`Company: ${String(company.company_name || '—')}`);
+      }
       const fr = pdf.bufferedPageRange();
       for (let pi = fr.start; pi < fr.start + fr.count; pi++) {
         pdf.switchToPage(pi);
-        pdf.font('Helvetica').fontSize(7.5);
-        const lh = pdf.currentLineHeight(true) || 11;
-        const fy = pdf.page.maxY() - lh - 6;
-        pdf.fillColor('#666666').text(footerLine, pl, fy, {
-          width: pw,
+        pdf.font('Helvetica').fontSize(7);
+        const footerText = `${footerLines.join('\n')}\nPage ${pi - fr.start + 1} of ${fr.count}`;
+        const footerHeight = pdf.heightOfString(footerText, { width: footerWidth, align: 'center' });
+        const fy = pdf.page.height - m.bottom - footerHeight - 10;
+        pdf.fillColor('#666666').text(footerText, footerLeft, fy, {
+          width: footerWidth,
           align: 'center',
-          height: lh + 1,
           ellipsis: true,
         });
         pdf.fillColor('#000000');
@@ -970,10 +1124,12 @@ export class SalesService {
     approval_status?: string;
     from?: string;
     to?: string;
-  }) {
+  }, actor?: SalesActor) {
+    const tenantId = this.requireTenantId(actor);
     const conds: string[] = [];
-    const vals: any[] = [];
-    let n = 1;
+    const vals: any[] = [tenantId];
+    let n = 2;
+    conds.push('($1::integer = 0 OR q.tenant_id = $1)');
     if (filters?.customer_id) {
       conds.push(`q.customer_id=$${n++}`);
       vals.push(filters.customer_id);
@@ -1010,7 +1166,8 @@ export class SalesService {
       )
     ).rows;
   }
-  async getQuotation(id: number) {
+  async getQuotation(id: number, actor?: SalesActor) {
+    const tenantId = this.requireTenantId(actor);
     const [q, items] = await Promise.all([
       this.db.query(
         `SELECT q.*, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
@@ -1022,8 +1179,8 @@ export class SalesService {
            FROM quotations q
            JOIN customers c ON c.id=q.customer_id
            LEFT JOIN users cu ON cu.id=q.created_by
-           WHERE q.id=$1`,
-        [id],
+           WHERE q.id=$1 AND ($2::integer = 0 OR q.tenant_id = $2)`,
+        [id, tenantId],
       ),
       this.db.query(
         `SELECT qi.*, pr.name AS product_name, pr.hsn_code AS product_hsn_code
@@ -1034,8 +1191,13 @@ export class SalesService {
     return q.rows[0] ? { ...q.rows[0], items: items.rows } : null;
   }
   async createQuotation(data: any, items: any[], actor?: SalesActor) {
+    const tenantId = this.requireTenantId(actor);
     const created = await this.db.transaction(async (client) => {
-      const { subtotal, cgst, sgst, igst, total } = deriveTotalsFromLineItems(items);
+      const { subtotal, cgst, sgst, igst, total } = deriveTotalsFromLineItems(
+        items,
+        data.is_interstate || false,
+        String(data.tax_type || 'exclusive') as 'exclusive' | 'inclusive' | 'no_tax',
+      );
       const qn = await this.nextQuotationNumber(client);
       const approval = initialDocApprovalStatus(actor?.role);
       const approverId =
@@ -1046,8 +1208,8 @@ export class SalesService {
         `INSERT INTO quotations
           (quotation_number,customer_id,proposal_id,status,valid_until,notes,
            gst_type,tax_type,is_interstate,subtotal,cgst,sgst,igst,total_amount,created_by,
-           approval_status,approved_by,approved_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
+           approval_status,approved_by,approved_at,tenant_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
         [
           qn,
           data.customer_id,
@@ -1067,6 +1229,7 @@ export class SalesService {
           approval,
           approverId,
           approverId ? new Date().toISOString() : null,
+          tenantId > 0 ? tenantId : null,
         ],
       );
       for (const it of items)
@@ -1087,10 +1250,12 @@ export class SalesService {
     approval_status?: string;
     from?: string;
     to?: string;
-  }) {
+  }, actor?: SalesActor) {
+    const tenantId = this.requireTenantId(actor);
     const conds: string[] = [];
-    const vals: any[] = [];
-    let n = 1;
+    const vals: any[] = [tenantId];
+    let n = 2;
+    conds.push('($1::integer = 0 OR o.tenant_id = $1)');
     if (filters?.customer_id) {
       conds.push(`o.customer_id=$${n++}`);
       vals.push(filters.customer_id);
@@ -1127,7 +1292,8 @@ export class SalesService {
       )
     ).rows;
   }
-  async getOrder(id: number) {
+  async getOrder(id: number, actor?: SalesActor) {
+    const tenantId = this.requireTenantId(actor);
     const [o, items] = await Promise.all([
       this.db.query(
         `SELECT o.*, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
@@ -1139,8 +1305,8 @@ export class SalesService {
            FROM sales_orders o
            JOIN customers c ON c.id=o.customer_id
            LEFT JOIN users cu ON cu.id=o.created_by
-           WHERE o.id=$1`,
-        [id],
+           WHERE o.id=$1 AND ($2::integer = 0 OR o.tenant_id = $2)`,
+        [id, tenantId],
       ),
       this.db.query(
         `SELECT oi.*, pr.name AS product_name, pr.hsn_code AS product_hsn_code
@@ -1151,15 +1317,23 @@ export class SalesService {
     return o.rows[0] ? { ...o.rows[0], items: items.rows } : null;
   }
   async createOrder(data: any, items: any[], actor?: SalesActor) {
+    const tenantId = this.requireTenantId(actor);
     if (data.quotation_id) {
-      const q = await this.db.query('SELECT approval_status FROM quotations WHERE id=$1', [data.quotation_id]);
+      const q = await this.db.query(
+        'SELECT approval_status FROM quotations WHERE id=$1 AND ($2::integer = 0 OR tenant_id = $2)',
+        [data.quotation_id, tenantId],
+      );
       if (!q.rows[0]) throw new BadRequestException('Quotation not found.');
       if (q.rows[0].approval_status !== 'approved') {
         throw new BadRequestException('The quotation must be approved before you can create an order from it.');
       }
     }
     return this.db.transaction(async (client) => {
-      const { subtotal, cgst, sgst, igst, total } = deriveTotalsFromLineItems(items);
+      const { subtotal, cgst, sgst, igst, total } = deriveTotalsFromLineItems(
+        items,
+        data.is_interstate || false,
+        String(data.tax_type || 'exclusive') as 'exclusive' | 'inclusive' | 'no_tax',
+      );
       const on = `ORD-${Date.now()}`;
       const approval = initialDocApprovalStatus(actor?.role);
       const approverId =
@@ -1170,8 +1344,8 @@ export class SalesService {
         `INSERT INTO sales_orders
           (order_number,customer_id,quotation_id,status,order_date,due_date,notes,
            gst_type,tax_type,is_interstate,subtotal,cgst,sgst,igst,total_amount,created_by,
-           approval_status,approved_by,approved_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
+           approval_status,approved_by,approved_at,tenant_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *`,
         [
           on,
           data.customer_id,
@@ -1192,6 +1366,7 @@ export class SalesService {
           approval,
           approverId,
           approverId ? new Date().toISOString() : null,
+          tenantId > 0 ? tenantId : null,
         ],
       );
       for (const it of items)
@@ -1202,6 +1377,7 @@ export class SalesService {
     });
   }
   async patchOrder(id: number, b: any, actor?: SalesActor) {
+    const tenantId = this.requireTenantId(actor);
     const body: any = typeof b === 'string' ? { status: b } : { ...b };
     if (body.approval_status !== undefined) {
       const req = normalizeDocApprovalStatus(body.approval_status);
@@ -1211,7 +1387,10 @@ export class SalesService {
       await this.assertDocumentApprovalPatch('sales_orders', id, req as 'approved' | 'rejected', actor || {});
       delete body.approval_status;
     }
-    const apRow = await this.db.query('SELECT approval_status FROM sales_orders WHERE id=$1', [id]);
+    const apRow = await this.db.query(
+      'SELECT approval_status FROM sales_orders WHERE id=$1 AND ($2::integer = 0 OR tenant_id = $2)',
+      [id, tenantId],
+    );
     if (!apRow.rows[0]) return null;
     const ap0 = String(apRow.rows[0].approval_status ?? 'approved');
     if (ap0 === 'pending' && body.status !== undefined) {
@@ -1257,7 +1436,7 @@ export class SalesService {
         if (body.created_by !== undefined)   { sets.push(`created_by=$${n++}`);    vals.push(body.created_by); }
         vals.push(id);
         await client.query(`UPDATE sales_orders SET ${sets.join(', ')} WHERE id=$${n}`, vals);
-        return this.getOrder(id);
+        return this.getOrder(id, actor);
       });
     }
     const sets: string[] = [];
@@ -1302,10 +1481,12 @@ export class SalesService {
     approval_status?: string;
     from?: string;
     to?: string;
-  }) {
+  }, actor?: SalesActor) {
+    const tenantId = this.requireTenantId(actor);
     const conds: string[] = [];
-    const vals: any[] = [];
-    let n = 1;
+    const vals: any[] = [tenantId];
+    let n = 2;
+    conds.push('($1::integer = 0 OR i.tenant_id = $1)');
     if (filters?.customer_id) {
       conds.push(`i.customer_id=$${n++}`);
       vals.push(filters.customer_id);
@@ -1345,7 +1526,8 @@ export class SalesService {
       )
     ).rows;
   }
-  async getInvoice(id: number) {
+  async getInvoice(id: number, actor?: SalesActor) {
+    const tenantId = this.requireTenantId(actor);
     const [inv, items, pays] = await Promise.all([
       this.db.query(
         `SELECT i.*, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
@@ -1357,8 +1539,8 @@ export class SalesService {
            FROM invoices i
            JOIN customers c ON c.id=i.customer_id
            LEFT JOIN users cu ON cu.id=i.created_by
-           WHERE i.id=$1`,
-        [id],
+           WHERE i.id=$1 AND ($2::integer = 0 OR i.tenant_id = $2)`,
+        [id, tenantId],
       ),
       this.db.query(
         `SELECT ii.*, pr.name AS product_name, pr.hsn_code AS product_hsn_code
@@ -1367,18 +1549,38 @@ export class SalesService {
       ),
       this.db.query(`SELECT * FROM payments WHERE invoice_id=$1 ORDER BY payment_date`, [id]),
     ]);
-    return inv.rows[0] ? { ...inv.rows[0], items: items.rows, payments: pays.rows } : null;
+    if (!inv.rows[0]) return null;
+    const invoice = inv.rows[0];
+    const itemsRows = items.rows;
+    const taxType = String(invoice.tax_type || inferTaxTypeFromLineItems(itemsRows)) as 'exclusive' | 'inclusive' | 'no_tax';
+    const gstType = String(invoice.gst_type || (Number(invoice.igst || 0) > 0 ? 'inter_state' : 'intra_state'));
+    return {
+      ...invoice,
+      items: itemsRows,
+      payments: pays.rows,
+      tax_type: taxType,
+      gst_type: gstType,
+      is_interstate: invoice.is_interstate ?? Number(invoice.igst || 0) > 0,
+    };
   }
   async createInvoice(data: any, items: any[], actor?: SalesActor) {
+    const tenantId = this.requireTenantId(actor);
     if (data.order_id) {
-      const o = await this.db.query('SELECT approval_status FROM sales_orders WHERE id=$1', [data.order_id]);
+      const o = await this.db.query(
+        'SELECT approval_status FROM sales_orders WHERE id=$1 AND ($2::integer = 0 OR tenant_id = $2)',
+        [data.order_id, tenantId],
+      );
       if (!o.rows[0]) throw new BadRequestException('Order not found.');
       if (o.rows[0].approval_status !== 'approved') {
         throw new BadRequestException('The sales order must be approved before you can create an invoice from it.');
       }
     }
     const row = await this.db.transaction(async (client) => {
-      const { subtotal, cgst, sgst, igst, total } = deriveTotalsFromLineItems(items);
+      const { subtotal, cgst, sgst, igst, total } = deriveTotalsFromLineItems(
+        items,
+        data.is_interstate || false,
+        String(data.tax_type || 'exclusive') as 'exclusive' | 'inclusive' | 'no_tax',
+      );
       const inv_no = `INV-${Date.now()}`;
       const approval = initialDocApprovalStatus(actor?.role);
       const approverId =
@@ -1388,8 +1590,8 @@ export class SalesService {
       const ir = await client.query(
         `INSERT INTO invoices
           (invoice_number,customer_id,order_id,invoice_date,due_date,subtotal,cgst,sgst,igst,total_amount,notes,created_by,
-           approval_status,approved_by,approved_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+           approval_status,approved_by,approved_at,tenant_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
         [
           inv_no,
           data.customer_id,
@@ -1406,6 +1608,7 @@ export class SalesService {
           approval,
           approverId,
           approverId ? new Date().toISOString() : null,
+          tenantId > 0 ? tenantId : null,
         ],
       );
       for (const it of items)
@@ -1416,19 +1619,20 @@ export class SalesService {
     await this.cache.del('dashboard:stats');
     return row;
   }
-  async stats() {
+  async stats(actor?: SalesActor) {
+    const tenantId = this.requireTenantId(actor);
     const res = await this.db.query(`
       SELECT
-        (SELECT COUNT(*)::int        FROM customers  WHERE is_active=TRUE)                                    AS customers,
-        (SELECT COUNT(*)::int        FROM sales_orders WHERE status NOT IN ('delivered','cancelled'))          AS open_orders,
-        (SELECT COALESCE(SUM(total_amount),0) FROM invoices WHERE status='paid')                              AS revenue,
-        (SELECT COALESCE(SUM(total_amount),0) FROM invoices WHERE status IN ('unpaid','partial'))             AS receivable,
-        (SELECT COUNT(*)::int        FROM invoices WHERE status IN ('unpaid','partial') AND due_date < NOW()) AS overdue,
-        (SELECT COALESCE(SUM(total_amount),0) FROM invoices)                                                  AS total_sales,
-        (SELECT COALESCE(SUM(total_amount),0) FROM invoices WHERE status='paid')                              AS paid_amount,
-        (SELECT COALESCE(SUM(total_amount),0) FROM invoices WHERE status='unpaid')                            AS unpaid_amount,
-        (SELECT COALESCE(SUM(total_amount),0) FROM invoices WHERE status='partial')                           AS partial_amount
-    `);
+        (SELECT COUNT(*)::int        FROM customers  WHERE is_active=TRUE AND ($1::integer = 0 OR tenant_id = $1))                                    AS customers,
+        (SELECT COUNT(*)::int        FROM sales_orders WHERE status NOT IN ('delivered','cancelled') AND ($1::integer = 0 OR tenant_id = $1))          AS open_orders,
+        (SELECT COALESCE(SUM(total_amount),0) FROM invoices WHERE status='paid' AND ($1::integer = 0 OR tenant_id = $1))                              AS revenue,
+        (SELECT COALESCE(SUM(total_amount),0) FROM invoices WHERE status IN ('unpaid','partial') AND ($1::integer = 0 OR tenant_id = $1))             AS receivable,
+        (SELECT COUNT(*)::int        FROM invoices WHERE status IN ('unpaid','partial') AND due_date < NOW() AND ($1::integer = 0 OR tenant_id = $1)) AS overdue,
+        (SELECT COALESCE(SUM(total_amount),0) FROM invoices WHERE ($1::integer = 0 OR tenant_id = $1))                                                AS total_sales,
+        (SELECT COALESCE(SUM(total_amount),0) FROM invoices WHERE status='paid' AND ($1::integer = 0 OR tenant_id = $1))                              AS paid_amount,
+        (SELECT COALESCE(SUM(total_amount),0) FROM invoices WHERE status='unpaid' AND ($1::integer = 0 OR tenant_id = $1))                            AS unpaid_amount,
+        (SELECT COALESCE(SUM(total_amount),0) FROM invoices WHERE status='partial' AND ($1::integer = 0 OR tenant_id = $1))                           AS partial_amount
+    `, [tenantId]);
     const r = res.rows[0];
     return {
       customers: r.customers,
@@ -1444,10 +1648,12 @@ export class SalesService {
   }
 
   // ─── Payments (all invoice receipts) ──────────────────────
-  async listPayments(filters?: { customer_id?: number; created_by?: number; from?: string; to?: string }) {
+  async listPayments(filters?: { customer_id?: number; created_by?: number; from?: string; to?: string }, actor?: SalesActor) {
+    const tenantId = this.requireTenantId(actor);
     const conds: string[] = [];
-    const vals: any[] = [];
-    let n = 1;
+    const vals: any[] = [tenantId];
+    let n = 2;
+    conds.push('($1::integer = 0 OR p.tenant_id = $1)');
     if (filters?.customer_id) {
       conds.push(`i.customer_id=$${n++}`);
       vals.push(filters.customer_id);
@@ -1479,10 +1685,12 @@ export class SalesService {
   }
 
   // ─── Sale returns ─────────────────────────────────────────
-  async listReturns(filters?: { customer_id?: number; created_by?: number; from?: string; to?: string }) {
+  async listReturns(filters?: { customer_id?: number; created_by?: number; from?: string; to?: string }, actor?: SalesActor) {
+    const tenantId = this.requireTenantId(actor);
     const conds: string[] = [];
-    const vals: any[] = [];
-    let n = 1;
+    const vals: any[] = [tenantId];
+    let n = 2;
+    conds.push('($1::integer = 0 OR r.tenant_id = $1)');
     if (filters?.customer_id) {
       conds.push(`r.customer_id=$${n++}`);
       vals.push(filters.customer_id);
@@ -1513,11 +1721,12 @@ export class SalesService {
     ).rows;
   }
 
-  async getReturn(id: number) {
+  async getReturn(id: number, actor?: SalesActor) {
+    const tenantId = this.requireTenantId(actor);
     const [r, items, pays] = await Promise.all([
       this.db.query(
-        `SELECT r.*, c.name AS customer_name FROM sale_returns r JOIN customers c ON c.id=r.customer_id WHERE r.id=$1`,
-        [id],
+        `SELECT r.*, c.name AS customer_name FROM sale_returns r JOIN customers c ON c.id=r.customer_id WHERE r.id=$1 AND ($2::integer = 0 OR r.tenant_id = $2)`,
+        [id, tenantId],
       ),
       this.db.query(
         `SELECT ri.*, pr.name AS product_name FROM sale_return_items ri LEFT JOIN products pr ON pr.id=ri.product_id WHERE ri.return_id=$1`,
@@ -1528,7 +1737,8 @@ export class SalesService {
     return r.rows[0] ? { ...r.rows[0], items: items.rows, payments: pays.rows } : null;
   }
 
-  async createReturn(data: any, items: any[]) {
+  async createReturn(data: any, items: any[], actor?: SalesActor) {
+    const tenantId = this.requireTenantId(actor);
     return this.db.transaction(async (client) => {
       let subtotal = 0;
       let cgst = 0;
@@ -1548,8 +1758,8 @@ export class SalesService {
       const rr = await client.query(
         `INSERT INTO sale_returns
           (return_number,customer_id,reference_no,return_date,state_of_supply,
-           exchange_rate,notes,subtotal,cgst,sgst,igst,discount_amount,round_off,total_amount,created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+           exchange_rate,notes,subtotal,cgst,sgst,igst,discount_amount,round_off,total_amount,created_by,tenant_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
         [
           rn,
           data.customer_id,
@@ -1566,6 +1776,7 @@ export class SalesService {
           roundOff,
           total,
           data.created_by,
+          tenantId > 0 ? tenantId : null,
         ],
       );
       for (const it of items) {
@@ -1587,10 +1798,11 @@ export class SalesService {
     });
   }
 
-  async addReturnPayment(returnId: number, data: any) {
+  async addReturnPayment(returnId: number, data: any, actor?: SalesActor) {
+    const tenantId = this.requireTenantId(actor);
     return this.db.transaction(async (client) => {
       const pr = await client.query(
-        'INSERT INTO sale_return_payments (return_id,amount,payment_date,method,reference,notes,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+        'INSERT INTO sale_return_payments (return_id,amount,payment_date,method,reference,notes,created_by,tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
         [
           returnId,
           data.amount,
@@ -1599,6 +1811,7 @@ export class SalesService {
           data.reference,
           data.notes,
           data.created_by,
+          tenantId > 0 ? tenantId : null,
         ],
       );
       const totPaid = await client.query(
@@ -1610,15 +1823,27 @@ export class SalesService {
     });
   }
 
-  async deleteReturn(id: number) {
-    await this.db.query('DELETE FROM sale_returns WHERE id=$1', [id]);
+  async deleteReturn(id: number, actor?: SalesActor) {
+    const tenantId = this.requireTenantId(actor);
+    await this.db.query('DELETE FROM sale_returns WHERE id=$1 AND ($2::integer = 0 OR tenant_id = $2)', [id, tenantId]);
   }
 
-  async deleteCustomer(id: number)   { await this.db.query('DELETE FROM customers WHERE id=$1', [id]); await this.cache.delPattern('customers:*'); }
-  async deleteQuotation(id: number)  { await this.db.query('DELETE FROM quotations WHERE id=$1', [id]); }
-  async deleteOrder(id: number)      { await this.db.query('DELETE FROM sales_orders WHERE id=$1', [id]); }
-  async deleteInvoice(id: number) {
-    await this.db.query('DELETE FROM invoices WHERE id=$1', [id]);
+  async deleteCustomer(id: number, actor?: SalesActor)   {
+    const tenantId = this.requireTenantId(actor);
+    await this.db.query('DELETE FROM customers WHERE id=$1 AND ($2::integer = 0 OR tenant_id = $2)', [id, tenantId]);
+    await this.cache.delPattern('customers:*');
+  }
+  async deleteQuotation(id: number, actor?: SalesActor)  {
+    const tenantId = this.requireTenantId(actor);
+    await this.db.query('DELETE FROM quotations WHERE id=$1 AND ($2::integer = 0 OR tenant_id = $2)', [id, tenantId]);
+  }
+  async deleteOrder(id: number, actor?: SalesActor)      {
+    const tenantId = this.requireTenantId(actor);
+    await this.db.query('DELETE FROM sales_orders WHERE id=$1 AND ($2::integer = 0 OR tenant_id = $2)', [id, tenantId]);
+  }
+  async deleteInvoice(id: number, actor?: SalesActor) {
+    const tenantId = this.requireTenantId(actor);
+    await this.db.query('DELETE FROM invoices WHERE id=$1 AND ($2::integer = 0 OR tenant_id = $2)', [id, tenantId]);
     await this.cache.del('dashboard:stats');
   }
 
@@ -1627,6 +1852,7 @@ export class SalesService {
    * Optional fields: `status`, `notes`, `valid_until`, `customer_id`, `approval_status` (managers only).
    */
   async patchQuotation(id: number, b: any, actor?: SalesActor) {
+    const tenantId = this.requireTenantId(actor);
     const body = { ...b };
     if (body.approval_status !== undefined) {
       const req = normalizeDocApprovalStatus(body.approval_status);
@@ -1639,7 +1865,10 @@ export class SalesService {
       }
       delete body.approval_status;
     }
-    const apRow = await this.db.query('SELECT approval_status FROM quotations WHERE id=$1', [id]);
+    const apRow = await this.db.query(
+      'SELECT approval_status FROM quotations WHERE id=$1 AND ($2::integer = 0 OR tenant_id = $2)',
+      [id, tenantId],
+    );
     if (!apRow.rows[0]) return null;
     const ap0 = String(apRow.rows[0].approval_status ?? 'approved');
     if (ap0 === 'pending' && body.status !== undefined) {
@@ -1690,7 +1919,7 @@ export class SalesService {
         if (body.created_by !== undefined)   { sets.push(`created_by=$${n++}`);  vals.push(body.created_by); }
         vals.push(id);
         await client.query(`UPDATE quotations SET ${sets.join(', ')} WHERE id=$${n}`, vals);
-        return this.getQuotation(id);
+      return this.getQuotation(id, actor);
       });
     }
     const sets: string[] = [];
@@ -1716,13 +1945,14 @@ export class SalesService {
       sets.push(`created_by = $${n++}`);
       vals.push(body.created_by);
     }
-    if (!sets.length) return this.getQuotation(id);
+    if (!sets.length) return this.getQuotation(id, actor);
     vals.push(id);
     await this.db.query(`UPDATE quotations SET ${sets.join(', ')} WHERE id = $${n}`, vals);
-    return this.getQuotation(id);
+    return this.getQuotation(id, actor);
   }
 
   async patchInvoice(id: number, b: any, actor?: SalesActor) {
+    const tenantId = this.requireTenantId(actor);
     const body = { ...b };
     if (body.approval_status !== undefined) {
       const req = normalizeDocApprovalStatus(body.approval_status);
@@ -1732,7 +1962,10 @@ export class SalesService {
       await this.assertDocumentApprovalPatch('invoices', id, req as 'approved' | 'rejected', actor || {});
       delete body.approval_status;
     }
-    const apInv = await this.db.query('SELECT approval_status FROM invoices WHERE id=$1', [id]);
+    const apInv = await this.db.query(
+      'SELECT approval_status FROM invoices WHERE id=$1 AND ($2::integer = 0 OR tenant_id = $2)',
+      [id, tenantId],
+    );
     if (!apInv.rows[0]) return null;
     const apI0 = String(apInv.rows[0].approval_status ?? 'approved');
     if (apI0 === 'pending' && body.status !== undefined) {
@@ -1752,16 +1985,41 @@ export class SalesService {
         let cgst = 0;
         let sgst = 0;
         let igst = 0;
+        const taxType = String(body.tax_type || 'exclusive') as 'exclusive' | 'inclusive' | 'no_tax';
+        const interstate = Boolean(body.is_interstate);
         for (const it of body.items) {
           const qty = Number(it.quantity ?? 0);
           const unit = Number(it.unit_price ?? 0);
           const rate = Number(it.gst_rate ?? 0);
-          const base = qty * unit;
-          const gst = base * rate / 100;
-          const lineCgst = Number(it.cgst ?? (body.is_interstate ? 0 : gst / 2));
-          const lineSgst = Number(it.sgst ?? (body.is_interstate ? 0 : gst / 2));
-          const lineIgst = Number(it.igst ?? (body.is_interstate ? gst : 0));
-          const lineTotal = Number(it.total ?? (base + lineCgst + lineSgst + lineIgst));
+          const discount = Number(it.discount || 0);
+          const base = Math.max(0, qty * unit - discount);
+          let lineCgst = Number(it.cgst || 0);
+          let lineSgst = Number(it.sgst || 0);
+          let lineIgst = Number(it.igst || 0);
+          let lineTotal = Number(it.total ?? 0);
+          let lineTax = lineCgst + lineSgst + lineIgst;
+
+          if (!lineTax) {
+            if (taxType === 'inclusive') {
+              lineTax = rate > 0 ? lineTotal * rate / (100 + rate) : 0;
+            } else if (taxType === 'no_tax') {
+              lineTax = 0;
+            } else {
+              lineTax = base * rate / 100;
+            }
+            if (interstate) {
+              lineIgst = lineTax;
+              lineCgst = 0;
+              lineSgst = 0;
+            } else {
+              lineIgst = 0;
+              lineCgst = lineTax / 2;
+              lineSgst = lineTax / 2;
+            }
+            if (!lineTotal) {
+              lineTotal = taxType === 'inclusive' ? base : base + lineTax;
+            }
+          }
 
           subtotal += lineTotal - (lineCgst + lineSgst + lineIgst);
           cgst += lineCgst;
@@ -1797,7 +2055,7 @@ export class SalesService {
         if (body.created_by !== undefined) { sets.push(`created_by=$${n++}`); vals.push(body.created_by); }
         vals.push(id);
         await client.query(`UPDATE invoices SET ${sets.join(', ')} WHERE id=$${n}`, vals);
-        return this.getInvoice(id);
+        return this.getInvoice(id, actor);
       });
       await this.cache.del('dashboard:stats');
       return row;
@@ -1812,15 +2070,19 @@ export class SalesService {
     if (body?.due_date !== undefined) { sets.push(`due_date=$${n++}`); vals.push(body.due_date); }
     if (body?.customer_id !== undefined) { sets.push(`customer_id=$${n++}`); vals.push(body.customer_id); }
     if (body?.created_by !== undefined) { sets.push(`created_by=$${n++}`); vals.push(body.created_by); }
-    if (!sets.length) return this.getInvoice(id);
+    if (!sets.length) return this.getInvoice(id, actor);
     vals.push(id);
     await this.db.query(`UPDATE invoices SET ${sets.join(', ')} WHERE id=$${n}`, vals);
     await this.cache.del('dashboard:stats');
-    return this.getInvoice(id);
+    return this.getInvoice(id, actor);
   }
 
-  async addPayment(invoiceId: number, data: any) {
-    const invAp = await this.db.query('SELECT approval_status FROM invoices WHERE id=$1', [invoiceId]);
+  async addPayment(invoiceId: number, data: any, actor?: SalesActor) {
+    const tenantId = this.requireTenantId(actor);
+    const invAp = await this.db.query(
+      'SELECT approval_status FROM invoices WHERE id=$1 AND ($2::integer = 0 OR tenant_id = $2)',
+      [invoiceId, tenantId],
+    );
     if (!invAp.rows[0]) throw new NotFoundException();
     const ap = String(invAp.rows[0].approval_status ?? 'approved');
     if (ap !== 'approved') {
@@ -1828,8 +2090,8 @@ export class SalesService {
     }
     const row = await this.db.transaction(async (client) => {
       const pr = await client.query(
-        'INSERT INTO payments (invoice_id,amount,payment_date,method,reference,notes,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
-        [invoiceId, data.amount, data.payment_date||new Date().toISOString().split('T')[0], data.method||'bank_transfer', data.reference, data.notes, data.created_by],
+        'INSERT INTO payments (invoice_id,amount,payment_date,method,reference,notes,created_by,tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
+        [invoiceId, data.amount, data.payment_date||new Date().toISOString().split('T')[0], data.method||'bank_transfer', data.reference, data.notes, data.created_by, tenantId > 0 ? tenantId : null],
       );
       const totPaid = await client.query('SELECT COALESCE(SUM(amount),0) AS paid FROM payments WHERE invoice_id=$1', [invoiceId]);
       const inv = await client.query('SELECT total_amount FROM invoices WHERE id=$1', [invoiceId]);

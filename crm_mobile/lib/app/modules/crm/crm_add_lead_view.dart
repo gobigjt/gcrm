@@ -81,7 +81,10 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
   List<Map<String, dynamic>> _salesExecutiveAssignees() {
     return assignees.where((u) {
       final role = (u['role'] ?? '').toString().trim().toLowerCase();
-      return role == 'sales executive' || role == 'agent';
+      return role == 'sales executive' ||
+          role == 'sales manager' ||
+          role == 'admin' ||
+          role == 'agent';
     }).toList();
   }
 
@@ -413,7 +416,7 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
                     TextField(
                       controller: addressCtrl,
                       decoration: InputDecoration(
-                        labelText: 'Address',
+                        labelText: 'Billing Address',
                         floatingLabelBehavior: FloatingLabelBehavior.always,
                         labelStyle: TextStyle(
                           fontSize: 10,

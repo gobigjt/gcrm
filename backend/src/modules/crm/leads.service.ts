@@ -11,6 +11,19 @@ export class LeadsService {
     private readonly notifications: NotificationsService,
   ) {}
 
+  private isSuperAdmin(currentUser?: { role?: unknown }): boolean {
+    return String(currentUser?.role || '').trim().toLowerCase() === 'super admin';
+  }
+
+  private requireTenantId(currentUser?: { tenant_id?: unknown; role?: unknown }): number {
+    if (this.isSuperAdmin(currentUser)) return 0;
+    const tenantId = Number((currentUser as any)?.tenant_id);
+    if (!Number.isInteger(tenantId) || tenantId <= 0) {
+      throw new ForbiddenException('Tenant context is required');
+    }
+    return tenantId;
+  }
+
   private async invalidateDashboardCache() {
     await this.cache.del('dashboard:stats');
   }
@@ -195,10 +208,12 @@ export class LeadsService {
       const execId = Number(raw);
       if (!Number.isInteger(execId) || execId <= 0) return null;
       if (execId === uid) return uid;
+      const tenantId = this.requireTenantId(currentUser as any);
       const v = await this.db.query(
         `SELECT 1 FROM users
-          WHERE id = $1 AND role = 'Sales Executive' AND is_active = TRUE AND sales_manager_id = $2`,
-        [execId, uid],
+          WHERE id = $1 AND role = 'Sales Executive' AND is_active = TRUE AND sales_manager_id = $2
+            AND tenant_id = $3`,
+        [execId, uid, tenantId],
       );
       if (v.rows[0]) {
         return execId;
@@ -213,11 +228,13 @@ export class LeadsService {
     const uid = Number(currentUser?.id);
     const roleStr = String(currentUser?.role || '').trim().toLowerCase();
     if (!this.isSalesManagerRole(roleStr) || !Number.isInteger(uid) || uid <= 0) return [];
+    const tenantId = this.requireTenantId(currentUser as any);
     const res = await this.db.query(
       `SELECT id, name, email FROM users
         WHERE role = 'Sales Executive' AND is_active = TRUE AND sales_manager_id = $1
+          AND tenant_id = $2
        ORDER BY LOWER(name)`,
-      [uid],
+      [uid, tenantId],
     );
     return res.rows;
   }
@@ -238,6 +255,11 @@ export class LeadsService {
     const conds: string[] = [];
     const vals: any[] = [];
     let i = 1;
+    const tenantId = this.requireTenantId(currentUser as any);
+    if (tenantId > 0) {
+      conds.push(`l.tenant_id = $${i++}`);
+      vals.push(tenantId);
+    }
 
     const createdFromYmd = this.parseYmdFilter(filters?.created_from);
     const createdToYmd = this.parseYmdFilter(filters?.created_to);
@@ -355,14 +377,20 @@ export class LeadsService {
   async get(id: number, currentUser?: { id?: unknown; role?: unknown }) {
     const conds = ['l.id=$1'];
     const vals: any[] = [id];
+    const tenantId = this.requireTenantId(currentUser as any);
+    if (tenantId > 0) {
+      conds.push(`l.tenant_id=$2`);
+      vals.push(tenantId);
+    }
     const uid = Number(currentUser?.id);
     const roleStr = String(currentUser?.role || '').trim().toLowerCase();
     if (this.isOwnAssignedScope(currentUser?.role) && Number.isInteger(uid) && uid > 0) {
+      const bind = vals.length + 1;
       if (this.isSalesManagerRole(roleStr)) {
-        conds.push(`(l.assigned_manager_id = $2)`);
+        conds.push(`(l.assigned_manager_id = $${bind})`);
         vals.push(uid);
       } else {
-        conds.push(`(l.assigned_to=$2)`);
+        conds.push(`(l.assigned_to=$${bind})`);
         vals.push(uid);
       }
     }
@@ -378,14 +406,15 @@ export class LeadsService {
     return res.rows[0] || null;
   }
 
-  async create(data: any) {
+  async create(data: any, currentUser?: { tenant_id?: unknown; role?: unknown }) {
+    const tenantId = this.requireTenantId(currentUser as any);
     const tags = Array.isArray(data.tags) ? data.tags.map(String) : [];
     const res = await this.db.query(
       `INSERT INTO leads (
          name,email,phone,company,source_id,stage_id,assigned_to,assigned_manager_id,notes,priority,custom_fields,
-         lead_segment,job_title,product_category,deal_size,website,address,tags,lead_score,created_by
+         lead_segment,job_title,product_category,deal_size,website,address,billing_address,shipping_address,tags,lead_score,created_by,tenant_id
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18::text[],$19,$20) RETURNING *`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::text[],$21,$22) RETURNING *`,
       [
         data.name, data.email, data.phone, data.company, data.source_id,
         data.stage_id, data.assigned_to || null, data.assigned_manager_id || null, data.notes,
@@ -397,9 +426,12 @@ export class LeadsService {
         data.deal_size ?? null,
         data.website ?? null,
         data.address ?? null,
+        data.billing_address ?? null,
+        data.shipping_address ?? null,
         tags,
         data.lead_score != null ? Number(data.lead_score) : 0,
         data.created_by ?? null,
+        tenantId > 0 ? tenantId : null,
       ],
     );
     const row = res.rows[0];
@@ -410,6 +442,7 @@ export class LeadsService {
   }
 
   async update(id: number, data: any, currentUser?: { id?: unknown; role?: unknown }) {
+    const tenantId = this.requireTenantId(currentUser as any);
     const intPatchKeys = ['assigned_to', 'assigned_manager_id', 'source_id', 'stage_id'] as const;
     for (const key of intPatchKeys) {
       if (!Object.prototype.hasOwnProperty.call(data, key)) continue;
@@ -427,8 +460,8 @@ export class LeadsService {
     }
 
     const prevSnapRes = await this.db.query(
-      'SELECT stage_id, assigned_to, name, company FROM leads WHERE id=$1',
-      [id],
+      'SELECT stage_id, assigned_to, name, company FROM leads WHERE id=$1 AND ($2::integer = 0 OR tenant_id = $2)',
+      [id, tenantId],
     );
     const prevSnap = prevSnapRes.rows[0];
 
@@ -439,7 +472,7 @@ export class LeadsService {
     const fields = [
       'name', 'email', 'phone', 'company', 'source_id', 'stage_id', 'assigned_to', 'assigned_manager_id', 'notes',
       'priority', 'custom_fields', 'is_converted', 'lead_score',
-      'lead_segment', 'job_title', 'product_category', 'deal_size', 'website', 'address', 'tags',
+      'lead_segment', 'job_title', 'product_category', 'deal_size', 'website', 'address', 'billing_address', 'shipping_address', 'tags',
     ];
     const sets: string[] = [];
     const vals: any[] = [];
@@ -458,8 +491,9 @@ export class LeadsService {
     if (!sets.length) return null;
     sets.push('updated_at=NOW()');
     vals.push(id);
+    vals.push(tenantId);
     const res = await this.db.query(
-      `UPDATE leads SET ${sets.join(',')} WHERE id=$${i} RETURNING *`, vals,
+      `UPDATE leads SET ${sets.join(',')} WHERE id=$${i} AND ($${i + 1}::integer = 0 OR tenant_id = $${i + 1}) RETURNING *`, vals,
     );
     await this.cache.del(`lead:${id}`);
     await this.invalidateDashboardCache();
@@ -508,8 +542,12 @@ export class LeadsService {
     return updated;
   }
 
-  async remove(id: number) {
-    await this.db.query('DELETE FROM leads WHERE id=$1', [id]);
+  async remove(id: number, currentUser?: { tenant_id?: unknown; role?: unknown }) {
+    const tenantId = this.requireTenantId(currentUser as any);
+    await this.db.query(
+      'DELETE FROM leads WHERE id=$1 AND ($2::integer = 0 OR tenant_id = $2)',
+      [id, tenantId],
+    );
     await this.cache.del(`lead:${id}`);
     await this.invalidateDashboardCache();
   }
@@ -574,6 +612,7 @@ export class LeadsService {
 
   /** Per-source lead counts + total (for “All lists” mobile UI). */
   async sourceCounts(currentUser?: { id?: unknown; role?: unknown }, filters?: any) {
+    const tenantId = this.requireTenantId(currentUser as any);
     const scoped = await this.resolveScopedLeadUserId(filters ?? {}, currentUser);
     const useScope = scoped != null && scoped > 0;
     const uid = Number(currentUser?.id);
@@ -589,17 +628,17 @@ export class LeadsService {
       : '';
     const totalSql = useScope
       ? managerOwnScope
-        ? 'SELECT COUNT(*)::int AS total FROM leads l WHERE (l.assigned_manager_id = $1)'
+        ? 'SELECT COUNT(*)::int AS total FROM leads l WHERE (l.assigned_manager_id = $1) AND ($2::integer = 0 OR l.tenant_id = $2)'
         : salesExecScope
-          ? 'SELECT COUNT(*)::int AS total FROM leads WHERE assigned_to = $1'
-          : 'SELECT COUNT(*)::int AS total FROM leads WHERE (assigned_to = $1 OR created_by = $1)'
-      : 'SELECT COUNT(*)::int AS total FROM leads';
-    const scopeArgs = useScope ? [scoped] : [];
+          ? 'SELECT COUNT(*)::int AS total FROM leads WHERE assigned_to = $1 AND ($2::integer = 0 OR tenant_id = $2)'
+          : 'SELECT COUNT(*)::int AS total FROM leads WHERE (assigned_to = $1 OR created_by = $1) AND ($2::integer = 0 OR tenant_id = $2)'
+      : 'SELECT COUNT(*)::int AS total FROM leads WHERE ($1::integer = 0 OR tenant_id = $1)';
+    const scopeArgs = useScope ? [scoped, tenantId] : [tenantId];
     const [bySource, totalRow] = await Promise.all([
       this.db.query(`
         SELECT s.id, s.name, COUNT(l.id)::int AS lead_count
         FROM lead_sources s
-        LEFT JOIN leads l ON l.source_id = s.id ${scopeJoin}
+        LEFT JOIN leads l ON l.source_id = s.id ${scopeJoin} ${useScope ? 'AND ($2::integer = 0 OR l.tenant_id = $2)' : 'AND ($1::integer = 0 OR l.tenant_id = $1)'}
         GROUP BY s.id, s.name
         ORDER BY s.name
       `, scopeArgs),
@@ -614,23 +653,26 @@ export class LeadsService {
       })),
     };
   }
-  async assignees() {
+  async assignees(currentUser?: { tenant_id?: unknown; role?: unknown }) {
+    const tenantId = this.requireTenantId(currentUser as any);
     const res = await this.db.query(`
       SELECT u.id, u.name, u.role
         FROM users u
        WHERE LOWER(COALESCE(u.role, '')) <> 'super admin'
+         AND ($1::integer = 0 OR u.tenant_id = $1)
          AND (
               u.is_active = TRUE
-           OR u.id IN (SELECT DISTINCT assigned_to FROM leads WHERE assigned_to IS NOT NULL)
+           OR u.id IN (SELECT DISTINCT assigned_to FROM leads WHERE assigned_to IS NOT NULL AND ($1::integer = 0 OR tenant_id = $1))
          )
        ORDER BY
          CASE WHEN LOWER(COALESCE(u.role, '')) = 'manager' THEN 0 ELSE 1 END,
          u.name
-    `);
+    `, [tenantId]);
     return res.rows;
   }
 
   async stats(currentUser?: { id?: unknown; role?: unknown }, filters?: any) {
+    const tenantId = this.requireTenantId(currentUser as any);
     const scoped = await this.resolveScopedLeadUserId(filters ?? {}, currentUser);
     const useScope = scoped != null && scoped > 0;
     const uid = Number(currentUser?.id);
@@ -639,19 +681,19 @@ export class LeadsService {
     const salesExecScope = useScope && !managerOwnScope && this.isSalesExecutiveRole(roleStr);
     const whereSql = useScope
       ? managerOwnScope
-        ? 'WHERE (assigned_manager_id = $1)'
+        ? 'WHERE (assigned_manager_id = $1) AND ($2::integer = 0 OR tenant_id = $2)'
         : salesExecScope
-          ? 'WHERE assigned_to = $1'
-          : 'WHERE (assigned_to = $1 OR created_by = $1)'
-      : '';
+          ? 'WHERE assigned_to = $1 AND ($2::integer = 0 OR tenant_id = $2)'
+          : 'WHERE (assigned_to = $1 OR created_by = $1) AND ($2::integer = 0 OR tenant_id = $2)'
+      : 'WHERE ($1::integer = 0 OR tenant_id = $1)';
     const joinScopeSql = useScope
       ? managerOwnScope
         ? 'AND (l.assigned_manager_id = $1)'
         : salesExecScope
           ? 'AND (l.assigned_to = $1)'
           : 'AND (l.assigned_to = $1 OR l.created_by = $1)'
-      : '';
-    const scopeArgs = useScope ? [scoped] : [];
+      : 'AND ($1::integer = 0 OR l.tenant_id = $1)';
+    const scopeArgs = useScope ? [scoped, tenantId] : [tenantId];
     const [totals, byStage] = await Promise.all([
       this.db.query(`
         SELECT
@@ -683,18 +725,33 @@ export class LeadsService {
     };
   }
 
-  async activities(leadId: number) {
+  async activities(leadId: number, currentUser?: { tenant_id?: unknown; role?: unknown }) {
+    const tenantId = this.requireTenantId(currentUser as any);
     const res = await this.db.query(
-      `SELECT a.*,u.name AS user_name FROM lead_activities a
-       LEFT JOIN users u ON u.id=a.user_id WHERE a.lead_id=$1 ORDER BY a.created_at DESC`, [leadId],
+      `SELECT a.*,u.name AS user_name
+         FROM lead_activities a
+         LEFT JOIN users u ON u.id=a.user_id
+        WHERE a.lead_id=$1
+          AND ($2::integer = 0 OR a.tenant_id = $2)
+        ORDER BY a.created_at DESC`,
+      [leadId, tenantId],
     );
     return res.rows;
   }
 
-  async addActivity(leadId: number, userId: number, type: string, description: string) {
+  async addActivity(
+    leadId: number,
+    userId: number,
+    type: string,
+    description: string,
+    currentUser?: { tenant_id?: unknown; role?: unknown },
+  ) {
+    const tenantId = this.requireTenantId(currentUser as any);
     const res = await this.db.query(
-      'INSERT INTO lead_activities (lead_id,user_id,type,description) VALUES ($1,$2,$3,$4) RETURNING *',
-      [leadId, userId, type, description],
+      `INSERT INTO lead_activities (lead_id,user_id,type,description,tenant_id)
+       VALUES ($1,$2,$3,$4, NULLIF($5::integer, 0))
+       RETURNING *`,
+      [leadId, userId, type, description, tenantId],
     );
     return res.rows[0];
   }
@@ -731,6 +788,11 @@ export class LeadsService {
     const conds = ['f.is_done=FALSE'];
     const vals: any[] = [];
     let i = 1;
+    const tenantId = this.requireTenantId(currentUser as any);
+    if (tenantId > 0) {
+      conds.push(`l.tenant_id=$${i++}`);
+      vals.push(tenantId);
+    }
     const uid = Number(currentUser?.id);
     const roleStr = String(currentUser?.role || '').trim().toLowerCase();
     const forceOwn = this.isOwnAssignedScope(currentUser?.role) && Number.isInteger(uid) && uid > 0;
@@ -927,9 +989,9 @@ export class LeadsService {
 
     const customer = await this.db.transaction(async (client) => {
       const ins = await client.query(
-        `INSERT INTO customers (name, email, phone, gstin, address, lead_id)
-         VALUES ($1, $2, $3, NULL, $4, $5) RETURNING *`,
-        [name, email, phone, address, leadId],
+        `INSERT INTO customers (name, email, phone, gstin, address, lead_id, tenant_id, created_by)
+         VALUES ($1, $2, $3, NULL, $4, $5, $6, $7) RETURNING *`,
+        [name, email, phone, address, leadId, lead.tenant_id ?? null, currentUser?.id ?? null],
       );
       await client.query('UPDATE leads SET is_converted=TRUE, updated_at=NOW() WHERE id=$1', [leadId]);
       return ins.rows[0];

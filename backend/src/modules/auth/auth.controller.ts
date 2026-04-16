@@ -4,6 +4,7 @@ import {
   Controller,
   Delete,
   Get,
+  Headers,
   Post,
   UploadedFile,
   UseGuards,
@@ -30,14 +31,18 @@ export class AuthController {
   @ApiOperation({ summary: 'Register a new user' })
   @ApiResponse({ status: 201, description: 'Returns user + access_token + refresh_token' })
   @ApiResponse({ status: 409, description: 'Email already registered' })
-  register(@Body() dto: RegisterDto) { return this.auth.register(dto); }
+  register(@Body() dto: RegisterDto, @Headers('x-tenant-slug') tenantSlugHeader?: string) {
+    return this.auth.register(dto, tenantSlugHeader);
+  }
 
   @Post('login')
   @ApiOperation({ summary: 'Login and receive JWT tokens' })
   @ApiBody({ type: LoginDto })
   @ApiResponse({ status: 200, description: 'Returns user + access_token + refresh_token' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
-  login(@Body() dto: LoginDto) { return this.auth.login(dto); }
+  login(@Body() dto: LoginDto, @Headers('x-tenant-slug') tenantSlugHeader?: string) {
+    return this.auth.login(dto, tenantSlugHeader);
+  }
 
   @Post('refresh')
   @ApiOperation({ summary: 'Refresh access token using refresh token' })

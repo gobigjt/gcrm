@@ -443,7 +443,7 @@ class CrmLeadDetailView extends StatelessWidget {
                           ),
                           _DetailIconRow(icon: Icons.email_outlined, label: 'Email', value: lead.email.trim().isEmpty ? '—' : lead.email.trim()),
                           _DetailIconRow(icon: Icons.language_rounded, label: 'Website', value: lead.website.trim().isEmpty ? '—' : lead.website.trim()),
-                          _DetailIconRow(icon: Icons.place_outlined, label: 'Address', value: lead.address.trim().isEmpty ? '—' : lead.address.trim()),
+                          _DetailIconRow(icon: Icons.place_outlined, label: 'Billing Address', value: lead.address.trim().isEmpty ? '—' : lead.address.trim()),
                         ],
                       ),
                     ),

@@ -1,4 +1,4 @@
-import { IsEmail, IsIn, IsNotEmpty, IsOptional, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsNotEmpty, IsOptional, Matches, MinLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class RegisterDto {
@@ -22,4 +22,11 @@ export class RegisterDto {
   @IsOptional()
   @IsIn(['Super Admin', 'Admin', 'Sales Executive', 'HR'])
   role?: string;
+
+  @ApiPropertyOptional({ example: 'igloo-tiles', description: 'Tenant slug for SaaS registration routing' })
+  @IsOptional()
+  @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, {
+    message: 'tenant_slug must be lowercase kebab-case',
+  })
+  tenant_slug?: string;
 }

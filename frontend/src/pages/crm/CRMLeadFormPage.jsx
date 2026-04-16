@@ -8,7 +8,7 @@ import { apiErrorMessage } from '../../utils/apiErrorMessage';
 
 const EMPTY = {
   name: '', email: '', phone: '', company: '', source_id: '', stage_id: '', assigned_to: '', assigned_manager_id: '', priority: 'warm', notes: '',
-  lead_segment: '', job_title: '', product_category: '', website: '', address: '', tags: '', deal_size: '', lead_score: '',
+  lead_segment: '', job_title: '', product_category: '', website: '', address: '', shipping_address: '', tags: '', deal_size: '', lead_score: '',
 };
 
 function tagsToString(tags) {
@@ -34,7 +34,8 @@ function leadToForm(row) {
     job_title: row.job_title || '',
     product_category: row.product_category || '',
     website: row.website || '',
-    address: row.address || '',
+    address: row.address || row.address || '',
+    shipping_address: row.shipping_address || row.address || '',
     tags: tagsToString(row.tags),
     deal_size: row.deal_size != null && row.deal_size !== '' ? String(row.deal_size) : '',
     lead_score: row.lead_score != null && row.lead_score !== '' ? String(row.lead_score) : '',
@@ -61,7 +62,12 @@ export default function CRMLeadFormPage() {
     () =>
       users.filter((u) => {
         const r = String(u?.role || '').trim().toLowerCase();
-        return r === 'sales executive' || r === 'agent';
+        return (
+          r === 'sales executive' ||
+          r === 'sales manager' ||
+          r === 'admin' ||
+          r === 'agent'
+        );
       }),
     [users],
   );
@@ -105,7 +111,8 @@ export default function CRMLeadFormPage() {
       job_title: form.job_title.trim() || null,
       product_category: form.product_category.trim() || null,
       website: form.website.trim() || null,
-      address: form.address.trim() || null,
+      address: form.address.trim() || null,      
+      shipping_address: form.shipping_address.trim() || null,
       tags: tagsArr,
       deal_size: dealRaw === '' ? null : Number(dealRaw),
       lead_score: scoreRaw === '' ? null : Number(scoreRaw),
@@ -169,7 +176,8 @@ export default function CRMLeadFormPage() {
               </select>
             </Field>
             <Field label="Website"><input className={inputCls} value={form.website} onChange={set('website')} /></Field>
-            <Field label="Address"><textarea className={inputCls + ' h-16 resize-none'} value={form.address} onChange={set('address')} /></Field>
+            <Field label="Billing Address"><textarea className={inputCls + ' h-16 resize-none'} value={form.address} onChange={set('address')} /></Field>
+            <Field label="Shipping Address"><textarea className={inputCls + ' h-16 resize-none'} value={form.shipping_address} onChange={set('shipping_address')} /></Field>
           </section>
 
           <div className="space-y-5">

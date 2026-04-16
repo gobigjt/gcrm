@@ -77,7 +77,10 @@ class _CrmEditLeadViewState extends State<CrmEditLeadView> {
   List<CrmLookupItem> _salesExecutiveAssignees() {
     return _assignees.where((u) {
       final role = (u['role'] ?? '').toString().trim().toLowerCase();
-      return role == 'sales executive' || role == 'agent';
+      return role == 'sales executive' ||
+          role == 'sales manager' ||
+          role == 'admin' ||          
+          role == 'agent';
     }).map((u) => CrmLookupItem(
       id: int.tryParse('${u['id']}') ?? 0,
       name: (u['name'] ?? '').toString(),
@@ -385,7 +388,7 @@ class _CrmEditLeadViewState extends State<CrmEditLeadView> {
                             controller: _address,
                             minLines: 2,
                             maxLines: 4,
-                            decoration: _dec(scheme, 'Address', null),
+                            decoration: _dec(scheme, 'Billing Address', null),
                           ),
                           const SizedBox(height: 8),
                           TextField(

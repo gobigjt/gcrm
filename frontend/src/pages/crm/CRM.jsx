@@ -380,18 +380,28 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
   const [copyLabel,    setCopyLabel]    = useState('');
   const [copyAppLabel, setCopyAppLabel] = useState('');
 
-  const reload = useCallback(() => {
-    api.get(`/crm/leads/${lead.id}`).then(r => setDetail(r.data.lead || r.data));
-    api.get(`/crm/leads/${lead.id}/activities`).then(r => setActivities(r.data || []));
-    api.get(`/crm/leads/${lead.id}/followups`).then(r => setFollowups(r.data || []));
+  const reload = useCallback(async () => {
+    const [leadRes, activitiesRes, followupsRes] = await Promise.all([
+      api.get(`/crm/leads/${lead.id}`),
+      api.get(`/crm/leads/${lead.id}/activities`),
+      api.get(`/crm/leads/${lead.id}/followups`),
+    ]);
+    setDetail(leadRes.data?.lead || leadRes.data || null);
+    setActivities(Array.isArray(activitiesRes.data) ? activitiesRes.data : []);
+    setFollowups(Array.isArray(followupsRes.data) ? followupsRes.data : []);
   }, [lead.id]);
 
-  useEffect(() => { reload(); }, [reload]);
+  useEffect(() => {
+    reload().catch(() => {
+      setActivities([]);
+      setFollowups([]);
+    });
+  }, [reload]);
 
   const changeStage = async (stage_id) => {
     try {
       await api.patch(`/crm/leads/${lead.id}`, { stage_id });
-      reload();
+      await reload();
       onUpdated();
       showToast('Stage updated', 'success');
     } catch (err) {
@@ -405,7 +415,7 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
     try {
       await api.post(`/crm/leads/${lead.id}/activities`, actForm);
       setActForm({ type: 'note', description: '' });
-      reload();
+      await reload();
       showToast('Activity added', 'success');
     } catch (err) {
       showToast(apiErrorMessage(err, 'Could not add activity'), 'error');
@@ -421,7 +431,7 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
         due_date: datetimeLocalInputToApiIso(fuForm.due_date),
       });
       setFuForm({ due_date: '', description: '', assigned_to: '' });
-      reload();
+      await reload();
       showToast('Task created successfully', 'success');
     } catch (err) {
       showToast(apiErrorMessage(err, 'Could not create task'), 'error');
@@ -430,7 +440,7 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
 
   const markDone = async (fid) => {
     await api.patch(`/crm/leads/${lead.id}/followups/${fid}/done`);
-    reload();
+    await reload();
   };
 
   const openFuEdit = (f) => {
@@ -589,6 +599,26 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
         }
         showToast('Customer created from lead. Opening quotation list.', 'success');
       }
+
+      // Best-effort: keep Sales customer address + shipping_address in sync with lead address
+      // when those fields are currently empty.
+      try {
+        const leadAddr = String(detail?.address || lead?.address || '').trim();
+        const customerAddr = String(linked?.address || '').trim();
+        const customerShip = String(linked?.shipping_address || '').trim();
+        const patch = {};
+        if (leadAddr && linked?.id) {
+          if (!customerAddr) patch.address = leadAddr;
+          if (!customerShip) patch.shipping_address = leadAddr;
+        }
+        if (Object.keys(patch).length > 0) {
+          await api.patch(`/sales/customers/${linked.id}`, patch);
+          linked = { ...linked, ...patch };
+        }
+      } catch {
+        // Ignore: quoting can proceed without address backfill.
+      }
+
       const quotesRes = await api.get('/sales/quotations');
       const quotes = quotesRes.data || [];
       const hasExistingQuotes = Array.isArray(quotes)
@@ -776,7 +806,8 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
                 ['Product category', detail?.product_category || '—'],
                 ['Job Title',   detail?.job_title       || '—'],
                 ['Website',     detail?.website         || '—'],
-                ['Address',     detail?.address         || '—'],
+                ['Billing Address', detail?.billing_address || detail?.address || '—'],
+                ['Shipping Address', detail?.shipping_address || detail?.address || '—'],
                 ['Priority',    detail?.priority        || '—'],
                 ['Deal Size',   detail?.deal_size != null ? `Rs ${Number(detail.deal_size).toLocaleString('en-IN')}` : '—'],
                 ['Lead Score',  detail?.lead_score != null ? String(detail.lead_score) : '—'],
@@ -813,7 +844,7 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
               <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Activity timeline</p>
               <form onSubmit={logActivity} className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3 space-y-2 mb-4">
                 <div className="flex gap-2">
-                  <select className={selectCls + ' flex-shrink-0 w-32'} value={actForm.type}
+                  <select className={selectCls + ' flex-shrink-0 !w-32'} value={actForm.type}
                     onChange={e => setActForm(f => ({ ...f, type: e.target.value }))}>
                     {['note','call','email','meeting','whatsapp','sms'].map(t => (
                       <option key={t} value={t}>{ACTIVITY_ICONS[t]} {t.charAt(0).toUpperCase() + t.slice(1)}</option>

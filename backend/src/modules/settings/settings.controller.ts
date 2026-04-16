@@ -29,9 +29,9 @@ import { SettingsService } from './settings.service';
 export class SettingsController {
   constructor(private readonly svc: SettingsService) {}
 
-  @Get('company')   getSettings()     { return this.svc.getCompanySettings(); }
+  @Get('company')   getSettings(@CurrentUser() u: any)     { return this.svc.getCompanySettings(u); }
   @UseGuards(RolesGuard) @Roles('Admin')
-  @Patch('company') updateSettings(@CurrentUser() u: any, @Body() b: any) { return this.svc.upsertCompanySettings(b, u.id); }
+  @Patch('company') updateSettings(@CurrentUser() u: any, @Body() b: any) { return this.svc.upsertCompanySettings(b, u.id, u); }
 
   @Post('company/logo')
   @UseGuards(RolesGuard)
@@ -72,7 +72,7 @@ export class SettingsController {
     if (!file) {
       throw new BadRequestException('Upload an image file (JPEG, PNG, WebP, GIF, or SVG), max 2 MB.');
     }
-    return this.svc.setCompanyLogoFromUpload(file.filename, u.id);
+    return this.svc.setCompanyLogoFromUpload(file.filename, u.id, u);
   }
 
   @Post('company/favicon')
@@ -114,7 +114,7 @@ export class SettingsController {
     if (!file) {
       throw new BadRequestException('Upload a favicon file (ICO, PNG, SVG, JPG, or WebP), max 1 MB.');
     }
-    return this.svc.setCompanyFaviconFromUpload(file.filename, u.id);
+    return this.svc.setCompanyFaviconFromUpload(file.filename, u.id, u);
   }
 
   @Post('company/invoice-logo')
@@ -156,26 +156,26 @@ export class SettingsController {
     if (!file) {
       throw new BadRequestException('Upload an image file (JPEG, PNG, WebP, GIF, or SVG), max 2 MB.');
     }
-    return this.svc.setInvoiceLogoFromUpload(file.filename, u.id);
+    return this.svc.setInvoiceLogoFromUpload(file.filename, u.id, u);
   }
 
   @UseGuards(RolesGuard) @Roles('Admin')
-  @Get('permissions')   listPermissions() { return this.svc.listPermissions(); }
+  @Get('permissions')   listPermissions(@CurrentUser() u: any) { return this.svc.listPermissions(u); }
 
   @UseGuards(RolesGuard) @Roles('Admin')
-  @Get('audit-logs')    getAuditLogs(@Query() q: any) { return this.svc.getAuditLogs(q); }
+  @Get('audit-logs')    getAuditLogs(@Query() q: any, @CurrentUser() u: any) { return this.svc.getAuditLogs(q, u); }
 
   @Get('modules')
-  listModules() { return this.svc.listModuleSettings(); }
+  listModules(@CurrentUser() u: any) { return this.svc.listModuleSettings(u); }
 
   @UseGuards(RolesGuard) @Roles('Admin')
   @Patch('modules/:module')
   updateModule(@CurrentUser() u: any, @Param('module') module: string, @Body() body: any) {
-    return this.svc.updateModuleSettings(module, body, u.id);
+    return this.svc.updateModuleSettings(module, body, u.id, u);
   }
 
-  @Get('dashboard')        getDashboardStats()  { return this.svc.getDashboardStats(); }
-  @Get('dashboard/charts') getDashboardCharts() { return this.svc.getDashboardCharts(); }
+  @Get('dashboard')        getDashboardStats(@CurrentUser() u: any)  { return this.svc.getDashboardStats(u); }
+  @Get('dashboard/charts') getDashboardCharts(@CurrentUser() u: any) { return this.svc.getDashboardCharts(u); }
 
   @UseGuards(RolesGuard) @Roles('Super Admin')
   @Get('platform/summary')

@@ -16,46 +16,48 @@ export class UsersController {
 
   // ─── Users ───────────────────────────────────────────────
   @Get()
-  listUsers() { return this.svc.listUsers(); }
+  listUsers(@CurrentUser() u: any) { return this.svc.listUsers(u); }
 
   @Post()
-  createUser(@CurrentUser() u: any, @Body() body: any) { return this.svc.createUser(body, u.id); }
+  createUser(@CurrentUser() u: any, @Body() body: any) { return this.svc.createUser(body, u.id, u); }
 
   // Static paths must be registered before parameterized routes so `roles` / `permissions`
   // are not captured as `:id` segments.
   // ─── Roles ───────────────────────────────────────────────
   @Get('roles')
-  listRoles() { return this.svc.listRoles(); }
+  listRoles(@CurrentUser() u: any) { return this.svc.listRoles(u); }
 
   @Post('roles')
-  createRole(@CurrentUser() u: any, @Body() body: any) { return this.svc.createRole(body, u.id); }
+  createRole(@CurrentUser() u: any, @Body() body: any) { return this.svc.createRole(body, u.id, u); }
 
   @Patch('roles/:id')
   updateRole(@CurrentUser() u: any, @Param('id') id: string, @Body() body: any) {
-    return this.svc.updateRole(Number(id), body, u.id);
+    return this.svc.updateRole(Number(id), body, u.id, u);
   }
 
   @Delete('roles/:id')
-  deleteRole(@CurrentUser() u: any, @Param('id') id: string) { return this.svc.deleteRole(Number(id), u.id); }
+  deleteRole(@CurrentUser() u: any, @Param('id') id: string) { return this.svc.deleteRole(Number(id), u.id, u); }
 
   @Get('roles/:id/permissions')
-  getRolePermissions(@Param('id') id: string) { return this.svc.getRole(Number(id)); }
+  getRolePermissions(@CurrentUser() u: any, @Param('id') id: string) {
+    return this.svc.getRole(Number(id), u);
+  }
 
   @Put('roles/:id/permissions')
   setRolePermissions(@CurrentUser() u: any, @Param('id') id: string, @Body() body: { permission_ids: number[] }) {
-    return this.svc.setRolePermissions(Number(id), body.permission_ids || [], u.id);
+    return this.svc.setRolePermissions(Number(id), body.permission_ids || [], u.id, u);
   }
 
   // ─── Permissions ─────────────────────────────────────────
   @Get('permissions')
-  listPermissions() { return this.svc.listPermissionsFlat(); }
+  listPermissions(@CurrentUser() u: any) { return this.svc.listPermissionsFlat(u); }
 
   @Get('permissions/grouped')
-  listPermissionsGrouped() { return this.svc.listPermissions(); }
+  listPermissionsGrouped(@CurrentUser() u: any) { return this.svc.listPermissions(u); }
 
   // ─── Zones (must stay before `:id` routes) ─────────────────
   @Get('zones')
-  listZones() { return this.svc.listZones(); }
+  listZones(@CurrentUser() u: any) { return this.svc.listZones(u); }
 
   @Post('zones')
   createZone(@CurrentUser() u: any, @Body() body: any) { return this.svc.createZone(body, u.id); }
@@ -71,26 +73,28 @@ export class UsersController {
   }
 
   @Get('managers/:managerId/sales-team')
-  salesTeamForManager(@Param('managerId') managerId: string) {
-    return this.svc.listSalesTeamForManager(Number(managerId));
+  salesTeamForManager(@CurrentUser() u: any, @Param('managerId') managerId: string) {
+    return this.svc.listSalesTeamForManager(Number(managerId), u);
   }
 
   @Get('sales-managers')
-  listSalesManagers() { return this.svc.listSalesManagers(); }
+  listSalesManagers(@CurrentUser() u: any) { return this.svc.listSalesManagers(u); }
 
   @Patch(':id')
   updateUser(@CurrentUser() u: any, @Param('id') id: string, @Body() body: any) {
-    return this.svc.updateUser(Number(id), body, u.id);
+    return this.svc.updateUser(Number(id), body, u.id, u);
   }
 
   @Patch(':id/toggle-status')
-  toggleStatus(@CurrentUser() u: any, @Param('id') id: string) { return this.svc.toggleStatus(Number(id), u.id); }
+  toggleStatus(@CurrentUser() u: any, @Param('id') id: string) { return this.svc.toggleStatus(Number(id), u.id, u); }
 
   @Get(':id/permissions')
-  getUserPermissions(@Param('id') id: string) { return this.svc.getUserPermissions(Number(id)); }
+  getUserPermissions(@CurrentUser() u: any, @Param('id') id: string) {
+    return this.svc.getUserPermissions(Number(id), u);
+  }
 
   @Put(':id/permissions')
   setUserPermissions(@CurrentUser() u: any, @Param('id') id: string, @Body() body: { permission_ids: number[] }) {
-    return this.svc.setUserPermissions(Number(id), body.permission_ids || [], u.id);
+    return this.svc.setUserPermissions(Number(id), body.permission_ids || [], u.id, u);
   }
 }

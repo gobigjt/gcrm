@@ -21,7 +21,7 @@ export class LeadsController {
   @Get('stages')    stages()    { return this.svc.stages(); }
   @Get('sources')   sources()   { return this.svc.sources(); }
   @Get('source-counts') sourceCounts(@Query() q: any, @CurrentUser() u: any) { return this.svc.sourceCounts(u, q); }
-  @Get('assignees') assignees() { return this.svc.assignees(); }
+  @Get('assignees') assignees(@CurrentUser() u: any) { return this.svc.assignees(u); }
   @Get('stats')     stats(@Query() q: any, @CurrentUser() u: any)     { return this.svc.stats(u, q); }
   @Get('reporting-executives') reportingExecutives(@CurrentUser() u: any) { return this.svc.reportingExecutives(u); }
   @Get('followups') allFollowups(@Query() q: any, @CurrentUser() u: any) { return this.svc.allFollowups(q, u); }
@@ -124,7 +124,7 @@ export class LeadsController {
     return this.svc.list(q, u);
   }
   @Post()  create(@Body() b: any, @CurrentUser() u: any) {
-    return this.svc.create({ ...b, created_by: u?.id ?? null });
+    return this.svc.create({ ...b, created_by: u?.id ?? null }, u);
   }
 
   @Get(':id')
@@ -154,20 +154,20 @@ export class LeadsController {
   async remove(@Param('id') id: string, @CurrentUser() u: any) {
     const leadId = Number(id);
     await this.assertLeadAccess(leadId, u);
-    return this.svc.remove(leadId);
+    return this.svc.remove(leadId, u);
   }
 
   @Get(':id/activities')
   async activities(@Param('id') id: string, @CurrentUser() u: any)  {
     const leadId = Number(id);
     await this.assertLeadAccess(leadId, u);
-    return this.svc.activities(leadId);
+    return this.svc.activities(leadId, u);
   }
   @Post(':id/activities')
   async addActivity(@Param('id') id: string, @Body() b: any, @CurrentUser() u: any) {
     const leadId = Number(id);
     await this.assertLeadAccess(leadId, u);
-    return this.svc.addActivity(leadId, u.id, b.type, b.description);
+    return this.svc.addActivity(leadId, u.id, b.type, b.description, u);
   }
 
   @Get(':id/followups')
