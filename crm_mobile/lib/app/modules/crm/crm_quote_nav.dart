@@ -177,6 +177,35 @@ Future<void> navigateSalesFlowForLead(BuildContext context, CrmLead lead) async 
 
     final customerId = (linked['id'] as num).toInt();
     final customerName = (linked['name'] ?? '').toString().trim();
+
+    // Ensure lead address becomes customer address + shipping_address for quoting.
+    // Backend conversion may not populate these fields consistently.
+    final leadAddr = lead.address.trim();
+    if (leadAddr.isNotEmpty) {
+      final existingAddr = (linked['address'] ?? '').toString().trim();
+      final existingShip = (linked['shipping_address'] ?? '').toString().trim();
+      final needsAddr = existingAddr.isEmpty;
+      final needsShip = existingShip.isEmpty;
+      if (needsAddr || needsShip) {
+        try {
+          final body = <String, dynamic>{
+            if (needsAddr) 'address': leadAddr,
+            if (needsShip) 'shipping_address': leadAddr,
+          };
+          await auth.authorizedRequest(
+            method: 'PATCH',
+            path: '/sales/customers/$customerId',
+            body: body,
+          );
+          // Keep local copy in sync for downstream reads in this flow.
+          if (needsAddr) linked['address'] = leadAddr;
+          if (needsShip) linked['shipping_address'] = leadAddr;
+        } catch (_) {
+          // Best-effort only; quoting can proceed without it.
+        }
+      }
+    }
+
     final quotesRes = await auth.authorizedRequest(method: 'GET', path: '/sales/quotations');
     final quotes = _asCustomerOrQuotationList(quotesRes);
     final hasExistingQuotes = quotes.any((q) => (q['customer_id'] as num?)?.toInt() == customerId);

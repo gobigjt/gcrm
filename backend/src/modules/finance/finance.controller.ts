@@ -14,36 +14,36 @@ import { FinanceService} from './finance.service';
 export class FinanceController {
   constructor(private readonly svc: FinanceService) {}
 
-  @Get('summary')       summary()                     { return this.svc.summary(); }
+  @Get('summary')       summary(@CurrentUser() u: any)                     { return this.svc.summary(u); }
 
-  @Get('accounts')      listAccounts()               { return this.svc.listAccounts(); }
-  @Post('accounts')     createAccount(@Body() b: any) { return this.svc.createAccount(b); }
+  @Get('accounts')      listAccounts(@CurrentUser() u: any)               { return this.svc.listAccounts(u); }
+  @Post('accounts')     createAccount(@Body() b: any, @CurrentUser() u: any) { return this.svc.createAccount(b, u); }
 
-  @Get('journals')      listJournals(@Query('from') from?: string, @Query('to') to?: string) { return this.svc.listJournals(from, to); }
+  @Get('journals')      listJournals(@Query('from') from?: string, @Query('to') to?: string, @CurrentUser() u?: any) { return this.svc.listJournals(from, to, u); }
   @Post('journals')     createJournal(@Body() b: any, @CurrentUser() u: any) {
     const {lines=[],...data} = b;
     if(lines.length < 2) throw new BadRequestException('At least 2 journal lines required');
-    return this.svc.createJournal({...data, created_by: u.id}, lines);
+    return this.svc.createJournal({...data, created_by: u.id}, lines, u);
   }
-  @Get('journals/:id')  async getJournal(@Param('id') id: string) {
-    const j = await this.svc.getJournal(Number(id));
+  @Get('journals/:id')  async getJournal(@Param('id') id: string, @CurrentUser() u: any) {
+    const j = await this.svc.getJournal(Number(id), u);
     if(!j) throw new NotFoundException();
     return { journal: j };
   }
 
-  @Get('expenses')      listExpenses(@Query('from') from?: string, @Query('to') to?: string) { return this.svc.listExpenses(from, to); }
-  @Post('expenses')     createExpense(@Body() b: any, @CurrentUser() u: any) { return this.svc.createExpense({...b, created_by: u.id}); }
+  @Get('expenses')      listExpenses(@Query('from') from?: string, @Query('to') to?: string, @CurrentUser() u?: any) { return this.svc.listExpenses(from, to, u); }
+  @Post('expenses')     createExpense(@Body() b: any, @CurrentUser() u: any) { return this.svc.createExpense({...b, created_by: u.id}, u); }
 
-  @Get('reports/pl')   getPLReport(@Query('from') from: string, @Query('to') to: string) {
+  @Get('reports/pl')   getPLReport(@Query('from') from: string, @Query('to') to: string, @CurrentUser() u: any) {
     if(!from||!to) throw new BadRequestException('from and to required');
-    return this.svc.getPLReport(from, to);
+    return this.svc.getPLReport(from, to, u);
   }
-  @Get('reports/gst')  getGSTReport(@Query('from') from: string, @Query('to') to: string) {
+  @Get('reports/gst')  getGSTReport(@Query('from') from: string, @Query('to') to: string, @CurrentUser() u: any) {
     if(!from||!to) throw new BadRequestException('from and to required');
-    return this.svc.getGSTReport(from, to);
+    return this.svc.getGSTReport(from, to, u);
   }
-  @Get('accounts/:id/ledger') getLedger(@Param('id') id: string, @Query('from') from: string, @Query('to') to: string) {
+  @Get('accounts/:id/ledger') getLedger(@Param('id') id: string, @Query('from') from: string, @Query('to') to: string, @CurrentUser() u: any) {
     if(!from||!to) throw new BadRequestException('from and to required');
-    return this.svc.getLedger(Number(id), from, to);
+    return this.svc.getLedger(Number(id), from, to, u);
   }
 }

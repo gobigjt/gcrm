@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { DatabaseService } from '../../database/database.service';
 import { AuditService }   from '../audit/audit.service';
@@ -7,9 +7,23 @@ import { AuditService }   from '../audit/audit.service';
 export class UsersService {
   constructor(private readonly db: DatabaseService, private readonly audit: AuditService) {}
 
+  private isSuperAdmin(ctx?: any): boolean {
+    return String(ctx?.role || '').trim().toLowerCase() === 'super admin';
+  }
+
+  private requireTenantId(ctx?: any): number {
+    const tenantId = Number(ctx?.tenant_id);
+    if (!Number.isInteger(tenantId) || tenantId <= 0) {
+      throw new ForbiddenException('Tenant context is required');
+    }
+    return tenantId;
+  }
+
   // ─── Users ───────────────────────────────────────────────
 
-  async listUsers() {
+  async listUsers(ctx?: any) {
+    const isSuper = this.isSuperAdmin(ctx);
+    const tenantId = isSuper ? null : this.requireTenantId(ctx);
     const res = await this.db.query(`
       SELECT u.id, u.name, u.email, u.role, u.is_active, u.created_at, u.avatar_url,
              u.zone_id, u.sales_manager_id,
@@ -23,13 +37,16 @@ export class UsersService {
         LEFT JOIN users sm ON sm.id = u.sales_manager_id
         LEFT JOIN user_permissions up ON up.user_id = u.id
        WHERE LOWER(TRIM(COALESCE(r.name, u.role, ''))) <> 'super admin'
+         AND ($1::integer IS NULL OR u.tenant_id = $1)
        GROUP BY u.id, r.id, z.id, sm.id
        ORDER BY u.created_at DESC
-    `);
+    `, [tenantId]);
     return res.rows;
   }
 
-  async getUser(id: number) {
+  async getUser(id: number, ctx?: any) {
+    const isSuper = this.isSuperAdmin(ctx);
+    const tenantId = isSuper ? null : this.requireTenantId(ctx);
     const res = await this.db.query(
       `SELECT u.id, u.name, u.email, u.role, u.is_active, u.created_at,
               u.zone_id, u.sales_manager_id,
@@ -40,7 +57,8 @@ export class UsersService {
          LEFT JOIN roles r ON r.id = u.role_id
          LEFT JOIN zones z ON z.id = u.zone_id
          LEFT JOIN users sm ON sm.id = u.sales_manager_id
-        WHERE u.id = $1`, [id],
+        WHERE u.id = $1
+          AND ($2::integer IS NULL OR u.tenant_id = $2)`, [id, tenantId],
     );
     if (!res.rows[0]) throw new NotFoundException('User not found');
     return res.rows[0];
@@ -52,10 +70,14 @@ export class UsersService {
     if (!z.rows[0]) throw new BadRequestException('Zone not found');
   }
 
-  private async assertSalesManager(managerId: number, label = 'Sales manager') {
+  private async assertSalesManager(managerId: number, label = 'Sales manager', tenantId?: number | null) {
     const r = await this.db.query(
-      `SELECT id, role FROM users WHERE id=$1 AND is_active=TRUE`,
-      [managerId],
+      `SELECT id, role
+         FROM users
+        WHERE id=$1
+          AND is_active=TRUE
+          AND ($2::integer IS NULL OR tenant_id = $2)`,
+      [managerId, tenantId ?? null],
     );
     if (!r.rows[0]) throw new BadRequestException(`${label} not found`);
     if (r.rows[0].role !== 'Sales Manager') throw new BadRequestException(`${label} must be an active Sales Manager`);
@@ -71,8 +93,17 @@ export class UsersService {
       sales_manager_id?: number | null;
     },
     actorId?: number,
+    actor?: any,
   ) {
-    const exists = await this.db.query('SELECT id FROM users WHERE email=$1', [data.email]);
+    const isSuper = this.isSuperAdmin(actor);
+    const tenantId = isSuper ? null : this.requireTenantId(actor);
+    const exists = await this.db.query(
+      `SELECT id
+         FROM users
+        WHERE LOWER(email)=LOWER($1)
+          AND ($2::integer IS NULL OR tenant_id = $2)`,
+      [data.email, tenantId],
+    );
     if (exists.rows[0]) throw new ConflictException('Email already registered');
     const hashed = await bcrypt.hash(data.password, 10);
     const roleName = data.role || 'Agent';
@@ -91,14 +122,14 @@ export class UsersService {
     if (managerId != null && !Number.isFinite(managerId)) managerId = null;
     if (roleName !== 'Sales Executive') managerId = null;
     if (managerId != null) {
-      await this.assertSalesManager(managerId);
+      await this.assertSalesManager(managerId, 'Sales manager', tenantId);
     }
 
     const res = await this.db.query(
-      `INSERT INTO users (name,email,password,role,role_id,zone_id,sales_manager_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
-       RETURNING id,name,email,role,is_active,created_at,zone_id,sales_manager_id`,
-      [data.name, data.email, hashed, roleName, roleRes.rows[0].id, zoneId, managerId],
+      `INSERT INTO users (name,email,password,role,role_id,zone_id,sales_manager_id,tenant_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8, (SELECT tenant_id FROM users WHERE id=$9 LIMIT 1)))
+       RETURNING id,name,email,role,is_active,created_at,zone_id,sales_manager_id,tenant_id`,
+      [data.name, data.email, hashed, roleName, roleRes.rows[0].id, zoneId, managerId, tenantId, actorId ?? null],
     );
     const created = res.rows[0];
     this.audit.log({ user_id: actorId, action: 'create_user', module: 'users', record_id: created.id, details: { name: created.name, email: created.email, role: created.role } });
@@ -116,8 +147,14 @@ export class UsersService {
       sales_manager_id?: number | null;
     },
     actorId?: number,
+    actor?: any,
   ) {
-    const cur = await this.db.query('SELECT id, role, sales_manager_id FROM users WHERE id=$1', [id]);
+    const isSuper = this.isSuperAdmin(actor);
+    const tenantId = isSuper ? null : this.requireTenantId(actor);
+    const cur = await this.db.query(
+      'SELECT id, role, sales_manager_id, tenant_id FROM users WHERE id=$1 AND ($2::integer IS NULL OR tenant_id = $2)',
+      [id, tenantId],
+    );
     if (!cur.rows[0]) throw new NotFoundException('User not found');
     let nextRole = cur.rows[0].role as string;
 
@@ -163,18 +200,19 @@ export class UsersService {
       } else {
         if (mid != null) {
           if (mid === id) throw new BadRequestException('Sales executive cannot report to themselves');
-          await this.assertSalesManager(mid);
+          await this.assertSalesManager(mid, 'Sales manager', tenantId);
         }
         sets.push(`sales_manager_id=$${i++}`);
         vals.push(mid);
       }
     }
-    if (!sets.length) return this.getUser(id);
+    if (!sets.length) return this.getUser(id, actor);
     sets.push('updated_at=NOW()');
     vals.push(id);
+    vals.push(tenantId);
     const res = await this.db.query(
-      `UPDATE users SET ${sets.join(',')} WHERE id=$${i}
-       RETURNING id,name,email,role,is_active,created_at,zone_id,sales_manager_id`,
+      `UPDATE users SET ${sets.join(',')} WHERE id=$${i} AND ($${i + 1}::integer IS NULL OR tenant_id = $${i + 1})
+       RETURNING id,name,email,role,is_active,created_at,zone_id,sales_manager_id,tenant_id`,
       vals,
     );
     if (!res.rows[0]) throw new NotFoundException('User not found');
@@ -182,10 +220,13 @@ export class UsersService {
     return res.rows[0];
   }
 
-  async toggleStatus(id: number, actorId?: number) {
+  async toggleStatus(id: number, actorId?: number, actor?: any) {
+    const isSuper = this.isSuperAdmin(actor);
+    const tenantId = isSuper ? null : this.requireTenantId(actor);
     const res = await this.db.query(
       `UPDATE users SET is_active = NOT is_active, updated_at=NOW()
-       WHERE id=$1 RETURNING id,name,email,role,is_active`, [id],
+       WHERE id=$1 AND ($2::integer IS NULL OR tenant_id = $2)
+       RETURNING id,name,email,role,is_active`, [id, tenantId],
     );
     if (!res.rows[0]) throw new NotFoundException('User not found');
     this.audit.log({ user_id: actorId, action: res.rows[0].is_active ? 'enable_user' : 'disable_user', module: 'users', record_id: id });
@@ -194,7 +235,9 @@ export class UsersService {
 
   // ─── User Permissions ────────────────────────────────────
 
-  async getUserPermissions(userId: number) {
+  async getUserPermissions(userId: number, actor?: any) {
+    const isSuper = this.isSuperAdmin(actor);
+    const tenantId = isSuper ? null : this.requireTenantId(actor);
     // Role-based permissions
     const rolePerms = await this.db.query(`
       SELECT p.id, p.module, p.action, p.label, TRUE AS from_role
@@ -203,7 +246,8 @@ export class UsersService {
         JOIN role_permissions rp ON rp.role_id = r.id
         JOIN permissions p ON p.id = rp.permission_id
        WHERE u.id = $1
-    `, [userId]);
+         AND ($2::integer IS NULL OR u.tenant_id = $2)
+    `, [userId, tenantId]);
 
     // User-specific overrides
     const userPerms = await this.db.query(`
@@ -216,7 +260,14 @@ export class UsersService {
     return { role_permissions: rolePerms.rows, user_permissions: userPerms.rows };
   }
 
-  async setUserPermissions(userId: number, permissionIds: number[], actorId?: number) {
+  async setUserPermissions(userId: number, permissionIds: number[], actorId?: number, actor?: any) {
+    const isSuper = this.isSuperAdmin(actor);
+    const tenantId = isSuper ? null : this.requireTenantId(actor);
+    const target = await this.db.query(
+      'SELECT id FROM users WHERE id=$1 AND ($2::integer IS NULL OR tenant_id = $2)',
+      [userId, tenantId],
+    );
+    if (!target.rows[0]) throw new NotFoundException('User not found');
     await this.db.transaction(async (client) => {
       await client.query('DELETE FROM user_permissions WHERE user_id=$1', [userId]);
       if (permissionIds.length > 0) {
@@ -228,26 +279,28 @@ export class UsersService {
       }
     });
     this.audit.log({ user_id: actorId, action: 'set_user_permissions', module: 'users', record_id: userId, details: { count: permissionIds.length } });
-    return this.getUserPermissions(userId);
+    return this.getUserPermissions(userId, actor);
   }
 
   // ─── Roles ───────────────────────────────────────────────
 
-  async listRoles() {
+  async listRoles(ctx?: any) {
+    const isSuper = this.isSuperAdmin(ctx);
+    const tenantId = isSuper ? null : this.requireTenantId(ctx);
     const res = await this.db.query(`
       SELECT r.id, r.name, r.description, r.is_system, r.created_at,
              COUNT(rp.permission_id) AS permission_count,
              COUNT(DISTINCT u.id)    AS user_count
         FROM roles r
         LEFT JOIN role_permissions rp ON rp.role_id = r.id
-        LEFT JOIN users u ON u.role_id = r.id
+        LEFT JOIN users u ON u.role_id = r.id AND ($1::integer IS NULL OR u.tenant_id = $1)
        GROUP BY r.id
        ORDER BY r.id
-    `);
+    `, [tenantId]);
     return res.rows;
   }
 
-  async getRole(id: number) {
+  async getRole(id: number, _ctx?: any) {
     const roleRes = await this.db.query('SELECT * FROM roles WHERE id=$1', [id]);
     if (!roleRes.rows[0]) throw new NotFoundException('Role not found');
     const permsRes = await this.db.query(`
@@ -260,7 +313,10 @@ export class UsersService {
     return { ...roleRes.rows[0], permissions: permsRes.rows };
   }
 
-  async createRole(data: { name: string; description?: string }, actorId?: number) {
+  async createRole(data: { name: string; description?: string }, actorId?: number, actor?: any) {
+    if (!this.isSuperAdmin(actor)) {
+      throw new ForbiddenException('Only Super Admin can create roles');
+    }
     const res = await this.db.query(
       'INSERT INTO roles (name,description) VALUES ($1,$2) RETURNING *',
       [data.name, data.description || null],
@@ -269,13 +325,16 @@ export class UsersService {
     return res.rows[0];
   }
 
-  async updateRole(id: number, data: { name?: string; description?: string }, actorId?: number) {
+  async updateRole(id: number, data: { name?: string; description?: string }, actorId?: number, actor?: any) {
+    if (!this.isSuperAdmin(actor)) {
+      throw new ForbiddenException('Only Super Admin can update roles');
+    }
     const sets: string[] = [];
     const vals: any[]    = [];
     let i = 1;
     if (data.name        !== undefined) { sets.push(`name=$${i++}`);        vals.push(data.name); }
     if (data.description !== undefined) { sets.push(`description=$${i++}`); vals.push(data.description); }
-    if (!sets.length) return this.getRole(id);
+    if (!sets.length) return this.getRole(id, actor);
     vals.push(id);
     const res = await this.db.query(
       `UPDATE roles SET ${sets.join(',')} WHERE id=$${i} RETURNING *`, vals,
@@ -285,7 +344,10 @@ export class UsersService {
     return res.rows[0];
   }
 
-  async deleteRole(id: number, actorId?: number) {
+  async deleteRole(id: number, actorId?: number, actor?: any) {
+    if (!this.isSuperAdmin(actor)) {
+      throw new ForbiddenException('Only Super Admin can delete roles');
+    }
     const role = await this.db.query('SELECT * FROM roles WHERE id=$1', [id]);
     if (!role.rows[0]) throw new NotFoundException('Role not found');
     if (role.rows[0].is_system) throw new BadRequestException('System roles cannot be deleted');
@@ -296,7 +358,10 @@ export class UsersService {
     return { deleted: true };
   }
 
-  async setRolePermissions(roleId: number, permissionIds: number[], actorId?: number) {
+  async setRolePermissions(roleId: number, permissionIds: number[], actorId?: number, actor?: any) {
+    if (!this.isSuperAdmin(actor)) {
+      throw new ForbiddenException('Only Super Admin can edit role permissions');
+    }
     await this.db.transaction(async (client) => {
       await client.query('DELETE FROM role_permissions WHERE role_id=$1', [roleId]);
       if (permissionIds.length > 0) {
@@ -308,12 +373,12 @@ export class UsersService {
       }
     });
     this.audit.log({ user_id: actorId, action: 'set_role_permissions', module: 'users', record_id: roleId, details: { count: permissionIds.length } });
-    return this.getRole(roleId);
+    return this.getRole(roleId, actor);
   }
 
   // ─── Permissions ─────────────────────────────────────────
 
-  async listPermissions() {
+  async listPermissions(_ctx?: any) {
     const res = await this.db.query('SELECT id, module, action, label FROM permissions ORDER BY module, action');
     // Group by module
     const grouped: Record<string, any[]> = {};
@@ -324,14 +389,14 @@ export class UsersService {
     return grouped;
   }
 
-  async listPermissionsFlat() {
+  async listPermissionsFlat(_ctx?: any) {
     const res = await this.db.query('SELECT id, module, action, label FROM permissions ORDER BY module, action');
     return res.rows;
   }
 
   // ─── Zones (under Users module) ──────────────────────────
 
-  async listZones() {
+  async listZones(_ctx?: any) {
     const res = await this.db.query(
       `SELECT id, name, code, created_at, updated_at FROM zones ORDER BY LOWER(name)`,
     );
@@ -400,33 +465,46 @@ export class UsersService {
   }
 
   /** Active users with role Sales Manager (for assigning to new/edit Sales Executives). */
-  async listSalesManagers() {
+  async listSalesManagers(ctx?: any) {
+    const isSuper = this.isSuperAdmin(ctx);
+    const tenantId = isSuper ? null : this.requireTenantId(ctx);
     const res = await this.db.query(
       `SELECT id, name, email FROM users
-        WHERE is_active = TRUE AND role = 'Sales Manager'
+        WHERE is_active = TRUE
+          AND role = 'Sales Manager'
+          AND ($1::integer IS NULL OR tenant_id = $1)
        ORDER BY LOWER(name)`,
+      [tenantId],
     );
     return res.rows;
   }
 
   /** Sales executives on this manager’s team vs unassigned (for add/remove UI). */
-  async listSalesTeamForManager(managerId: number) {
-    await this.assertSalesManager(managerId, 'Manager');
+  async listSalesTeamForManager(managerId: number, ctx?: any) {
+    const isSuper = this.isSuperAdmin(ctx);
+    const tenantId = isSuper ? null : this.requireTenantId(ctx);
+    await this.assertSalesManager(managerId, 'Manager', tenantId);
     const assigned = await this.db.query(
       `SELECT u.id, u.name, u.email, u.role, u.is_active, u.zone_id, z.name AS zone_name
          FROM users u
          LEFT JOIN zones z ON z.id = u.zone_id
-        WHERE u.role = 'Sales Executive' AND u.sales_manager_id = $1
+        WHERE u.role = 'Sales Executive'
+          AND u.sales_manager_id = $1
+          AND ($2::integer IS NULL OR u.tenant_id = $2)
         ORDER BY LOWER(u.name)`,
-      [managerId],
+      [managerId, tenantId],
     );
     const available = await this.db.query(
       `SELECT u.id, u.name, u.email, u.role, u.is_active, u.zone_id, z.name AS zone_name
          FROM users u
          LEFT JOIN zones z ON z.id = u.zone_id
-        WHERE u.role = 'Sales Executive' AND u.is_active = TRUE AND u.sales_manager_id IS NULL AND u.id <> $1
+        WHERE u.role = 'Sales Executive'
+          AND u.is_active = TRUE
+          AND u.sales_manager_id IS NULL
+          AND u.id <> $1
+          AND ($2::integer IS NULL OR u.tenant_id = $2)
         ORDER BY LOWER(u.name)`,
-      [managerId],
+      [managerId, tenantId],
     );
     return { assigned: assigned.rows, available: available.rows };
   }

@@ -515,13 +515,24 @@ function CustomerModal({ customer, crmLeadPrefill, onClose, onSaved }) {
   const { show } = useToast();
   const [form, setForm] = useState(() => {
     if (customer) {
+      let b = customer.billing_address || customer.address || '';
+      let s = customer.shipping_address || '';
+
+      const shipIdx = b.search(/Shipping Address:|Shipping Adress:/i);
+      if (shipIdx !== -1) {
+        if (!s) s = b.substring(shipIdx).replace(/Shipping Address:|Shipping Adress:/i, '').trim();
+        b = b.substring(0, shipIdx).replace(/Billing Address:|Billing Adress:/i, '').trim();
+      } else {
+        b = b.replace(/^Billing Address:|^Billing Adress:/i, '').trim();
+      }
+
       return {
         name: customer.name,
         email: customer.email || '',
         phone: customer.phone || '',
         gstin: customer.gstin || '',
-        billing_address: customer.billing_address || customer.address || '',
-        shipping_address: customer.shipping_address || '',
+        billing_address: b,
+        shipping_address: s,
       };
     }
     if (crmLeadPrefill) return customerFormFromLead(crmLeadPrefill);
@@ -604,16 +615,28 @@ function CustomerModal({ customer, crmLeadPrefill, onClose, onSaved }) {
 
 function CustomerAddressPreview({ customer }) {
   if (!customer) return null;
-  const billing = (customer.billing_address || customer.address || '').trim();
-  const shipping = (customer.shipping_address || '').trim();
+  let billing = (customer.billing_address || customer.address || '').trim();
+  let shipping = (customer.shipping_address || '').trim();
   const gstin = (customer.gstin || '').trim();
+
+  const shipIdx = billing.search(/Shipping Address:|Shipping Adress:/i);
+  if (shipIdx !== -1) {
+    if (!shipping) shipping = billing.substring(shipIdx).replace(/Shipping Address:|Shipping Adress:/i, '').trim();
+    billing = billing.substring(0, shipIdx).replace(/Billing Address:|Billing Adress:/i, '').trim();
+  } else {
+    billing = billing.replace(/^Billing Address:|^Billing Adress:/i, '').trim();
+  }
   if (!billing && !shipping && !gstin) return null;
   return (
+    <>
     <div className="mt-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-3 text-xs text-slate-600 dark:text-slate-300 space-y-1">
-      {billing && <p><span className="font-semibold">Billing:</span> {billing}</p>}
-      {shipping && <p><span className="font-semibold">Shipping:</span> {shipping}</p>}
+      {billing && <p><span className="font-semibold">Billing Address:</span> {billing}</p>}      
       {gstin && <p><span className="font-semibold">GSTIN:</span> {gstin}</p>}
     </div>
+    <div className="mt-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-3 text-xs text-slate-600 dark:text-slate-300 space-y-1">      
+      {shipping && <p><span className="font-semibold">Shipping Address:</span> {shipping}</p>}
+    </div>
+    </>
   );
 }
 

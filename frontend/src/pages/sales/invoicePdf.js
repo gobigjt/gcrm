@@ -164,9 +164,51 @@ function isInterstate(doc) {
   return Number(doc.igst || 0) > 0;
 }
 
-function lineGstAmount(it) {
-  const base = Number(it.quantity ?? 0) * Number(it.unit_price ?? 0);
-  return Math.max(0, Number(it.total ?? 0) - base);
+function lineTaxAmount(it, doc) {
+  const cgst = Number(it.cgst || 0);
+  const sgst = Number(it.sgst || 0);
+  const igst = Number(it.igst || 0);
+  if (cgst || sgst || igst) {
+    return cgst + sgst + igst;
+  }
+
+  const rate = Number(it.gst_rate || 0);
+  const qty = Number(it.quantity ?? 0);
+  const unitPrice = Number(it.unit_price ?? 0);
+  const discount = Number(it.discount || 0);
+  const total = Number(it.total ?? 0);
+  const base = Math.max(0, qty * unitPrice - discount);
+  const taxType = String(doc.tax_type || 'exclusive');
+
+  if (taxType === 'no_tax') {
+    return 0;
+  }
+  if (taxType === 'inclusive') {
+    if (total > 0) {
+      return rate > 0 ? Math.max(0, total * rate / (100 + rate)) : 0;
+    }
+    return rate > 0 ? Math.max(0, base * rate / (100 + rate)) : 0;
+  }
+  if (total > 0) {
+    return Math.max(0, total - base);
+  }
+  return rate > 0 ? Math.max(0, base * rate / 100) : 0;
+}
+
+function lineTaxableAmount(it, doc) {
+  const total = Number(it.total ?? 0);
+  const tax = lineTaxAmount(it, doc);
+  if (Number.isFinite(total) && Number.isFinite(tax)) {
+    return Math.max(0, total - tax);
+  }
+  const qty = Number(it.quantity ?? 0);
+  const unitPrice = Number(it.unit_price ?? 0);
+  const discount = Number(it.discount || 0);
+  return Math.max(0, qty * unitPrice - discount);
+}
+
+function lineGstAmount(it, doc) {
+  return lineTaxAmount(it, doc);
 }
 
 /** @param {'invoice'|'quotation'|'order'} kind */
@@ -184,21 +226,37 @@ function isInterstateForDoc(doc, kind) {
 
 /** @param {'invoice'|'quotation'|'order'} kind */
 function totalsForSalesDocument(doc, kind) {
+  const taxType = String(doc.tax_type || 'exclusive');
   if (kind === 'invoice') {
+    const storedSubtotal = doc.subtotal != null ? Number(doc.subtotal) : null;
+    const storedCgst = Number(doc.cgst || 0);
+    const storedSgst = Number(doc.sgst || 0);
+    const storedIgst = Number(doc.igst || 0);
+    const storedTotal = Number(doc.total_amount || 0);
+    const derived = (doc.items || []).reduce((acc, it) => {
+      acc.subtotal += lineTaxableAmount(it, doc);
+      const tax = lineTaxAmount(it, doc);
+      acc.cgst += isInterstate(doc) ? 0 : tax / 2;
+      acc.sgst += isInterstate(doc) ? 0 : tax / 2;
+      acc.igst += isInterstate(doc) ? tax : 0;
+      acc.total += Number(it.total || 0);
+      return acc;
+    }, { subtotal: 0, cgst: 0, sgst: 0, igst: 0, total: 0 });
+    const hasStoredTax = storedCgst + storedSgst + storedIgst > 0;
     return {
-      subtotal: doc.subtotal != null ? Number(doc.subtotal) : null,
-      cgst: Number(doc.cgst || 0),
-      sgst: Number(doc.sgst || 0),
-      igst: Number(doc.igst || 0),
-      total: Number(doc.total_amount || 0),
+      subtotal: storedSubtotal != null ? storedSubtotal : derived.subtotal,
+      cgst: hasStoredTax ? storedCgst : derived.cgst,
+      sgst: hasStoredTax ? storedSgst : derived.sgst,
+      igst: hasStoredTax ? storedIgst : derived.igst,
+      total: storedTotal > 0 ? storedTotal : derived.total,
       balance: invoiceBalanceDue(doc),
     };
   }
   let subtotal = 0;
   let gst = 0;
   for (const it of doc.items || []) {
-    subtotal += Number(it.quantity ?? 0) * Number(it.unit_price ?? 0);
-    gst += lineGstAmount(it);
+    subtotal += lineTaxableAmount(it, doc);
+    gst += lineTaxAmount(it, doc);
   }
   return {
     subtotal,
@@ -244,7 +302,9 @@ function addPdfPageFooters(pdf, pageW, footerText = '') {
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(8);
     pdf.setTextColor(110, 110, 110);
-    pdf.text(footerText || `-- ${i} of ${n} --`, pageW / 2, h - 26, { align: 'center' });
+    const pageLabel = `-- ${i} of ${n} --`;
+    const footerLines = footerText ? `${footerText}\n${pageLabel}` : pageLabel;
+    pdf.text(footerLines, pageW / 2, h - 26, { align: 'center' });
   }
   pdf.setPage(n);
   pdf.setTextColor(0, 0, 0);
@@ -286,8 +346,8 @@ function hsnSummaryRows(doc, kind) {
   const byHsn = new Map();
   for (const it of doc.items || []) {
     const hsn = String(it.product_hsn_code || it.hsn_code || '—');
-    const taxable = Number(it.quantity || 0) * Number(it.unit_price || 0);
-    const gstAmt = lineGstAmount(it);
+    const taxable = lineTaxableAmount(it, doc);
+    const gstAmt = lineGstAmount(it, doc);
     const row = byHsn.get(hsn) || { hsn, taxable: 0, cgst: 0, sgst: 0, igst: 0, rate: Number(it.gst_rate || 0) };
     row.taxable += taxable;
     if (interstate) row.igst += gstAmt;
@@ -370,15 +430,19 @@ export function buildSalesDocumentHtml(doc, company, logoDataUrl = null, kind = 
   const BD = 'border-bottom:1px solid #ddd';
 
   // items rows — each cell gets right border except last column
-  const itemRowsHtml = (doc.items || []).map((it, idx) => `
+  const itemRowsHtml = (doc.items || []).map((it, idx) => {
+    const gstRate = Number(it.gst_rate || 0);
+    return `
     <tr>
       <td style="padding:5px 4px 10px;text-align:center;vertical-align:middle;${BR};${BT};width:28px">${idx + 1}</td>
       <td style="padding:5px 8px 10px;vertical-align:middle;${BR};${BT}"><strong>${escapeHtml(it.description || it.product_name || '—')}</strong></td>
       <td style="padding:5px 4px 10px;text-align:center;vertical-align:middle;${BR};${BT};width:72px">${escapeHtml(it.product_hsn_code || it.hsn_code || '—')}</td>
       <td style="padding:5px 4px 10px;text-align:center;vertical-align:middle;${BR};${BT};width:55px">${Number(it.quantity ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })} Nos</td>
       <td style="padding:5px 8px 10px;text-align:right;vertical-align:middle;${BR};${BT};width:85px;white-space:nowrap">&#8377; ${asMoney(it.unit_price)}</td>
+      <td style="padding:5px 4px 10px;text-align:center;vertical-align:middle;${BR};${BT};width:65px">${gstRate > 0 ? `${gstRate.toLocaleString('en-IN', { maximumFractionDigits: 2 })}%` : '—'}</td>
       <td style="padding:5px 8px 10px;text-align:right;vertical-align:middle;${BT};width:90px;white-space:nowrap">&#8377; ${asMoney(it.total)}</td>
-    </tr>`).join('') || `<tr><td colspan="6" style="padding:10px;text-align:center;color:#888;${BT}">No line items</td></tr>`;
+    </tr>`;
+  }).join('') || `<tr><td colspan="7" style="padding:10px;text-align:center;color:#888;${BT}">No line items</td></tr>`;
 
   // tax rows
   const taxItemRowsHtml = taxSummaryRows.map((r) => interstate
@@ -408,15 +472,17 @@ export function buildSalesDocumentHtml(doc, company, logoDataUrl = null, kind = 
     strong { font-weight:700; }
     .wrap { border:1px solid #444; width:100%; }
     .sec  { border-top:1px solid #444; width:100%; }
-    .sheet-footer { margin-top:12px; text-align:center; font-size:9px; color:#666; white-space:nowrap; width:100%; }
+    .sheet-footer { margin-top:5px; left: 20mm; right: 20mm; padding: 0 20px; text-align:center; font-size:9px; color:#666; white-space:normal; line-height:1.3; width:100%; }
+    .sheet-footer div { display:block; }
     @media print {
-      body { padding-bottom:16mm; }
+      body { padding-bottom:20mm; }
       .sheet-footer {
         position: fixed;
-        left: 12mm;
-        right: 12mm;
+        left: 15mm;
+        right: 15mm;
         bottom: 8mm;
         margin-top: 0;
+        padding:0 12px;
       }
     }
   </style>
@@ -502,6 +568,7 @@ export function buildSalesDocumentHtml(doc, company, logoDataUrl = null, kind = 
         <th style="padding:5px 4px 10px;text-align:center;vertical-align:middle;${BR};width:72px">HSN Code</th>
         <th style="padding:5px 4px 10px;text-align:center;vertical-align:middle;${BR};width:55px">Qty</th>
         <th style="padding:5px 8px 10px;text-align:right;vertical-align:middle;${BR};width:85px">Rate</th>
+        <th style="padding:5px 8px 10px;text-align:center;vertical-align:middle;${BR};width:65px">GST %</th>
         <th style="padding:5px 8px 10px;text-align:right;vertical-align:middle;width:90px">Amount</th>
       </tr>
     </thead>
@@ -588,7 +655,7 @@ export function buildSalesDocumentHtml(doc, company, logoDataUrl = null, kind = 
   </div>
 
 </div>
-${includeSheetFooter ? `<div class="sheet-footer">Contact: ${escapeHtml(singleLineFooterText((company.address || '').trim() || company.company_name || ''))}</div>` : ''}
+${includeSheetFooter ? `<div class="sheet-footer"><div>Contact: ${escapeHtml(singleLineFooterText((company.address || '').trim() || company.company_name || ''))}</div><div>${escapeHtml(company.gstin ? `GSTIN: ${company.gstin}` : company.company_name || '')}</div></div>` : ''}
 </body>
 </html>`;
 }
@@ -706,14 +773,15 @@ async function rasterSalesDocumentToPdf(doc, company, kind, docNo) {
     pageIdx += 1;
   }
 
-  const footerText = `Contact: ${singleLineFooterText((company.address || '').trim() || (company.company_name || '').trim() || '')}`;
+  const footerText = `Contact: ${singleLineFooterText((company.address || '').trim() || (company.company_name || '').trim() || '')}${company.gstin ? `\nGSTIN: ${company.gstin}` : ''}`;
   const n = pdf.getNumberOfPages();
   for (let i = 1; i <= n; i += 1) {
     pdf.setPage(i);
     pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(8);
+    pdf.setFontSize(5.5);
     pdf.setTextColor(110, 110, 110);
-    pdf.text(footerText || `-- ${i} of ${n} --`, pageW / 2, pageH - 20, { align: 'center' });
+    const pageLabel = `-- ${i} of ${n} --`;
+    pdf.text(`${footerText}\n${pageLabel}`, pageW / 2, pageH - 24, { align: 'center', width: '60%' });
   }
   pdf.setTextColor(0, 0, 0);
   pdf.save(`${docNo}.pdf`);
@@ -948,12 +1016,53 @@ export async function downloadTaxInvoicePdf(doc, company) {
   return downloadSalesDocumentPdf(doc, company, 'invoice');
 }
 
+async function downloadSalesDocumentFromBackend(kind, doc) {
+  if (!doc || !doc.id) {
+    throw new Error('Document ID required for backend PDF download');
+  }
+  const id = Number(doc.id);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error('Invalid document ID for backend PDF download');
+  }
+  const path = kind === 'quotation' ? 'quotations' : kind === 'order' ? 'orders' : 'invoices';
+  const resp = await api.get(`/sales/${path}/${id}/pdf`);
+  const data = resp.data || {};
+  const url = String(data.url || '').trim();
+  const fileName = String(data.file_name || `${getSalesDocumentNumber(doc, kind)}.pdf`).trim();
+  if (!url) {
+    throw new Error('Backend PDF URL missing');
+  }
+
+  const downloadUrl = url.match(/^https?:\/\//i)
+    ? url
+    : url.replace(/^\//, '');
+
+  const pdfResp = await api.get(downloadUrl, { responseType: 'blob' });
+  const blob = new Blob([pdfResp.data], { type: 'application/pdf' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(a.href);
+}
+
 export async function printSalesDocument(kind, doc) {
   const company = await fetchInvoiceCompanySettings();
   await openSalesDocumentPrintWindow(doc, company, kind);
 }
 
 export async function downloadSalesDocument(kind, doc) {
+  if (doc && doc.id) {
+    try {
+      await downloadSalesDocumentFromBackend(kind, doc);
+      return;
+    } catch (e) {
+      console.warn('Backend PDF download failed, falling back to client PDF generation:', e);
+    }
+  }
+
   const company = await fetchInvoiceCompanySettings();
   await downloadSalesDocumentPdf(doc, company, kind);
 }

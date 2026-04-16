@@ -26,6 +26,14 @@ function parseJwtExpiresIn(raw: string | undefined): string | number {
 
 const ACCESS_EXPIRES = parseJwtExpiresIn(process.env.JWT_EXPIRES_IN);
 
+type AuthTokenUser = {
+  id: number;
+  email: string;
+  role: string;
+  role_id?: number;
+  tenant_id?: number | null;
+};
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -34,11 +42,37 @@ export class AuthService {
     private readonly audit: AuditService,
   ) {}
 
-  private signAccess(user: { id: number; email: string; role: string; role_id?: number }) {
+  private signAccess(user: AuthTokenUser) {
     return this.jwt.sign(
-      { id: user.id, email: user.email, role: user.role, role_id: user.role_id },
+      {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        role_id: user.role_id,
+        tenant_id: user.tenant_id ?? null,
+      },
       { expiresIn: ACCESS_EXPIRES },
     );
+  }
+
+  private normalizeTenantSlug(...raw: Array<unknown>): string | null {
+    for (const one of raw) {
+      const slug = String(one ?? '').trim().toLowerCase();
+      if (slug) return slug;
+    }
+    return null;
+  }
+
+  private async resolveTenantIdBySlug(slug: string): Promise<number | null> {
+    const res = await this.db.query(
+      `SELECT id
+         FROM tenants
+        WHERE LOWER(slug) = LOWER($1)
+          AND is_active = TRUE
+        LIMIT 1`,
+      [slug],
+    );
+    return res.rows[0]?.id != null ? Number(res.rows[0].id) : null;
   }
 
   private async issueRefresh(userId: number): Promise<string> {
@@ -51,16 +85,27 @@ export class AuthService {
     return token;
   }
 
-  async register(dto: RegisterDto) {
-    const exists = await this.db.query('SELECT id FROM users WHERE email=$1', [dto.email]);
+  async register(dto: RegisterDto, tenantSlugHeader?: string) {
+    const tenantSlug = this.normalizeTenantSlug(dto.tenant_slug, tenantSlugHeader);
+    const tenantId = tenantSlug ? await this.resolveTenantIdBySlug(tenantSlug) : null;
+    const exists = await this.db.query(
+      `SELECT id
+         FROM users
+        WHERE LOWER(email)=LOWER($1)
+          AND (
+            tenant_id IS NOT DISTINCT FROM $2
+            OR $2 IS NULL
+          )`,
+      [dto.email, tenantId],
+    );
     if (exists.rows[0]) throw new ConflictException('Email already registered');
     const hashed   = await bcrypt.hash(dto.password, 10);
     const roleName = dto.role || 'Sales Executive';
     const roleRes  = await this.db.query('SELECT id FROM roles WHERE name=$1', [roleName]);
     const roleId   = roleRes.rows[0]?.id ?? null;
     const res = await this.db.query(
-      'INSERT INTO users (name,email,password,role,role_id) VALUES ($1,$2,$3,$4,$5) RETURNING id,name,email,role,role_id,avatar_url',
-      [dto.name, dto.email, hashed, roleName, roleId],
+      'INSERT INTO users (name,email,password,role,role_id,tenant_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id,name,email,role,role_id,tenant_id,avatar_url',
+      [dto.name, dto.email, hashed, roleName, roleId, tenantId],
     );
     const user         = res.rows[0];
     const access_token  = this.signAccess(user);
@@ -69,10 +114,22 @@ export class AuthService {
     return { user, access_token, refresh_token };
   }
 
-  async login(dto: LoginDto) {
+  async login(dto: LoginDto, tenantSlugHeader?: string) {
+    const tenantSlug = this.normalizeTenantSlug(dto.tenant_slug, tenantSlugHeader);
+    const tenantId = tenantSlug ? await this.resolveTenantIdBySlug(tenantSlug) : null;
     const res = await this.db.query(
-      'SELECT id,name,email,password,role,role_id,avatar_url FROM users WHERE email=$1 AND is_active=TRUE',
-      [dto.email],
+      `SELECT id,name,email,password,role,role_id,tenant_id,avatar_url
+         FROM users
+        WHERE LOWER(email)=LOWER($1)
+          AND is_active=TRUE
+          AND (
+            $2::integer IS NULL
+            OR tenant_id = $2
+            OR role = 'Super Admin'
+          )
+        ORDER BY CASE WHEN role = 'Super Admin' THEN 0 ELSE 1 END
+        LIMIT 1`,
+      [dto.email, tenantId],
     );
     const user = res.rows[0];
     if (!user) throw new UnauthorizedException('Invalid email / password');
@@ -87,17 +144,17 @@ export class AuthService {
 
   async refresh(token: string) {
     const row = await this.db.query(
-      `SELECT rt.*, u.id AS uid, u.email, u.role, u.role_id
+      `SELECT rt.*, u.id AS uid, u.email, u.role, u.role_id, u.tenant_id
          FROM refresh_tokens rt
          JOIN users u ON u.id = rt.user_id
         WHERE rt.token = $1 AND rt.revoked = FALSE AND rt.expires_at > NOW()`,
       [token],
     );
     if (!row.rows[0]) throw new UnauthorizedException('Invalid or expired refresh token');
-    const { uid, email, role, role_id, id: tokenId } = row.rows[0];
+    const { uid, email, role, role_id, tenant_id, id: tokenId } = row.rows[0];
     // Rotate: revoke old, issue new
     await this.db.query('UPDATE refresh_tokens SET revoked=TRUE WHERE id=$1', [tokenId]);
-    const access_token  = this.signAccess({ id: uid, email, role, role_id });
+    const access_token  = this.signAccess({ id: uid, email, role, role_id, tenant_id });
     const refresh_token = await this.issueRefresh(uid);
     return { access_token, refresh_token };
   }
@@ -109,7 +166,7 @@ export class AuthService {
 
   async me(id: number) {
     const res = await this.db.query(
-      'SELECT id,name,email,role,role_id,is_active,created_at,avatar_url FROM users WHERE id=$1', [id],
+      'SELECT id,name,email,role,role_id,tenant_id,is_active,created_at,avatar_url FROM users WHERE id=$1', [id],
     );
     return res.rows[0];
   }

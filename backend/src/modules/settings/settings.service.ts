@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { basename, join } from 'path';
 import { existsSync, unlinkSync } from 'fs';
 import { DatabaseService } from '../../database/database.service';
@@ -13,15 +13,34 @@ export class SettingsService {
     private readonly audit: AuditService,
   ) {}
 
-  async getCompanySettings() {
-    const cached = await this.cache.get('company:settings');
+  private isSuperAdmin(ctx?: { role?: unknown }): boolean {
+    return String(ctx?.role || '').trim().toLowerCase() === 'super admin';
+  }
+
+  private requireTenantId(ctx?: { tenant_id?: unknown; role?: unknown }): number {
+    if (this.isSuperAdmin(ctx)) return 0;
+    const tenantId = Number(ctx?.tenant_id);
+    if (!Number.isInteger(tenantId) || tenantId <= 0) {
+      throw new ForbiddenException('Tenant context is required');
+    }
+    return tenantId;
+  }
+
+  async getCompanySettings(ctx?: { tenant_id?: unknown; role?: unknown }) {
+    const tenantId = this.requireTenantId(ctx);
+    const cacheKey = `company:settings:${tenantId || 'all'}`;
+    const cached = await this.cache.get(cacheKey);
     if (cached) return cached;
-    const res = (await this.db.query('SELECT * FROM company_settings LIMIT 1')).rows[0];
-    if (res) await this.cache.set('company:settings', res, 600);
+    const res = (await this.db.query(
+      'SELECT * FROM company_settings WHERE ($1::integer = 0 OR tenant_id = $1) ORDER BY id LIMIT 1',
+      [tenantId],
+    )).rows[0];
+    if (res) await this.cache.set(cacheKey, res, 600);
     return res;
   }
-  async upsertCompanySettings(data: any, actorId?: number) {
-    const existing = await this.getCompanySettings();
+  async upsertCompanySettings(data: any, actorId?: number, ctx?: { tenant_id?: unknown; role?: unknown }) {
+    const tenantId = this.requireTenantId(ctx);
+    const existing = await this.getCompanySettings(ctx);
     let result: any;
     if (existing) {
       const fields = ['company_name','gstin','address','phone','email','logo_url','invoice_logo_url','favicon_url','currency','fiscal_year_start','invoice_tagline','payment_terms','invoice_bank_details','bank_name','bank_branch','bank_account_number','bank_ifsc'];
@@ -29,22 +48,30 @@ export class SettingsService {
       for (const f of fields) { if(data[f]!==undefined){ sets.push(`${f}=$${i++}`); vals.push(data[f]); } }
       sets.push('updated_at=NOW()');
       vals.push(existing.id);
-      result = (await this.db.query(`UPDATE company_settings SET ${sets.join(',')} WHERE id=$${i} RETURNING *`, vals)).rows[0];
+      vals.push(tenantId);
+      result = (await this.db.query(
+        `UPDATE company_settings SET ${sets.join(',')} WHERE id=$${i} AND ($${i + 1}::integer = 0 OR tenant_id = $${i + 1}) RETURNING *`,
+        vals,
+      )).rows[0];
     } else {
       result = (await this.db.query(
-        'INSERT INTO company_settings (company_name,gstin,address,phone,email,logo_url,invoice_logo_url,favicon_url,currency,fiscal_year_start,invoice_tagline,payment_terms,invoice_bank_details,bank_name,bank_branch,bank_account_number,bank_ifsc) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *',
-        [data.company_name||'My Company', data.gstin, data.address, data.phone, data.email, data.logo_url, data.invoice_logo_url, data.favicon_url, data.currency||'INR', data.fiscal_year_start, data.invoice_tagline, data.payment_terms, data.invoice_bank_details, data.bank_name, data.bank_branch, data.bank_account_number, data.bank_ifsc],
+        'INSERT INTO company_settings (company_name,gstin,address,phone,email,logo_url,invoice_logo_url,favicon_url,currency,fiscal_year_start,invoice_tagline,payment_terms,invoice_bank_details,bank_name,bank_branch,bank_account_number,bank_ifsc,tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *',
+        [data.company_name||'My Company', data.gstin, data.address, data.phone, data.email, data.logo_url, data.invoice_logo_url, data.favicon_url, data.currency||'INR', data.fiscal_year_start, data.invoice_tagline, data.payment_terms, data.invoice_bank_details, data.bank_name, data.bank_branch, data.bank_account_number, data.bank_ifsc, tenantId || null],
       )).rows[0];
     }
-    await this.cache.del('company:settings');
+    await this.cache.del(`company:settings:${tenantId || 'all'}`);
     this.audit.log({ user_id: actorId, action: 'update_company_settings', module: 'settings' });
     return result;
   }
 
   /** Save uploaded logo file path and remove previous file under /uploads/company/. */
-  async setCompanyLogoFromUpload(filename: string, actorId?: number) {
-    await this.cache.del('company:settings');
-    const prev = (await this.db.query('SELECT logo_url FROM company_settings LIMIT 1')).rows[0]?.logo_url as string | undefined;
+  async setCompanyLogoFromUpload(filename: string, actorId?: number, ctx?: { tenant_id?: unknown; role?: unknown }) {
+    const tenantId = this.requireTenantId(ctx);
+    await this.cache.del(`company:settings:${tenantId || 'all'}`);
+    const prev = (await this.db.query(
+      'SELECT logo_url FROM company_settings WHERE ($1::integer = 0 OR tenant_id = $1) ORDER BY id LIMIT 1',
+      [tenantId],
+    )).rows[0]?.logo_url as string | undefined;
     if (prev && prev.startsWith('/uploads/company/')) {
       const fp = join(process.cwd(), 'uploads', 'company', basename(prev));
       try {
@@ -54,13 +81,17 @@ export class SettingsService {
       }
     }
     const rel = `/uploads/company/${filename}`;
-    return this.upsertCompanySettings({ logo_url: rel }, actorId);
+    return this.upsertCompanySettings({ logo_url: rel }, actorId, ctx);
   }
 
   /** Save uploaded favicon file path and remove previous file under /uploads/company/. */
-  async setCompanyFaviconFromUpload(filename: string, actorId?: number) {
-    await this.cache.del('company:settings');
-    const prev = (await this.db.query('SELECT favicon_url FROM company_settings LIMIT 1')).rows[0]?.favicon_url as string | undefined;
+  async setCompanyFaviconFromUpload(filename: string, actorId?: number, ctx?: { tenant_id?: unknown; role?: unknown }) {
+    const tenantId = this.requireTenantId(ctx);
+    await this.cache.del(`company:settings:${tenantId || 'all'}`);
+    const prev = (await this.db.query(
+      'SELECT favicon_url FROM company_settings WHERE ($1::integer = 0 OR tenant_id = $1) ORDER BY id LIMIT 1',
+      [tenantId],
+    )).rows[0]?.favicon_url as string | undefined;
     if (prev && prev.startsWith('/uploads/company/')) {
       const fp = join(process.cwd(), 'uploads', 'company', basename(prev));
       try {
@@ -70,13 +101,17 @@ export class SettingsService {
       }
     }
     const rel = `/uploads/company/${filename}`;
-    return this.upsertCompanySettings({ favicon_url: rel }, actorId);
+    return this.upsertCompanySettings({ favicon_url: rel }, actorId, ctx);
   }
 
   /** Save uploaded invoice logo file path and remove previous file under /uploads/company/. */
-  async setInvoiceLogoFromUpload(filename: string, actorId?: number) {
-    await this.cache.del('company:settings');
-    const prev = (await this.db.query('SELECT invoice_logo_url FROM company_settings LIMIT 1')).rows[0]?.invoice_logo_url as string | undefined;
+  async setInvoiceLogoFromUpload(filename: string, actorId?: number, ctx?: { tenant_id?: unknown; role?: unknown }) {
+    const tenantId = this.requireTenantId(ctx);
+    await this.cache.del(`company:settings:${tenantId || 'all'}`);
+    const prev = (await this.db.query(
+      'SELECT invoice_logo_url FROM company_settings WHERE ($1::integer = 0 OR tenant_id = $1) ORDER BY id LIMIT 1',
+      [tenantId],
+    )).rows[0]?.invoice_logo_url as string | undefined;
     if (prev && prev.startsWith('/uploads/company/')) {
       const fp = join(process.cwd(), 'uploads', 'company', basename(prev));
       try {
@@ -86,10 +121,10 @@ export class SettingsService {
       }
     }
     const rel = `/uploads/company/${filename}`;
-    return this.upsertCompanySettings({ invoice_logo_url: rel }, actorId);
+    return this.upsertCompanySettings({ invoice_logo_url: rel }, actorId, ctx);
   }
 
-  async listPermissions() {
+  async listPermissions(_ctx?: { tenant_id?: unknown; role?: unknown }) {
     return (await this.db.query(
       `SELECT p.id, p.module, p.action, p.label, r.name AS role
          FROM permissions p
@@ -101,29 +136,37 @@ export class SettingsService {
 
   // ─── Module Settings ─────────────────────────────────────
 
-  async listModuleSettings() {
+  async listModuleSettings(ctx?: { tenant_id?: unknown; role?: unknown }) {
+    const tenantId = this.requireTenantId(ctx);
     // No Redis cache — access control must reflect DB state immediately.
     return (await this.db.query(
-      'SELECT id, module, label, is_enabled, allowed_roles FROM module_settings ORDER BY id',
+      'SELECT id, module, label, is_enabled, allowed_roles FROM module_settings WHERE ($1::integer = 0 OR tenant_id = $1) ORDER BY id',
+      [tenantId],
     )).rows;
   }
 
-  async updateModuleSettings(module: string, data: { is_enabled?: boolean; allowed_roles?: string[] }, actorId?: number) {
+  async updateModuleSettings(module: string, data: { is_enabled?: boolean; allowed_roles?: string[] }, actorId?: number, ctx?: { tenant_id?: unknown; role?: unknown }) {
+    const tenantId = this.requireTenantId(ctx);
     const sets: string[] = []; const vals: any[] = []; let i = 1;
     if (data.is_enabled    !== undefined) { sets.push(`is_enabled=$${i++}`);    vals.push(data.is_enabled); }
     if (data.allowed_roles !== undefined) { sets.push(`allowed_roles=$${i++}`); vals.push(data.allowed_roles); }
     if (!sets.length) return;
     sets.push('updated_at=NOW()');
-    vals.push(module);
+    vals.push(module, tenantId);
     const res = await this.db.query(
-      `UPDATE module_settings SET ${sets.join(',')} WHERE module=$${i} RETURNING *`, vals,
+      `UPDATE module_settings SET ${sets.join(',')} WHERE module=$${i} AND ($${i + 1}::integer = 0 OR tenant_id = $${i + 1}) RETURNING *`, vals,
     );
     this.audit.log({ user_id: actorId, action: 'update_module_settings', module: 'settings', details: { module, ...data } });
     return res.rows[0];
   }
 
-  async getAuditLogs(filters: any) {
+  async getAuditLogs(filters: any, ctx?: { tenant_id?: unknown; role?: unknown }) {
+    const tenantId = this.requireTenantId(ctx);
     const conds: string[] = []; const vals: any[] = []; let i = 1;
+    if (tenantId > 0) {
+      conds.push(`u.tenant_id=$${i++}`);
+      vals.push(tenantId);
+    }
     if(filters.module)  { conds.push(`module=$${i++}`);  vals.push(filters.module); }
     if(filters.user_id) { conds.push(`user_id=$${i++}`); vals.push(filters.user_id); }
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
@@ -132,22 +175,25 @@ export class SettingsService {
     )).rows;
   }
 
-  async getDashboardStats() {
-    const cacheKey = 'dashboard:stats';
+  async getDashboardStats(ctx?: { tenant_id?: unknown; role?: unknown }) {
+    const tenantId = this.requireTenantId(ctx);
+    const cacheKey = `dashboard:stats:${tenantId || 'all'}`;
     const cached = await this.cache.get(cacheKey);
     if (cached) return cached;
     const [leads, invoices, orders, employees, openNew7d, overdueInv, usersActive] = await Promise.all([
-      this.db.query('SELECT COUNT(*) FROM leads WHERE is_converted=FALSE'),
-      this.db.query("SELECT COALESCE(SUM(total_amount),0) AS revenue FROM invoices WHERE status='paid'"),
-      this.db.query("SELECT COUNT(*) FROM sales_orders WHERE status NOT IN ('delivered','cancelled')"),
-      this.db.query('SELECT COUNT(*) FROM employees WHERE is_active=TRUE'),
+      this.db.query('SELECT COUNT(*) FROM leads WHERE is_converted=FALSE AND ($1::integer = 0 OR tenant_id = $1)', [tenantId]),
+      this.db.query("SELECT COALESCE(SUM(total_amount),0) AS revenue FROM invoices WHERE status='paid' AND ($1::integer = 0 OR tenant_id = $1)", [tenantId]),
+      this.db.query("SELECT COUNT(*) FROM sales_orders WHERE status NOT IN ('delivered','cancelled') AND ($1::integer = 0 OR tenant_id = $1)", [tenantId]),
+      this.db.query('SELECT COUNT(*) FROM employees e LEFT JOIN users u ON u.id=e.user_id WHERE e.is_active=TRUE AND ($1::integer = 0 OR u.tenant_id = $1)', [tenantId]),
       this.db.query(
-        `SELECT COUNT(*) FROM leads WHERE is_converted=FALSE AND created_at >= NOW() - INTERVAL '7 days'`,
+        `SELECT COUNT(*) FROM leads WHERE is_converted=FALSE AND created_at >= NOW() - INTERVAL '7 days' AND ($1::integer = 0 OR tenant_id = $1)`,
+        [tenantId],
       ),
       this.db.query(
-        `SELECT COUNT(*) FROM invoices WHERE status <> 'paid' AND due_date IS NOT NULL AND due_date < CURRENT_DATE`,
+        `SELECT COUNT(*) FROM invoices WHERE status <> 'paid' AND due_date IS NOT NULL AND due_date < CURRENT_DATE AND ($1::integer = 0 OR tenant_id = $1)`,
+        [tenantId],
       ),
-      this.db.query('SELECT COUNT(*) FROM users WHERE is_active=TRUE'),
+      this.db.query('SELECT COUNT(*) FROM users WHERE is_active=TRUE AND ($1::integer = 0 OR tenant_id = $1)', [tenantId]),
     ]);
     const stats = {
       open_leads:          Number(leads.rows[0].count),
@@ -162,8 +208,9 @@ export class SettingsService {
     return stats;
   }
 
-  async getDashboardCharts() {
-    const cacheKey = 'dashboard:charts';
+  async getDashboardCharts(ctx?: { tenant_id?: unknown; role?: unknown }) {
+    const tenantId = this.requireTenantId(ctx);
+    const cacheKey = `dashboard:charts:${tenantId || 'all'}`;
     const cached = await this.cache.get(cacheKey);
     if (cached) return cached;
 
@@ -181,19 +228,20 @@ export class SettingsService {
         this.db.query(
           `SELECT EXTRACT(MONTH FROM invoice_date)::int AS m, EXTRACT(YEAR FROM invoice_date)::int AS y,
                   COALESCE(SUM(total_amount),0) AS amount
-           FROM invoices WHERE invoice_date >= $1 AND invoice_date < $2 GROUP BY m, y`,
-          [fmtDate(curFYStart), fmtDate(curFYEnd)],
+           FROM invoices WHERE invoice_date >= $1 AND invoice_date < $2 AND ($3::integer = 0 OR tenant_id = $3) GROUP BY m, y`,
+          [fmtDate(curFYStart), fmtDate(curFYEnd), tenantId],
         ),
         this.db.query(
           `SELECT EXTRACT(MONTH FROM invoice_date)::int AS m, EXTRACT(YEAR FROM invoice_date)::int AS y,
                   COALESCE(SUM(total_amount),0) AS amount
-           FROM invoices WHERE invoice_date >= $1 AND invoice_date < $2 GROUP BY m, y`,
-          [fmtDate(prevFYStart), fmtDate(prevFYEnd)],
+           FROM invoices WHERE invoice_date >= $1 AND invoice_date < $2 AND ($3::integer = 0 OR tenant_id = $3) GROUP BY m, y`,
+          [fmtDate(prevFYStart), fmtDate(prevFYEnd), tenantId],
         ),
         this.db.query(
           `WITH top_clients AS (
              SELECT customer_id FROM invoices
              WHERE invoice_date >= $1 AND invoice_date < $2
+               AND ($3::integer = 0 OR tenant_id = $3)
              GROUP BY customer_id ORDER BY SUM(total_amount) DESC LIMIT 8
            )
            SELECT c.name AS customer_name,
@@ -204,21 +252,26 @@ export class SettingsService {
            JOIN customers c ON c.id = i.customer_id
            WHERE i.customer_id IN (SELECT customer_id FROM top_clients)
              AND i.invoice_date >= $1 AND i.invoice_date < $2
+             AND ($3::integer = 0 OR i.tenant_id = $3)
            GROUP BY c.name, m, y`,
-          [fmtDate(curFYStart), fmtDate(curFYEnd)],
+          [fmtDate(curFYStart), fmtDate(curFYEnd), tenantId],
         ),
         this.db.query(
           `SELECT c.name, COALESCE(SUM(i.total_amount),0) AS total_spent,
                   COUNT(i.id) AS invoice_count, MAX(i.invoice_date) AS last_purchase
            FROM customers c JOIN invoices i ON i.customer_id = c.id
+           WHERE ($1::integer = 0 OR i.tenant_id = $1)
            GROUP BY c.id, c.name ORDER BY total_spent DESC LIMIT 10`,
+          [tenantId],
         ),
         this.db.query(
           `SELECT i.invoice_number, c.name AS customer_name,
                   i.total_amount, i.status, i.invoice_date,
                   i.total_amount - COALESCE((SELECT SUM(amount) FROM payments WHERE invoice_id=i.id),0) AS balance
            FROM invoices i JOIN customers c ON c.id = i.customer_id
+           WHERE ($1::integer = 0 OR i.tenant_id = $1)
            ORDER BY i.created_at DESC LIMIT 6`,
+          [tenantId],
         ),
         this.db.query(
           `SELECT p.name, p.sku, p.low_stock_alert,
@@ -236,7 +289,9 @@ export class SettingsService {
                   COALESCE(SUM(CASE WHEN status='unpaid'  THEN total_amount ELSE 0 END),0) AS unpaid_amount,
                   COALESCE(SUM(CASE WHEN status='partial' THEN total_amount ELSE 0 END),0) AS partial_amount,
                   COUNT(DISTINCT customer_id) AS unique_customers
-           FROM invoices`,
+           FROM invoices
+           WHERE ($1::integer = 0 OR tenant_id = $1)`,
+          [tenantId],
         ),
       ]);
 

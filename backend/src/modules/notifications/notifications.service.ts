@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { FcmPushService } from './fcm-push.service';
 
@@ -9,36 +9,53 @@ export class NotificationsService {
     private readonly fcmPush: FcmPushService,
   ) {}
 
-  async list(userId: number) {
+  private isSuperAdmin(role?: unknown): boolean {
+    return String(role || '').trim().toLowerCase() === 'super admin';
+  }
+
+  private requireTenantId(ctx?: { tenant_id?: unknown; role?: unknown }): number {
+    if (this.isSuperAdmin(ctx?.role)) return 0;
+    const tenantId = Number(ctx?.tenant_id);
+    if (!Number.isInteger(tenantId) || tenantId <= 0) {
+      throw new ForbiddenException('Tenant context is required');
+    }
+    return tenantId;
+  }
+
+  async list(userId: number, ctx?: { tenant_id?: unknown; role?: unknown }) {
+    const tenantId = this.requireTenantId(ctx);
     const res = await this.db.query(
       `SELECT id, title, body, type, module, link, is_read, created_at
          FROM notifications
         WHERE user_id = $1
+          AND ($2::integer = 0 OR tenant_id = $2)
         ORDER BY created_at DESC
         LIMIT 100`,
-      [userId],
+      [userId, tenantId],
     );
     return res.rows;
   }
 
-  async unreadCount(userId: number): Promise<number> {
+  async unreadCount(userId: number, ctx?: { tenant_id?: unknown; role?: unknown }): Promise<number> {
+    const tenantId = this.requireTenantId(ctx);
     const res = await this.db.query(
-      'SELECT COUNT(*) FROM notifications WHERE user_id=$1 AND is_read=FALSE',
-      [userId],
+      'SELECT COUNT(*) FROM notifications WHERE user_id=$1 AND is_read=FALSE AND ($2::integer = 0 OR tenant_id = $2)',
+      [userId, tenantId],
     );
     return Number(res.rows[0].count);
   }
 
-  async markRead(userId: number, id?: number) {
+  async markRead(userId: number, id?: number, ctx?: { tenant_id?: unknown; role?: unknown }) {
+    const tenantId = this.requireTenantId(ctx);
     if (id) {
       await this.db.query(
-        'UPDATE notifications SET is_read=TRUE WHERE id=$1 AND user_id=$2',
-        [id, userId],
+        'UPDATE notifications SET is_read=TRUE WHERE id=$1 AND user_id=$2 AND ($3::integer = 0 OR tenant_id = $3)',
+        [id, userId, tenantId],
       );
     } else {
       await this.db.query(
-        'UPDATE notifications SET is_read=TRUE WHERE user_id=$1',
-        [userId],
+        'UPDATE notifications SET is_read=TRUE WHERE user_id=$1 AND ($2::integer = 0 OR tenant_id = $2)',
+        [userId, tenantId],
       );
     }
     return { ok: true };
@@ -46,6 +63,7 @@ export class NotificationsService {
 
   async create(data: {
     user_id: number;
+    tenant_id?: number;
     title:   string;
     body?:   string;
     type?:   string;
@@ -53,9 +71,9 @@ export class NotificationsService {
     link?:   string;
   }) {
     const res = await this.db.query(
-      `INSERT INTO notifications (user_id,title,body,type,module,link)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [data.user_id, data.title, data.body ?? null, data.type ?? 'info', data.module ?? null, data.link ?? null],
+      `INSERT INTO notifications (user_id,title,body,type,module,link,tenant_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [data.user_id, data.title, data.body ?? null, data.type ?? 'info', data.module ?? null, data.link ?? null, data.tenant_id ?? null],
     );
     return res.rows[0];
   }
@@ -66,6 +84,7 @@ export class NotificationsService {
    */
   async createInAppAndPush(data: {
     user_id: number;
+    tenant_id?: number;
     title: string;
     body?: string | null;
     type?: string;
@@ -77,6 +96,7 @@ export class NotificationsService {
       const bodyText = data.body != null && data.body !== '' ? String(data.body) : null;
       await this.create({
         user_id: data.user_id,
+        tenant_id: data.tenant_id,
         title: data.title,
         body: bodyText ?? undefined,
         type: data.type ?? 'info',
@@ -92,6 +112,7 @@ export class NotificationsService {
       }
       const push = await this.sendPushToUser({
         userId: data.user_id,
+        tenantId: data.tenant_id,
         title: data.title,
         body: bodyText ?? undefined,
         payload,
@@ -103,16 +124,18 @@ export class NotificationsService {
     }
   }
 
-  async deleteRead(userId: number) {
+  async deleteRead(userId: number, ctx?: { tenant_id?: unknown; role?: unknown }) {
+    const tenantId = this.requireTenantId(ctx);
     await this.db.query(
-      'DELETE FROM notifications WHERE user_id=$1 AND is_read=TRUE',
-      [userId],
+      'DELETE FROM notifications WHERE user_id=$1 AND is_read=TRUE AND ($2::integer = 0 OR tenant_id = $2)',
+      [userId, tenantId],
     );
     return { ok: true };
   }
 
   async registerPushToken(input: {
     userId: number;
+    tenantId?: number;
     token: string;
     platform?: string;
   }) {
@@ -121,28 +144,30 @@ export class NotificationsService {
     const platform = String(input.platform || '').trim().slice(0, 32) || null;
 
     await this.db.query(
-      `INSERT INTO notification_push_tokens (user_id, token, platform, is_active, last_seen_at, updated_at)
-       VALUES ($1,$2,$3,TRUE,NOW(),NOW())
+      `INSERT INTO notification_push_tokens (user_id, tenant_id, token, platform, is_active, last_seen_at, updated_at)
+       VALUES ($1,$2,$3,$4,TRUE,NOW(),NOW())
        ON CONFLICT (token)
        DO UPDATE
           SET user_id = EXCLUDED.user_id,
+              tenant_id = EXCLUDED.tenant_id,
               platform = EXCLUDED.platform,
               is_active = TRUE,
               last_seen_at = NOW(),
               updated_at = NOW()`,
-      [input.userId, token, platform],
+      [input.userId, input.tenantId ?? null, token, platform],
     );
     return { ok: true };
   }
 
-  async unregisterPushToken(input: { userId: number; token?: string }) {
+  async unregisterPushToken(input: { userId: number; tenantId?: number; token?: string }) {
+    const tenantId = Number(input.tenantId || 0);
     const token = String(input.token || '').trim();
     if (token) {
       await this.db.query(
         `UPDATE notification_push_tokens
             SET is_active = FALSE, updated_at = NOW()
-          WHERE user_id = $1 AND token = $2`,
-        [input.userId, token],
+          WHERE user_id = $1 AND token = $2 AND ($3::integer = 0 OR tenant_id = $3)`,
+        [input.userId, token, tenantId],
       );
       return { ok: true };
     }
@@ -150,14 +175,15 @@ export class NotificationsService {
     await this.db.query(
       `UPDATE notification_push_tokens
           SET is_active = FALSE, updated_at = NOW()
-        WHERE user_id = $1`,
-      [input.userId],
+        WHERE user_id = $1 AND ($2::integer = 0 OR tenant_id = $2)`,
+      [input.userId, tenantId],
     );
     return { ok: true };
   }
 
   async sendPushToUser(data: {
     userId: number;
+    tenantId?: number;
     title: string;
     body?: string;
     payload?: Record<string, string>;
@@ -166,8 +192,9 @@ export class NotificationsService {
       `SELECT token
          FROM notification_push_tokens
         WHERE user_id = $1
+          AND ($2::integer = 0 OR tenant_id = $2)
           AND is_active = TRUE`,
-      [data.userId],
+      [data.userId, data.tenantId ?? null],
     );
     const tokens = tokensRes.rows.map((r) => String(r.token || '').trim()).filter(Boolean);
     if (!tokens.length) return { ok: true, sent: 0, failed: 0 };
@@ -192,6 +219,8 @@ export class NotificationsService {
 
   async testPush(input: {
     actorUserId: number;
+    actorTenantId?: number;
+    actorRole?: string;
     targetUserId?: number;
     title?: string;
     body?: string;
@@ -200,6 +229,17 @@ export class NotificationsService {
       Number.isInteger(Number(input.targetUserId)) && Number(input.targetUserId) > 0
         ? Number(input.targetUserId)
         : Number(input.actorUserId);
+    const tenantId = Number(input.actorTenantId || 0);
+
+    if (!this.isSuperAdmin(input.actorRole) && targetUserId !== Number(input.actorUserId)) {
+      const sameTenant = await this.db.query(
+        'SELECT 1 FROM users WHERE id=$1 AND tenant_id=$2 LIMIT 1',
+        [targetUserId, tenantId],
+      );
+      if (!sameTenant.rows[0]) {
+        return { ok: false, target_user_id: targetUserId, sent: 0, failed: 0, message: 'Target user is outside tenant scope' };
+      }
+    }
 
     const title = String(input.title || '').trim() || 'Test push notification';
     const body =
@@ -208,6 +248,7 @@ export class NotificationsService {
 
     const push = await this.createInAppAndPush({
       user_id: targetUserId,
+      tenant_id: tenantId || undefined,
       title,
       body,
       type: 'info',
