@@ -806,21 +806,24 @@ export class SalesService {
         logoBuffer = await fetchRemoteLogoBuffer(logoUrl);
       }
       const hasLogo = Boolean(logoPath || logoBuffer);
-      const logoColW = 110;
+      // Header: left ~65% (logo), right 35% (company name / address / GSTIN); no inner vertical line
+      const rightColPct = 0.35;
+      const rightBlkW = Math.floor(pageWidth * rightColPct);
+      const leftColW = pageWidth - rightBlkW;
+      const rightTextW = Math.max(40, rightBlkW - 12);
       const addrLinesComp = topAddressTwoLines(String(company.address || ''));
-      const rightBlkW = pageWidth - logoColW - 12;
       const companyName = String(company.company_name || 'Company');
       const headerCompanyFontSize = 13;
       const headerAddressFontSize = 8;
       // Measure right-column text with real wrapping to avoid overlaps.
       pdf.font('Helvetica-Bold').fontSize(headerCompanyFontSize);
-      const companyNameH = pdf.heightOfString(companyName, { width: rightBlkW, align: 'right' });
+      const companyNameH = pdf.heightOfString(companyName, { width: rightTextW, align: 'right' });
       pdf.font('Helvetica').fontSize(headerAddressFontSize);
-      const addrHeights = addrLinesComp.map((ln) => pdf.heightOfString(ln, { width: rightBlkW, align: 'right' }));
+      const addrHeights = addrLinesComp.map((ln) => pdf.heightOfString(ln, { width: rightTextW, align: 'right' }));
       const addrTotalH = addrHeights.reduce((sum, h) => sum + h, 0);
       const addrGapH = addrLinesComp.length > 1 ? (addrLinesComp.length - 1) * 2 : 0;
       const gstText = company.gstin ? `GSTIN: ${String(company.gstin)}` : '';
-      const headerGstH = gstText.length === 0 ? 0 : pdf.heightOfString(gstText, { width: rightBlkW, align: 'right' });
+      const headerGstH = gstText.length === 0 ? 0 : pdf.heightOfString(gstText, { width: rightTextW, align: 'right' });
       let headerH = Math.ceil(6 + companyNameH + 4 + addrTotalH + addrGapH + (headerGstH > 0 ? 2 + headerGstH : 0) + 6);
       if (hasLogo) headerH = Math.max(headerH, 80);
       bumpPage(headerH + 36);
@@ -843,26 +846,22 @@ export class SalesService {
           /* optional logo */
         }
       }
-      pdf
-        .moveTo(pageLeft + logoColW, headerTop)
-        .lineTo(pageLeft + logoColW, headerTop + headerH)
-        .stroke(borderColor);
       let hy = headerTop + 6;
-      const rightX = pageLeft + logoColW + 6;
+      const rightX = pageLeft + leftColW + 6;
       pdf
         .fontSize(headerCompanyFontSize)
         .font('Helvetica-Bold')
         .fillColor('#000000')
-        .text(companyName, rightX, hy, { width: rightBlkW, align: 'right' });
+        .text(companyName, rightX, hy, { width: rightTextW, align: 'right' });
       hy += companyNameH + 4;
       pdf.fontSize(headerAddressFontSize).font('Helvetica');
       for (let i = 0; i < addrLinesComp.length; i++) {
         const ln = addrLinesComp[i];
-        pdf.text(ln, rightX, hy, { width: rightBlkW, align: 'right' });
+        pdf.text(ln, rightX, hy, { width: rightTextW, align: 'right' });
         hy += addrHeights[i] + 2;
       }
       if (gstText.length > 0) {
-        pdf.text(gstText, rightX, hy, { width: rightBlkW, align: 'right' });
+        pdf.text(gstText, rightX, hy, { width: rightTextW, align: 'right' });
         hy += headerGstH;
       }
       y = headerTop + headerH;
