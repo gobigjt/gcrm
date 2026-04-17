@@ -147,10 +147,7 @@ class _OrderFormViewState extends State<OrderFormView> {
                             onExecutiveChanged: (v) => c.selectedCreatedById.value = v,
                             sectionLabelStyle: salesFieldSectionLabel,
                           ),
-                          Obx(() => salesCustomerAddressPreview(
-                                context,
-                                customer: selectedCustomerMap(),
-                              )),
+                          
                         ],
                       ),
                     );

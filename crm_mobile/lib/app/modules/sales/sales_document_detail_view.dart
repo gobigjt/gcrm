@@ -238,7 +238,7 @@ class _SalesDocumentDetailViewState extends State<SalesDocumentDetailView> {
               ),
             ),
             const SizedBox(height: 12),
-            _customerBlock(d, isDark, cs),
+            _customerBlock(widget.kind, d, isDark, cs),
             const SizedBox(height: 12),
             _statusAndMeta(c, widget.kind, d, isDark, cs, approval),
             if ((d['notes'] ?? '').toString().trim().isNotEmpty) ...[
@@ -268,13 +268,14 @@ class _SalesDocumentDetailViewState extends State<SalesDocumentDetailView> {
   }
 }
 
-Widget _customerBlock(Map<String, dynamic> d, bool isDark, ColorScheme cs) {
+Widget _customerBlock(SalesDocumentKind kind, Map<String, dynamic> d, bool isDark, ColorScheme cs) {
   final billAddr = (d['customer_billing_address'] ?? d['customer_address'] ?? '').toString().trim();
   final shipAddr = (d['customer_shipping_address'] ?? '').toString().trim();
   final phone = (d['customer_phone'] ?? '').toString().trim();
   final email = (d['customer_email'] ?? '').toString().trim();
   final gst = (d['customer_gstin'] ?? '').toString().trim();
-  if (billAddr.isEmpty && shipAddr.isEmpty && phone.isEmpty && email.isEmpty && gst.isEmpty) {
+  final showAddresses = kind != SalesDocumentKind.quotation;
+  if ((!showAddresses || billAddr.isEmpty) && (!showAddresses || shipAddr.isEmpty) && phone.isEmpty && email.isEmpty && gst.isEmpty) {
     return const SizedBox.shrink();
   }
   return Card(
@@ -290,14 +291,14 @@ Widget _customerBlock(Map<String, dynamic> d, bool isDark, ColorScheme cs) {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Bill to', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: cs.onSurface)),
-          if (billAddr.isNotEmpty) ...[
+          if (showAddresses && billAddr.isNotEmpty) ...[
             const SizedBox(height: 6),
             Text(
               'Billing: $billAddr',
               style: TextStyle(fontSize: 13, height: 1.35, color: cs.onSurface.withValues(alpha: 0.9)),
             ),
           ],
-          if (shipAddr.isNotEmpty)
+          if (showAddresses && shipAddr.isNotEmpty)
             Text(
               'Shipping: $shipAddr',
               style: TextStyle(fontSize: 12, height: 1.3, color: isDark ? cs.onSurfaceVariant : Colors.grey.shade700),
