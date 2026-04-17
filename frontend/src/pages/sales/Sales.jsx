@@ -37,11 +37,6 @@ function printSalesDoc(kind, doc) {
   void printSalesDocument(kind, doc);
 }
 
-function downloadSalesPdf(kind, doc) {
-  if (!doc) return;
-  void downloadSalesDocument(kind, doc);
-}
-
 function printInvoiceDoc(invoice) {
   void printSalesDocument('invoice', invoice);
 }
@@ -1247,6 +1242,7 @@ function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation, onEditInv
   const { show } = useToast();
   const [doc,     setDoc]     = useState(null);
   const [paying,  setPaying]  = useState(false);
+  const [pdfDownloading, setPdfDownloading] = useState(false);
   const autoPdfTriggeredRef = useRef(false);
 
   useEffect(() => {
@@ -1265,11 +1261,23 @@ function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation, onEditInv
 
   useEffect(() => { load(); }, [load]);
 
+  const runDownloadPdf = useCallback(async () => {
+    if (!doc) return;
+    setPdfDownloading(true);
+    try {
+      await downloadSalesDocument(type, doc);
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not download PDF'), 'error');
+    } finally {
+      setPdfDownloading(false);
+    }
+  }, [doc, type, show]);
+
   useEffect(() => {
     if (!autoDownloadPdf || !doc || autoPdfTriggeredRef.current) return;
     autoPdfTriggeredRef.current = true;
-    downloadSalesPdf(type, doc);
-  }, [autoDownloadPdf, doc, type]);
+    void runDownloadPdf();
+  }, [autoDownloadPdf, doc, runDownloadPdf]);
 
   const changeStatus = async (status) => {
     const path = { quotation:'/sales/quotations', order:'/sales/orders' }[type];
@@ -1311,11 +1319,23 @@ function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation, onEditInv
   const statuses = type === 'quotation' ? QUOTE_STATUSES : type === 'order' ? ORDER_STATUSES : [];
 
   const contentShellCls = fullPage
-    ? 'w-full max-w-none bg-white dark:bg-[#13152a] flex flex-col overflow-hidden'
-    : 'w-full max-w-xl sm:max-w-2xl bg-white dark:bg-[#13152a] shadow-2xl flex flex-col border-l border-slate-200/80 dark:border-slate-700/50 overflow-hidden';
+    ? 'w-full max-w-none bg-white dark:bg-[#13152a] flex flex-col overflow-hidden relative'
+    : 'w-full max-w-xl sm:max-w-2xl bg-white dark:bg-[#13152a] shadow-2xl flex flex-col border-l border-slate-200/80 dark:border-slate-700/50 overflow-hidden relative';
 
   const content = (
     <div className={contentShellCls}>
+        {pdfDownloading && (
+          <div
+            className="absolute inset-0 z-20 flex items-center justify-center bg-white/75 dark:bg-[#13152a]/80 backdrop-blur-[2px]"
+            aria-busy="true"
+            aria-live="polite"
+          >
+            <div className="flex flex-col items-center gap-3 rounded-xl bg-white dark:bg-slate-800 px-6 py-5 shadow-lg border border-slate-200/90 dark:border-slate-600/60">
+              <div className="h-9 w-9 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
+              <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Downloading PDF…</p>
+            </div>
+          </div>
+        )}
 
         {/* Header */}
         <div className="px-6 pt-5 pb-4 border-b border-slate-100 dark:border-slate-700/50 flex-shrink-0">
@@ -1367,10 +1387,14 @@ function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation, onEditInv
                   </button>
                   <button
                     type="button"
-                    onClick={() => downloadSalesPdf(type, doc)}
-                    className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600"
+                    onClick={() => void runDownloadPdf()}
+                    disabled={pdfDownloading}
+                    className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600 disabled:opacity-60 disabled:pointer-events-none inline-flex items-center gap-1.5"
                   >
-                    Download PDF
+                    {pdfDownloading && (
+                      <span className="inline-block h-3.5 w-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" aria-hidden />
+                    )}
+                    {pdfDownloading ? 'Downloading…' : 'Download PDF'}
                   </button>
                 </>
               )}
