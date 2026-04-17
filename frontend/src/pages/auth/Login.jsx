@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth }  from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 
@@ -13,6 +13,8 @@ export default function Login() {
   const { login } = useAuth();
   const { dark, toggle } = useTheme();
   const navigate = useNavigate();
+  const { tenantSlug } = useParams();
+  const urlTenantSlug = String(tenantSlug || '').trim().toLowerCase();
   const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -23,7 +25,7 @@ export default function Login() {
     setError('');
     setLoading(true);
     try {
-      await login(form.email, form.password);
+      await login(form.email, form.password, urlTenantSlug);
       navigate('/');
     } catch (err) {
       const msg = err.response?.data?.message;
@@ -67,6 +69,11 @@ export default function Login() {
             </div>
           )}
           <form onSubmit={handleSubmit} className="space-y-4">
+            {urlTenantSlug && (
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                Workspace: <span className="font-semibold text-slate-500 dark:text-slate-400">{urlTenantSlug}</span>
+              </p>
+            )}
             <div>
               <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">Email</label>
               <input type="email" required placeholder="you@company.com" value={form.email}

@@ -16,11 +16,11 @@ export class RegisterDto {
   password: string;
 
   @ApiPropertyOptional({
-    enum: ['Super Admin', 'Admin', 'Sales Executive', 'HR'],
+    enum: ['Admin', 'Sales Executive', 'HR'],
     default: 'Sales Executive',
   })
   @IsOptional()
-  @IsIn(['Super Admin', 'Admin', 'Sales Executive', 'HR'])
+  @IsIn(['Admin', 'Sales Executive', 'HR'])
   role?: string;
 
   @ApiPropertyOptional({ example: 'igloo-tiles', description: 'Tenant slug for SaaS registration routing' })

@@ -6,6 +6,7 @@ class SecureStorageService {
   static const _accessTokenKey = 'access_token';
   static const _refreshTokenKey = 'refresh_token';
   static const _userKey = 'user_payload';
+  static const _tenantSlugKey = 'last_tenant_slug';
 
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
 
@@ -37,4 +38,17 @@ class SecureStorageService {
     await _storage.delete(key: _refreshTokenKey);
     await _storage.delete(key: _userKey);
   }
+
+  Future<void> saveTenantSlug(String slug) async {
+    final v = slug.trim().toLowerCase();
+    if (v.isEmpty) {
+      await _storage.delete(key: _tenantSlugKey);
+      return;
+    }
+    await _storage.write(key: _tenantSlugKey, value: v);
+  }
+
+  Future<String?> readTenantSlug() => _storage.read(key: _tenantSlugKey);
+
+  Future<void> clearTenantSlug() => _storage.delete(key: _tenantSlugKey);
 }

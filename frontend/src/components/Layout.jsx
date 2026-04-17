@@ -26,6 +26,7 @@ const PAGE_META = {
   '/settings': { title: 'Settings', cta: 'Save All', ctaTo: '/settings' },
   '/profile': { title: 'Profile', cta: 'Open Settings', ctaTo: '/settings' },
   '/users': { title: 'Users & Roles', cta: '+ Invite User', ctaTo: '/users?tab=users' },
+  '/tenants': { title: 'Tenants', cta: '+ New Tenant', ctaTo: '/tenants' },
 };
 
 /** Wireframe-aligned sections (documents/EZcrm_web_1.html). */
@@ -74,6 +75,7 @@ const NAV_SECTIONS = [
     items: [
       { to: '/users?tab=users', label: 'Users & Roles', icon: '◈', module: 'users' },
       { to: '/users?tab=permissions', label: 'Permissions', icon: '▦', module: 'users' },
+      { to: '/tenants', label: 'Tenants', icon: '⌂', module: null, roles: ['Super Admin'] },
       { to: '/settings', label: 'Settings', icon: '◌', module: 'settings' },
     ],
   },

@@ -409,12 +409,13 @@ export class LeadsService {
   async create(data: any, currentUser?: { tenant_id?: unknown; role?: unknown }) {
     const tenantId = this.requireTenantId(currentUser as any);
     const tags = Array.isArray(data.tags) ? data.tags.map(String) : [];
+    const leadAddress = data.address ?? data.billing_address ?? null;
     const res = await this.db.query(
       `INSERT INTO leads (
          name,email,phone,company,source_id,stage_id,assigned_to,assigned_manager_id,notes,priority,custom_fields,
-         lead_segment,job_title,product_category,deal_size,website,address,billing_address,shipping_address,tags,lead_score,created_by,tenant_id
+         lead_segment,job_title,product_category,deal_size,website,address,shipping_address,tags,lead_score,created_by,tenant_id
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::text[],$21,$22) RETURNING *`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19::text[],$20,$21,$22) RETURNING *`,
       [
         data.name, data.email, data.phone, data.company, data.source_id,
         data.stage_id, data.assigned_to || null, data.assigned_manager_id || null, data.notes,
@@ -425,8 +426,7 @@ export class LeadsService {
         data.product_category ?? null,
         data.deal_size ?? null,
         data.website ?? null,
-        data.address ?? null,
-        data.billing_address ?? null,
+        leadAddress,
         data.shipping_address ?? null,
         tags,
         data.lead_score != null ? Number(data.lead_score) : 0,
@@ -465,6 +465,11 @@ export class LeadsService {
     );
     const prevSnap = prevSnapRes.rows[0];
 
+    // Backward-compat: older clients may still send billing_address.
+    if (data.address === undefined && data.billing_address !== undefined) {
+      data.address = data.billing_address;
+    }
+
     let prevAssignee: number | null | undefined;
     if (data.assigned_to !== undefined) {
       prevAssignee = prevSnap ? (prevSnap.assigned_to != null ? Number(prevSnap.assigned_to) : null) : null;
@@ -472,7 +477,7 @@ export class LeadsService {
     const fields = [
       'name', 'email', 'phone', 'company', 'source_id', 'stage_id', 'assigned_to', 'assigned_manager_id', 'notes',
       'priority', 'custom_fields', 'is_converted', 'lead_score',
-      'lead_segment', 'job_title', 'product_category', 'deal_size', 'website', 'address', 'billing_address', 'shipping_address', 'tags',
+      'lead_segment', 'job_title', 'product_category', 'deal_size', 'website', 'address', 'shipping_address', 'tags',
     ];
     const sets: string[] = [];
     const vals: any[] = [];

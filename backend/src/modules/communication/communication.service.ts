@@ -1,27 +1,52 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 
 @Injectable()
 export class CommunicationService {
   constructor(private readonly db: DatabaseService) {}
 
-  async listTemplates() { return (await this.db.query('SELECT * FROM comm_templates ORDER BY channel,name')).rows; }
-  async createTemplate(d: any) {
-    return (await this.db.query(
-      'INSERT INTO comm_templates (name,channel,subject,body) VALUES ($1,$2,$3,$4) RETURNING *',
-      [d.name, d.channel, d.subject, d.body],
-    )).rows[0];
+  private isSuperAdmin(ctx?: any): boolean {
+    return String(ctx?.role || '').trim().toLowerCase() === 'super admin';
   }
-  async updateTemplate(id: number, d: any) {
-    return (await this.db.query(
-      'UPDATE comm_templates SET name=$1,channel=$2,subject=$3,body=$4 WHERE id=$5 RETURNING *',
-      [d.name, d.channel, d.subject, d.body, id],
-    )).rows[0];
-  }
-  async deleteTemplate(id: number) { await this.db.query('DELETE FROM comm_templates WHERE id=$1', [id]); }
 
-  async listLogs(filters: { lead_id?: number; channel?: string }) {
-    const conds: string[] = []; const vals: any[] = []; let i = 1;
+  private requireTenantId(ctx?: any): number {
+    if (this.isSuperAdmin(ctx)) return 0;
+    const tenantId = Number(ctx?.tenant_id);
+    if (!Number.isInteger(tenantId) || tenantId <= 0) {
+      throw new ForbiddenException('Tenant context is required');
+    }
+    return tenantId;
+  }
+
+  async listTemplates(ctx?: any) {
+    const tenantId = this.requireTenantId(ctx);
+    return (await this.db.query(
+      'SELECT * FROM comm_templates WHERE ($1::integer = 0 OR tenant_id = $1) ORDER BY channel,name',
+      [tenantId],
+    )).rows;
+  }
+  async createTemplate(d: any, ctx?: any) {
+    const tenantId = this.requireTenantId(ctx);
+    return (await this.db.query(
+      'INSERT INTO comm_templates (name,channel,subject,body,tenant_id) VALUES ($1,$2,$3,$4,$5) RETURNING *',
+      [d.name, d.channel, d.subject, d.body, tenantId || null],
+    )).rows[0];
+  }
+  async updateTemplate(id: number, d: any, ctx?: any) {
+    const tenantId = this.requireTenantId(ctx);
+    return (await this.db.query(
+      'UPDATE comm_templates SET name=$1,channel=$2,subject=$3,body=$4 WHERE id=$5 AND ($6::integer = 0 OR tenant_id = $6) RETURNING *',
+      [d.name, d.channel, d.subject, d.body, id, tenantId],
+    )).rows[0];
+  }
+  async deleteTemplate(id: number, ctx?: any) {
+    const tenantId = this.requireTenantId(ctx);
+    await this.db.query('DELETE FROM comm_templates WHERE id=$1 AND ($2::integer = 0 OR tenant_id = $2)', [id, tenantId]);
+  }
+
+  async listLogs(filters: { lead_id?: number; channel?: string }, ctx?: any) {
+    const tenantId = this.requireTenantId(ctx);
+    const conds: string[] = ['($1::integer = 0 OR cl.tenant_id = $1)']; const vals: any[] = [tenantId]; let i = 2;
     if(filters.lead_id) { conds.push(`lead_id=$${i++}`); vals.push(filters.lead_id); }
     if(filters.channel) { conds.push(`channel=$${i++}`); vals.push(filters.channel); }
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
@@ -30,7 +55,8 @@ export class CommunicationService {
     )).rows;
   }
 
-  async listWhatsAppInbox() {
+  async listWhatsAppInbox(ctx?: any) {
+    const tenantId = this.requireTenantId(ctx);
     // Latest WhatsApp message per lead (inbox view).
     // DISTINCT ON is a Postgres feature; order ensures the latest per lead_id is returned.
     return (await this.db.query(
@@ -49,14 +75,17 @@ export class CommunicationService {
         LEFT JOIN lead_stages ls ON ls.id = l.stage_id
         LEFT JOIN users u ON u.id = cl.sent_by
        WHERE cl.channel = 'whatsapp' AND cl.lead_id IS NOT NULL
+         AND ($1::integer = 0 OR cl.tenant_id = $1)
        ORDER BY cl.lead_id, cl.sent_at DESC
        LIMIT 200`,
+      [tenantId],
     )).rows;
   }
-  async createLog(d: any) {
+  async createLog(d: any, ctx?: any) {
+    const tenantId = this.requireTenantId(ctx);
     return (await this.db.query(
-      'INSERT INTO comm_logs (lead_id,channel,recipient,subject,body,status,sent_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
-      [d.lead_id, d.channel, d.recipient, d.subject, d.body, d.status||'sent', d.sent_by],
+      'INSERT INTO comm_logs (lead_id,channel,recipient,subject,body,status,sent_by,tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
+      [d.lead_id, d.channel, d.recipient, d.subject, d.body, d.status||'sent', d.sent_by, tenantId || null],
     )).rows[0];
   }
 }

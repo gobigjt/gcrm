@@ -140,11 +140,15 @@ class ApiClient {
   Future<Map<String, dynamic>> login({
     required String email,
     required String password,
+    String? tenantSlug,
   }) async {
+    final slug = (tenantSlug ?? '').trim().toLowerCase();
+    final body = <String, dynamic>{'email': email, 'password': password};
+    if (slug.isNotEmpty) body['tenant_slug'] = slug;
     final data = await request(
       method: 'POST',
       path: '/auth/login',
-      body: {'email': email, 'password': password},
+      body: body,
     );
     return Map<String, dynamic>.from(data as Map);
   }
