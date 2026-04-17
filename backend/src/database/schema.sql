@@ -235,6 +235,7 @@ CREATE TABLE IF NOT EXISTS company_settings (
   invoice_tagline   TEXT,
   payment_terms     TEXT,
   invoice_bank_details TEXT,
+  invoice_footer_content TEXT,
   bank_name         VARCHAR(200),
   bank_branch       VARCHAR(200),
   bank_account_number VARCHAR(80),

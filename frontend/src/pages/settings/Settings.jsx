@@ -197,6 +197,15 @@ function CompanyTab({ user }) {
               placeholder="Shown on Tax Invoice after totals."
             />
           </Field>
+          <Field label="Invoice footer (print & PDF)">
+            <textarea
+              className={inputCls}
+              rows={3}
+              value={form.invoice_footer_content || ''}
+              onChange={set('invoice_footer_content')}
+              placeholder="Optional custom footer lines. If empty, system uses address and GSTIN."
+            />
+          </Field>
         </section>
 
         <section className="rounded-xl border border-slate-200 dark:border-slate-700/50 p-4 h-full">
