@@ -17,6 +17,18 @@ function singleLineFooterText(text: string): string {
     .trim();
 }
 
+function buildInvoiceFooterContent(company: Record<string, unknown>): string {
+  const custom = String(company.invoice_footer_content || '').trim();
+  if (custom) return custom;
+  const footerBody = singleLineFooterText(
+    String(company.address || '').trim() || String(company.company_name || '').trim() || '—',
+  );
+  const footerMeta = company.gstin
+    ? `GSTIN: ${String(company.gstin)}`
+    : `Company: ${String(company.company_name || '—')}`;
+  return `Contact: ${footerBody}\n${footerMeta}`;
+}
+
 function topAddressTwoLines(address: string): string[] {
   const raw = String(address || '').trim();
   if (!raw) return [''];
@@ -768,7 +780,7 @@ export class SalesService {
     const fileName = `${safeKind}-${id}-${Date.now()}.pdf`;
     const filePath = join(pdfDir, fileName);
 
-    const pdf = new PDFDocument({ size: 'A4', margin: 40, bufferPages: true });
+    const pdf = new PDFDocument({ size: 'A4', margin: 28, bufferPages: true });
     const unicodeFonts = resolvePdfUnicodeFontSet();
     const fontRegular = unicodeFonts ? 'PdfUnicodeRegular' : 'Helvetica';
     const fontBold = unicodeFonts ? 'PdfUnicodeBold' : 'Helvetica-Bold';
@@ -799,7 +811,7 @@ export class SalesService {
 
     if (kind === 'quotation' || kind === 'order' || kind === 'invoice') {
       const m = pdf.page.margins;
-      const pageSidePad = 12;
+      const pageSidePad = 8;
       const pageLeft = m.left + pageSidePad;
       const pageRight = pdf.page.width - m.right - pageSidePad;
       const pageWidth = pageRight - pageLeft;
@@ -807,14 +819,8 @@ export class SalesService {
       const borderColorSoft = '#C7CFD9';
       const borderWidth = 0.6;
 
-      const footerBody = singleLineFooterText(
-        String(company.address || '').trim() || String(company.company_name || '').trim() || '—',
-      );
-      const footerMeta = company.gstin
-        ? `GSTIN: ${String(company.gstin)}`
-        : `Company: ${String(company.company_name || '—')}`;
-      const footerLine1 = `Contact: ${footerBody} | ${footerMeta}`;
-      const footerText = `${footerLine1}\nPage 1 of 1`;
+      const footerBaseText = buildInvoiceFooterContent(company as Record<string, unknown>);
+      const footerText = `${footerBaseText}\nPage 1 of 1`;
       pdf.font('Helvetica').fontSize(7);
       const footerHeight = pdf.heightOfString(footerText, { width: pageWidth, align: 'center' });
       const footerBand = Math.max(footerHeight + 18, 44);
@@ -1159,16 +1165,76 @@ export class SalesService {
       pdf.fillColor('#000000');
       y += totalsBoxH + 8;
 
-      const colW = (pageWidth - 8) / 2;
-      const blockH = 92;
-      bumpPage(blockH + 48);
-      pdf.rect(pageLeft, y, colW, blockH).lineWidth(borderWidth).stroke(borderColor);
-      pdf.rect(pageLeft + colW + 8, y, colW, blockH).lineWidth(borderWidth).stroke(borderColor);
-      pdf.font('Helvetica-Bold').fontSize(9).text('Terms And Conditions:', pageLeft + 6, y + 6);
-      pdf.font('Helvetica').fontSize(8).text(terms || '—', pageLeft + 6, y + 18, { width: colW - 12, height: blockH - 24 });
-      pdf.font('Helvetica-Bold').fontSize(9).text('Bank Details:', pageLeft + colW + 14, y + 6);
-      pdf.font('Helvetica').fontSize(8).text(bankBlock, pageLeft + colW + 14, y + 18, { width: colW - 12, height: blockH - 24 });
-      y += blockH + 10;
+      const colGap = 8;
+      const colW = (pageWidth - colGap) / 2;
+      const termsHeaderH = 18;
+      const lineH = 10;
+      const colInnerW = Math.max(0, colW - 12);
+      const wrapPdfLines = (rawText: string): string[] => {
+        const src = String(rawText || '').replace(/\r/g, '');
+        const lines: string[] = [];
+        const paragraphs = src.split('\n');
+        pdf.font('Helvetica').fontSize(8);
+        for (const para of paragraphs) {
+          const trimmed = para.trim();
+          if (!trimmed) {
+            lines.push('');
+            continue;
+          }
+          const words = trimmed.split(/\s+/).filter(Boolean);
+          let current = '';
+          for (const w of words) {
+            const next = current ? `${current} ${w}` : w;
+            if (!current || pdf.widthOfString(next) <= colInnerW) current = next;
+            else {
+              lines.push(current);
+              current = w;
+            }
+          }
+          if (current) lines.push(current);
+        }
+        return lines.length ? lines : ['—'];
+      };
+      const termsLines = wrapPdfLines(String(terms || '').trim() || '—');
+      const bankLines = wrapPdfLines(String(bankBlock || '').trim() || '—');
+      let termsIdx = 0;
+      let bankIdx = 0;
+      while (termsIdx < termsLines.length || bankIdx < bankLines.length) {
+        bumpPage(termsHeaderH + lineH * 2 + 18);
+        const leftX = pageLeft;
+        const rightX = pageLeft + colW + colGap;
+        const bodyTop = y + termsHeaderH + 6;
+        const availableBody = Math.max(10, bottomLimit - bodyTop - 8);
+        const linesPerChunk = Math.max(1, Math.floor(availableBody / lineH));
+        const termsChunk = termsLines.slice(termsIdx, termsIdx + linesPerChunk);
+        const bankChunk = bankLines.slice(bankIdx, bankIdx + linesPerChunk);
+        const usedLines = Math.max(termsChunk.length, bankChunk.length, 1);
+        const blockH = termsHeaderH + 6 + usedLines * lineH + 6;
+
+        pdf.rect(leftX, y, colW, blockH).lineWidth(borderWidth).stroke(borderColor);
+        pdf.rect(rightX, y, colW, blockH).lineWidth(borderWidth).stroke(borderColor);
+        pdf.font('Helvetica-Bold').fontSize(9).fillColor('#000000').text(
+          termsIdx > 0 ? 'Terms And Conditions (contd.):' : 'Terms And Conditions:',
+          leftX + 6,
+          y + 5,
+        );
+        pdf.font('Helvetica-Bold').fontSize(9).fillColor('#000000').text(
+          bankIdx > 0 ? 'Bank Details (contd.):' : 'Bank Details:',
+          rightX + 6,
+          y + 5,
+        );
+
+        pdf.font('Helvetica').fontSize(8).fillColor('#000000');
+        for (let li = 0; li < usedLines; li += 1) {
+          const ly = bodyTop + li * lineH;
+          if (termsChunk[li]) pdf.text(termsChunk[li], leftX + 6, ly, { width: colInnerW, lineBreak: false });
+          if (bankChunk[li]) pdf.text(bankChunk[li], rightX + 6, ly, { width: colInnerW, lineBreak: false });
+        }
+
+        termsIdx += termsChunk.length;
+        bankIdx += bankChunk.length;
+        y += blockH + 8;
+      }
 
       bumpPage(56);
       pdf.font('Helvetica-Oblique').fontSize(9).text('Thanks for your business', pageLeft, y);
@@ -1229,21 +1295,15 @@ export class SalesService {
 
     {
       const m = pdf.page.margins;
-      const pageSidePad = 12;
+      const pageSidePad = 8;
       const footerLeft = m.left + pageSidePad;
       const footerWidth = Math.max(0, pdf.page.width - m.left - m.right - pageSidePad * 2);
-      const footerBody = singleLineFooterText(
-        String(company.address || '').trim() || String(company.company_name || '').trim() || '—',
-      );
-      const footerMeta = company.gstin
-        ? `GSTIN: ${String(company.gstin)}`
-        : `Company: ${String(company.company_name || '—')}`;
-      const footerLine1 = `Contact: ${footerBody} | ${footerMeta}`;
+      const footerBaseText = buildInvoiceFooterContent(company as Record<string, unknown>);
       const fr = pdf.bufferedPageRange();
       for (let pi = fr.start; pi < fr.start + fr.count; pi++) {
         pdf.switchToPage(pi);
         pdf.font('Helvetica').fontSize(7);
-        const footerText = `${footerLine1}\nPage ${pi - fr.start + 1} of ${fr.count}`;
+        const footerText = `${footerBaseText}\nPage ${pi - fr.start + 1} of ${fr.count}`;
         const footerHeight = pdf.heightOfString(footerText, { width: footerWidth, align: 'center' });
         const fy = pdf.page.height - m.bottom - footerHeight - 10;
         pdf.fillColor('#666666').text(footerText, footerLeft, fy, {

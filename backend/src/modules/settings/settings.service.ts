@@ -43,7 +43,7 @@ export class SettingsService {
     const existing = await this.getCompanySettings(ctx);
     let result: any;
     if (existing) {
-      const fields = ['company_name','gstin','address','phone','email','logo_url','invoice_logo_url','favicon_url','currency','fiscal_year_start','invoice_tagline','payment_terms','invoice_bank_details','bank_name','bank_branch','bank_account_number','bank_ifsc'];
+      const fields = ['company_name','gstin','address','phone','email','logo_url','invoice_logo_url','favicon_url','currency','fiscal_year_start','invoice_tagline','payment_terms','invoice_bank_details','invoice_footer_content','bank_name','bank_branch','bank_account_number','bank_ifsc'];
       const sets: string[] = []; const vals: any[] = []; let i = 1;
       for (const f of fields) { if(data[f]!==undefined){ sets.push(`${f}=$${i++}`); vals.push(data[f]); } }
       sets.push('updated_at=NOW()');
@@ -55,8 +55,8 @@ export class SettingsService {
       )).rows[0];
     } else {
       result = (await this.db.query(
-        'INSERT INTO company_settings (company_name,gstin,address,phone,email,logo_url,invoice_logo_url,favicon_url,currency,fiscal_year_start,invoice_tagline,payment_terms,invoice_bank_details,bank_name,bank_branch,bank_account_number,bank_ifsc,tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *',
-        [data.company_name||'My Company', data.gstin, data.address, data.phone, data.email, data.logo_url, data.invoice_logo_url, data.favicon_url, data.currency||'INR', data.fiscal_year_start, data.invoice_tagline, data.payment_terms, data.invoice_bank_details, data.bank_name, data.bank_branch, data.bank_account_number, data.bank_ifsc, tenantId || null],
+        'INSERT INTO company_settings (company_name,gstin,address,phone,email,logo_url,invoice_logo_url,favicon_url,currency,fiscal_year_start,invoice_tagline,payment_terms,invoice_bank_details,invoice_footer_content,bank_name,bank_branch,bank_account_number,bank_ifsc,tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *',
+        [data.company_name||'My Company', data.gstin, data.address, data.phone, data.email, data.logo_url, data.invoice_logo_url, data.favicon_url, data.currency||'INR', data.fiscal_year_start, data.invoice_tagline, data.payment_terms, data.invoice_bank_details, data.invoice_footer_content, data.bank_name, data.bank_branch, data.bank_account_number, data.bank_ifsc, tenantId || null],
       )).rows[0];
     }
     await this.cache.del(`company:settings:${tenantId || 'all'}`);

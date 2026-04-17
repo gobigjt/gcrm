@@ -36,6 +36,23 @@ function singleLineFooterText(text) {
     .trim();
 }
 
+function buildInvoiceFooterContent(company = {}) {
+  const custom = String(company.invoice_footer_content || '').trim();
+  if (custom) return custom;
+  const contact = singleLineFooterText((company.address || '').trim() || (company.company_name || '').trim() || '');
+  const gstOrName = company.gstin ? `GSTIN: ${company.gstin}` : (company.company_name || '');
+  return [`Contact: ${contact}`, gstOrName].filter(Boolean).join('\n');
+}
+
+function invoiceFooterHtml(company = {}) {
+  const lines = buildInvoiceFooterContent(company)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (!lines.length) return '';
+  return lines.map((line) => `<div>${escapeHtml(line)}</div>`).join('');
+}
+
 /** DD-MM-YYYY (matches common Indian invoice PDFs) */
 export function fmtInvoiceDate(dt) {
   if (!dt) return '—';
@@ -280,9 +297,11 @@ function documentDateLabel(kind) {
 }
 
 /** Billing / delivery box body (same content as print HTML). */
-function customerAddressBlockText(doc) {
+function customerAddressBlockText(doc, mode = 'billing') {
   const name = doc.customer_name || '—';
-  const addr = (doc.customer_address || '').trim();
+  const billingAddr = (doc.customer_billing_address || doc.customer_address || '').trim();
+  const shippingAddr = (doc.customer_shipping_address || '').trim();
+  const addr = mode === 'delivery' ? (shippingAddr || billingAddr) : billingAddr;
   const gst = doc.customer_gstin ? `GSTIN: ${doc.customer_gstin}` : '';
   return [name, addr, gst].filter(Boolean).join('\n');
 }
@@ -403,6 +422,8 @@ export function buildSalesDocumentHtml(doc, company, logoDataUrl = null, kind = 
   );
   const createdByName = escapeHtml(doc.creator_name || doc.created_by_name || doc.created_by || '—');
   const bankDetails = formatBankDetailsBlock(company);
+  const billingAddress = (doc.customer_billing_address || doc.customer_address || '').trim();
+  const deliveryAddress = (doc.customer_shipping_address || billingAddress).trim();
 
   const metaLeft = [
     [`${documentNoLabel(kind)}`, escapeHtml(docNo)],
@@ -423,10 +444,10 @@ export function buildSalesDocumentHtml(doc, company, logoDataUrl = null, kind = 
   const terms = stripBankDetailsFromTerms([doc.notes || '', company.payment_terms || ''].filter(Boolean).join('\n'));
 
   // shared border shorthand helpers (inline only — no global CSS collapse conflicts)
-  const SB = 'border:1px solid #444';   // solid all sides
-  const BR = 'border-right:1px solid #444';
-  const BT = 'border-top:1px solid #444';
-  const BD = 'border-bottom:1px solid #ddd';
+  const SB = 'border:1px solid #cfd5dd';   // solid all sides
+  const BR = 'border-right:1px solid #cfd5dd';
+  const BT = 'border-top:1px solid #cfd5dd';
+  const BD = 'border-bottom:1px solid #cfd5dd';
 
   // items rows — each cell gets right border except last column
   const itemRowsHtml = (doc.items || []).map((it, idx) => {
@@ -469,8 +490,8 @@ export function buildSalesDocumentHtml(doc, company, logoDataUrl = null, kind = 
     body { font-family:Arial,Helvetica,sans-serif; font-size:11px; color:#111; background:#fff; }
     ${rasterLayout ? 'body{max-width:794px;margin:0 auto;padding:6px 10px 32px;}' : ''}
     strong { font-weight:700; }
-    .wrap { border:1px solid #444; width:100%; }
-    .sec  { border-top:1px solid #444; width:100%; }
+    .wrap { border:1px solid #cfd5dd; width:100%; }
+    .sec  { border-top:1px solid #cfd5dd; width:100%; }
     .sheet-footer { margin-top:5px; left: 20mm; right: 20mm; padding: 0 20px; text-align:center; font-size:9px; color:#666; white-space:normal; line-height:1.3; width:100%; }
     .sheet-footer div { display:block; }
     @media print {
@@ -492,10 +513,10 @@ export function buildSalesDocumentHtml(doc, company, logoDataUrl = null, kind = 
   <!-- ① HEADER: logo left · company right -->
   <table width="100%" style="border-collapse:collapse">
     <tr>
-      <td style="padding:10px 12px;vertical-align:middle;width:110px">
+      <td style="padding:10px 12px;vertical-align:middle;width:68%">
         ${logoSrc ? `<img src="${escapeHtml(logoSrc)}" alt="" style="max-width:100px;max-height:80px;object-fit:contain;display:block"/>` : ''}
       </td>
-      <td style="padding:8px 10px;vertical-align:top;text-align:right;border-left:1px solid #444">
+      <td style="padding:8px 10px;vertical-align:top;text-align:right;width:32%">
         <div style="font-size:18px;font-weight:700;letter-spacing:0.02em;line-height:1.2">${escapeHtml(company.company_name || 'Company')}</div>
         <div style="font-size:10px;color:#333;line-height:1.5;margin-top:3px">
           ${topAddressTwoLines(company.address).map((ln) => escapeHtml(ln)).join('<br/>')}
@@ -523,7 +544,7 @@ export function buildSalesDocumentHtml(doc, company, logoDataUrl = null, kind = 
           </tbody>
         </table>
       </td>
-      <td style="padding:8px 12px;width:50%;vertical-align:top;border-left:1px solid #444">
+      <td style="padding:8px 12px;width:50%;vertical-align:top;border-left:1px solid #cfd5dd">
         <table width="100%" style="border-collapse:collapse">
           <tbody>
             ${metaRight.map(([k,v]) => `<tr>
@@ -539,11 +560,11 @@ export function buildSalesDocumentHtml(doc, company, logoDataUrl = null, kind = 
   <!-- ③ BILLING / DELIVERY ADDRESSES -->
   <table width="100%" style="border-collapse:collapse" class="sec">
     <tr>
-      <td style="width:50%;vertical-align:top;padding:0;border-right:1px solid #444; ">
+      <td style="width:50%;vertical-align:top;padding:0;border-right:1px solid #cfd5dd; ">
         <div style="background:#eaeaea;font-weight:700;padding:4px 4px 10px 4px;border-bottom:1px solid #ccc;font-size:11px">Billing Address</div>
         <div style="padding:7px 10px 18px;font-size:11px;line-height:1.6">
           <strong>${escapeHtml(doc.customer_name || '—')}</strong><br/>
-          ${escapeHtml(doc.customer_address || '').replace(/\n/g, '<br/>')}
+          ${escapeHtml(billingAddress).replace(/\n/g, '<br/>')}
           ${doc.customer_gstin ? `<br/>GSTIN : ${escapeHtml(doc.customer_gstin)}` : ''}
         </div>
       </td>
@@ -551,7 +572,7 @@ export function buildSalesDocumentHtml(doc, company, logoDataUrl = null, kind = 
         <div style="background:#eaeaea;font-weight:700;padding:4px 4px 10px 4px;border-bottom:1px solid #ccc;font-size:11px">Delivery Address</div>
         <div style="padding:7px 10px 18px;font-size:11px;line-height:1.6">
           <strong>${escapeHtml(doc.customer_name || '—')}</strong><br/>
-          ${escapeHtml(doc.customer_address || '').replace(/\n/g, '<br/>')}
+          ${escapeHtml(deliveryAddress).replace(/\n/g, '<br/>')}
           ${doc.customer_gstin ? `<br/>GSTIN : ${escapeHtml(doc.customer_gstin)}` : ''}
         </div>
       </td>
@@ -594,7 +615,7 @@ export function buildSalesDocumentHtml(doc, company, logoDataUrl = null, kind = 
   <!-- ⑥ TOTAL IN WORDS + TOTALS -->
   <table width="100%" style="border-collapse:collapse" class="sec">
     <tr>
-      <td style="padding:8px 12px;vertical-align:top;border-right:1px solid #444">
+      <td style="padding:8px 12px;vertical-align:top;border-right:1px solid #cfd5dd">
         <div style="font-weight:700;margin-bottom:5px;font-size:11px">Total in Words</div>
         <div style="font-size:11px"><strong>${escapeHtml(amountInWordsINR(t.total))}</strong></div>
       </td>
@@ -621,12 +642,12 @@ export function buildSalesDocumentHtml(doc, company, logoDataUrl = null, kind = 
             <td style="padding:5px 12px 10px;text-align:right;${BD};white-space:nowrap">&#8377; ${asMoney(totalTax)}</td>
           </tr>` : ''}
           <tr>
-            <td style="padding:6px 12px 12px;font-weight:700;border-top:2px solid #444"><strong>Total</strong></td>
-            <td style="padding:6px 12px 12px;text-align:right;font-weight:700;border-top:2px solid #444;white-space:nowrap"><strong>&#8377; ${asMoney(t.total)}</strong></td>
+            <td style="padding:6px 12px 12px;font-weight:700;border-top:2px solid #cfd5dd"><strong>Total</strong></td>
+            <td style="padding:6px 12px 12px;text-align:right;font-weight:700;border-top:2px solid #cfd5dd;white-space:nowrap"><strong>&#8377; ${asMoney(t.total)}</strong></td>
           </tr>
           ${t.balance != null ? `<tr>
-            <td style="padding:5px 12px 10px;color:#c00;border-top:1px solid #ddd">Balance Due</td>
-            <td style="padding:5px 12px 10px;text-align:right;color:#c00;border-top:1px solid #ddd;white-space:nowrap">&#8377; ${asMoney(t.balance)}</td>
+            <td style="padding:5px 12px 10px;color:#c00;border-top:1px solid #cfd5dd">Balance Due</td>
+            <td style="padding:5px 12px 10px;text-align:right;color:#c00;border-top:1px solid #cfd5dd;white-space:nowrap">&#8377; ${asMoney(t.balance)}</td>
           </tr>` : ''}
         </table>
       </td>
@@ -637,7 +658,7 @@ export function buildSalesDocumentHtml(doc, company, logoDataUrl = null, kind = 
   ${(terms || bankDetails) ? `
   <table width="100%" style="border-collapse:collapse" class="sec">
     <tr>
-      <td style="width:50%;vertical-align:top;padding:8px 12px 12px;border-right:1px solid #444;font-size:10px;line-height:1.6">
+      <td style="width:50%;vertical-align:top;padding:8px 12px 12px;border-right:1px solid #cfd5dd;font-size:10px;line-height:1.6">
         <strong>Terms And Conditions:</strong><br/>
         <span style="white-space:pre-wrap">${escapeHtml(terms || '—')}</span>
       </td>
@@ -654,7 +675,7 @@ export function buildSalesDocumentHtml(doc, company, logoDataUrl = null, kind = 
   </div>
 
 </div>
-${includeSheetFooter ? `<div class="sheet-footer"><div>Contact: ${escapeHtml(singleLineFooterText((company.address || '').trim() || company.company_name || ''))}</div><div>${escapeHtml(company.gstin ? `GSTIN: ${company.gstin}` : company.company_name || '')}</div></div>` : ''}
+${includeSheetFooter ? `<div class="sheet-footer">${invoiceFooterHtml(company)}</div>` : ''}
 </body>
 </html>`;
 }
@@ -772,7 +793,7 @@ async function rasterSalesDocumentToPdf(doc, company, kind, docNo) {
     pageIdx += 1;
   }
 
-  const footerText = `Contact: ${singleLineFooterText((company.address || '').trim() || (company.company_name || '').trim() || '')}${company.gstin ? `\nGSTIN: ${company.gstin}` : ''}`;
+  const footerText = buildInvoiceFooterContent(company);
   const n = pdf.getNumberOfPages();
   for (let i = 1; i <= n; i += 1) {
     pdf.setPage(i);
@@ -846,14 +867,15 @@ async function downloadSalesDocumentPdfVector(doc, company, kind, docNo) {
   pdf.text(`Created By : ${createdByName}`, rightX, y, { align: 'right' });
   y += 14;
 
-  const addrBody = customerAddressBlockText(doc);
+  const billingAddrBody = customerAddressBlockText(doc, 'billing');
+  const deliveryAddrBody = customerAddressBlockText(doc, 'delivery');
   autoTable(pdf, {
     startY: y,
     body: [
       [{ content: 'Billing Address', styles: { fontStyle: 'bold', fontSize: 10 } }],
-      [{ content: addrBody, styles: { fontSize: 10, cellPadding: { top: 6, right: 6, bottom: 14, left: 6 } } }],
+      [{ content: billingAddrBody, styles: { fontSize: 10, cellPadding: { top: 6, right: 6, bottom: 14, left: 6 } } }],
       [{ content: 'Delivery Address', styles: { fontStyle: 'bold', fontSize: 10 } }],
-      [{ content: addrBody, styles: { fontSize: 10, cellPadding: { top: 6, right: 6, bottom: 14, left: 6 } } }],
+      [{ content: deliveryAddrBody, styles: { fontSize: 10, cellPadding: { top: 6, right: 6, bottom: 14, left: 6 } } }],
     ],
     theme: 'grid',
     styles: { fontSize: 10, cellPadding: 6, valign: 'top', lineColor: [17, 17, 17], lineWidth: 0.5 },
@@ -996,7 +1018,7 @@ async function downloadSalesDocumentPdfVector(doc, company, kind, docNo) {
   pdf.setFont('helvetica', 'bold');
   pdf.text(`For ${company.company_name || 'Company'},`, left, y);
 
-  const footerText = `Contact: ${singleLineFooterText((company.address || '').trim() || (company.company_name || '').trim() || '')}`;
+  const footerText = buildInvoiceFooterContent(company);
   addPdfPageFooters(pdf, pageW, footerText);
   pdf.save(`${docNo}.pdf`);
 }
