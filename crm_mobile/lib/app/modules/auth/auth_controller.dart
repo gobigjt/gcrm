@@ -31,8 +31,6 @@ class AuthController extends GetxController {
 
   final email = ''.obs;
   final password = ''.obs;
-  final tenantSlug = ''.obs;
-  final tenantSlugInput = TextEditingController();
   /// Login field: when true, password characters are hidden.
   final passwordObscured = true.obs;
   final isLoading = false.obs;
@@ -57,16 +55,11 @@ class AuthController extends GetxController {
   void onInit() {
     super.onInit();
     _initFcmTokenSync();
-    tenantSlugInput.addListener(() {
-      tenantSlug.value = tenantSlugInput.text;
-    });
-    _restoreTenantSlug();
     restoreSession();
   }
 
   @override
   void onClose() {
-    tenantSlugInput.dispose();
     _fcmTokenSub?.cancel();
     super.onClose();
   }
@@ -78,18 +71,13 @@ class AuthController extends GetxController {
     }
     isLoading.value = true;
     try {
-      final slug = tenantSlug.value.trim().toLowerCase();
       final data = await _api.login(
         email: email.value.trim(),
         password: password.value,
-        tenantSlug: slug,
       );
       final user = Map<String, dynamic>.from(data['user'] as Map);
       final access = data['access_token'].toString();
       final refresh = data['refresh_token'].toString();
-      if (slug.isNotEmpty) {
-        await _storage.saveTenantSlug(slug);
-      }
       await _storage.saveSession(accessToken: access, refreshToken: refresh, user: user);
       await _applySession(user: user, access: access, refresh: refresh);
       isLoggedIn.value = true;
@@ -100,20 +88,6 @@ class AuthController extends GetxController {
       Get.snackbar('Login failed', userFriendlyError(e, loginAttempt: true));
     } finally {
       isLoading.value = false;
-    }
-  }
-
-  Future<void> clearSavedTenantSlug() async {
-    tenantSlugInput.text = '';
-    tenantSlug.value = '';
-    await _storage.clearTenantSlug();
-  }
-
-  Future<void> _restoreTenantSlug() async {
-    final v = (await _storage.readTenantSlug())?.trim().toLowerCase() ?? '';
-    if (v.isNotEmpty) {
-      tenantSlug.value = v;
-      tenantSlugInput.text = v;
     }
   }
 

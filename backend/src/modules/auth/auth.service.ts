@@ -127,27 +127,39 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email / password');
     }
     const allRes = await this.db.query(
-      `SELECT id,name,email,password,role,role_id,tenant_id,avatar_url
-         FROM users
+      `SELECT u.id,u.name,u.email,u.password,u.role,u.role_id,u.tenant_id,u.avatar_url,
+              t.slug AS tenant_slug
+         FROM users u
+         LEFT JOIN tenants t ON t.id = u.tenant_id
         WHERE LOWER(email)=LOWER($1)
-          AND is_active=TRUE`,
+          AND u.is_active=TRUE`,
       [dto.email],
     );
     const all = allRes.rows || [];
-    let user: any | undefined;
+    let candidates: any[] = [];
     if (tenantId) {
-      user = all.find((u: any) => u.role === 'Super Admin')
-        || all.find((u: any) => Number(u.tenant_id) === tenantId);
+      candidates = all.filter((u: any) => u.role === 'Super Admin' || Number(u.tenant_id) === tenantId);
+    } else if (all.length === 1) {
+      // Mobile/web without tenant slug: allow when email resolves to exactly one active account.
+      candidates = [all[0]];
     } else {
-      // For tenant users, force explicit tenant routing to avoid ambiguous email login.
-      user = all.find((u: any) => u.role === 'Super Admin');
-      if (!user && all.length > 0) {
+      // Multiple accounts share email across tenants; tenant slug is required.
+      candidates = all.filter((u: any) => u.role === 'Super Admin');
+      if (candidates.length === 0 && all.length > 0) {
         throw new UnauthorizedException('Tenant slug is required for this account');
       }
     }
+    if (!candidates.length) throw new UnauthorizedException('Invalid email / password');
+
+    let user: any | undefined;
+    for (const cand of candidates) {
+      const ok = await bcrypt.compare(dto.password, cand.password);
+      if (ok) {
+        user = cand;
+        break;
+      }
+    }
     if (!user) throw new UnauthorizedException('Invalid email / password');
-    const ok = await bcrypt.compare(dto.password, user.password);
-    if (!ok) throw new UnauthorizedException('Invalid email / password');
     const { password: _, ...safe } = user;
     const access_token  = this.signAccess(safe);
     const refresh_token = await this.issueRefresh(safe.id);
@@ -179,7 +191,21 @@ export class AuthService {
 
   async me(id: number) {
     const res = await this.db.query(
-      'SELECT id,name,email,role,role_id,tenant_id,is_active,created_at,avatar_url FROM users WHERE id=$1', [id],
+      `SELECT
+         u.id,
+         u.name,
+         u.email,
+         u.role,
+         u.role_id,
+         u.tenant_id,
+         t.slug AS tenant_slug,
+         u.is_active,
+         u.created_at,
+         u.avatar_url
+       FROM users u
+       LEFT JOIN tenants t ON t.id = u.tenant_id
+       WHERE u.id=$1`,
+      [id],
     );
     return res.rows[0];
   }
