@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useCallback, useEffect } from 'rea
 import api, { persistAccessToken, clearSession } from '../api/client';
 
 const AuthContext = createContext(null);
+const LAST_TENANT_SLUG_KEY = 'last_tenant_slug';
 
 function readStoredUser() {
   try {
@@ -43,7 +44,15 @@ export function AuthProvider({ children }) {
     const slug = String(tenantSlug || '').trim().toLowerCase();
     if (slug) payload.tenant_slug = slug;
     const res = await api.post('/auth/login', payload);
-    const { access_token, refresh_token, user: u } = res.data;
+    const { access_token, refresh_token, user: rawUser } = res.data;
+    const u = { ...(rawUser || {}) };
+    if (slug) {
+      u.tenant_slug = slug;
+      localStorage.setItem(LAST_TENANT_SLUG_KEY, slug);
+    } else {
+      // If user signs in without tenant URL (e.g., Super Admin), clear stale tenant redirect.
+      localStorage.removeItem(LAST_TENANT_SLUG_KEY);
+    }
     localStorage.setItem('refresh_token', refresh_token);
     localStorage.setItem('user', JSON.stringify(u));
     persistAccessToken(access_token);

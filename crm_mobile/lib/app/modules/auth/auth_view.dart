@@ -193,7 +193,7 @@ class AuthView extends GetView<AuthController> {
                               ),
                               const SizedBox(height: 6),
                               Text(
-                                'Required for tenant users. Super Admin can sign in without it.',
+                                'Required for tenant users.',
                                 style: TextStyle(
                                   fontSize: 11,
                                   color: subtitleColor.withValues(alpha: 0.75),
