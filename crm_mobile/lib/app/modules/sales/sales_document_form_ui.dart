@@ -206,7 +206,7 @@ Widget salesCustomerAddressPreview(
   required Map<String, dynamic>? customer,
 }) {
   if (customer == null) return const SizedBox.shrink();
-  final billing = ((customer['billing_address'] ?? customer['address'] ?? '') as Object).toString().trim();
+  final billing = ((customer['billing_address'] ?? '') as Object).toString().trim();
   final shipping = ((customer['shipping_address'] ?? '') as Object).toString().trim();
   final gstin = ((customer['gstin'] ?? '') as Object).toString().trim();
   if (billing.isEmpty && shipping.isEmpty && gstin.isEmpty) return const SizedBox.shrink();

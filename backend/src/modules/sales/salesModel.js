@@ -12,15 +12,15 @@ export async function getCustomer(id) {
   return res.rows[0];
 }
 export async function createCustomer(data) {
-  const { name, email, phone, gstin, address, lead_id } = data;
+  const { name, email, phone, gstin, billing_address, lead_id } = data;
   const res = await db.query(
-    "INSERT INTO customers (name,email,phone,gstin,address,lead_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *",
-    [name, email, phone, gstin, address, lead_id]
+    "INSERT INTO customers (name,email,phone,gstin,billing_address,lead_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *",
+    [name, email, phone, gstin, billing_address, lead_id]
   );
   return res.rows[0];
 }
 export async function updateCustomer(id, data) {
-  const fields = ["name","email","phone","gstin","address","is_active"];
+  const fields = ["name","email","phone","gstin","billing_address","shipping_address","is_active"];
   const sets = []; const vals = []; let i = 1;
   for (const f of fields) { if (data[f] !== undefined) { sets.push(`${f}=$${i++}`); vals.push(data[f]); } }
   if (!sets.length) return null;
@@ -83,7 +83,7 @@ export async function getQuotation(id) {
   const [q, items] = await Promise.all([
     db.query(
       `SELECT q.*, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
-              c.gstin AS customer_gstin, c.address AS customer_address
+              c.gstin AS customer_gstin, c.billing_address AS customer_address
          FROM quotations q JOIN customers c ON c.id=q.customer_id WHERE q.id=$1`,
       [id],
     ),
@@ -130,7 +130,7 @@ export async function getOrder(id) {
   const [o, items] = await Promise.all([
     db.query(
       `SELECT o.*, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
-              c.gstin AS customer_gstin, c.address AS customer_address
+              c.gstin AS customer_gstin, c.billing_address AS customer_address
          FROM sales_orders o JOIN customers c ON c.id=o.customer_id WHERE o.id=$1`,
       [id],
     ),
@@ -181,7 +181,7 @@ export async function getInvoice(id) {
   const [inv, items, pays] = await Promise.all([
     db.query(
       `SELECT i.*, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
-              c.gstin AS customer_gstin, c.address AS customer_address
+              c.gstin AS customer_gstin, c.billing_address AS customer_address
          FROM invoices i JOIN customers c ON c.id=i.customer_id WHERE i.id=$1`,
       [id],
     ),

@@ -510,7 +510,7 @@ function CustomerModal({ customer, crmLeadPrefill, onClose, onSaved }) {
   const { show } = useToast();
   const [form, setForm] = useState(() => {
     if (customer) {
-      let b = customer.billing_address || customer.address || '';
+      let b = customer.billing_address || '';
       let s = customer.shipping_address || '';
 
       const shipIdx = b.search(/Shipping Address:|Shipping Adress:/i);
@@ -610,7 +610,7 @@ function CustomerModal({ customer, crmLeadPrefill, onClose, onSaved }) {
 
 function CustomerAddressPreview({ customer }) {
   if (!customer) return null;
-  let billing = (customer.billing_address || customer.address || '').trim();
+  let billing = (customer.billing_address || '').trim();
   let shipping = (customer.shipping_address || '').trim();
   const gstin = (customer.gstin || '').trim();
 
@@ -655,6 +655,8 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', init
     notes: '', is_interstate: false,
     status: type === 'order' ? 'pending' : type === 'invoice' ? 'unpaid' : 'draft',
     created_by: '',
+    customer_billing_address: '',
+    customer_shipping_address: '',
     // invoice-specific
     reference_no: '', gst_type: 'intra_state', tax_type: 'exclusive',
     state_of_supply: '', discount_amount: 0, shipping_amount: 0,
@@ -670,6 +672,21 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', init
     () => customers.find((c) => String(c.id) === String(form.customer_id)),
     [customers, form.customer_id],
   );
+  const pickCustomerAddresses = (customer) => ({
+    billing: String(customer?.billing_address || '').trim(),
+    shipping: String(customer?.shipping_address || '').trim(),
+  });
+  const setQuoteCustomer = (e) => {
+    const nextId = e.target.value;
+    const picked = customers.find((c) => String(c.id) === String(nextId));
+    const addr = pickCustomerAddresses(picked);
+    setForm((f) => ({
+      ...f,
+      customer_id: nextId,
+      customer_billing_address: addr.billing,
+      customer_shipping_address: addr.shipping,
+    }));
+  };
 
   const canPickOtherExecutive = ['Admin', 'Super Admin', 'Sales Manager'].includes(user?.role || '');
   const executiveOptions = (() => {
@@ -691,8 +708,25 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', init
       ...f,
       customer_id: initialCustomerId || '',
       created_by: existingId ? f.created_by : (initialCreatedBy || ''),
+      customer_billing_address: existingId ? f.customer_billing_address : '',
+      customer_shipping_address: existingId ? f.customer_shipping_address : '',
     }));
   }, [initialCustomerId, initialCreatedBy, type, existingId]);
+
+  useEffect(() => {
+    if (!isQuote || existingId || !form.customer_id) return;
+    if (String(form.customer_billing_address || '').trim() || String(form.customer_shipping_address || '').trim()) return;
+    setForm((f) => {
+      if (String(f.customer_id || '') !== String(form.customer_id || '')) return f;
+      const picked = customers.find((c) => String(c.id) === String(f.customer_id));
+      const addr = pickCustomerAddresses(picked);
+      return {
+        ...f,
+        customer_billing_address: addr.billing,
+        customer_shipping_address: addr.shipping,
+      };
+    });
+  }, [isQuote, existingId, customers, form.customer_id, form.customer_billing_address, form.customer_shipping_address]);
 
   useEffect(() => {
     if (!existingId || (!isQuote && !isInvoice && !isOrder)) {
@@ -722,7 +756,17 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', init
           notes: q.notes || '',
           status: q.status || (isOrder ? 'pending' : isInvoice ? 'unpaid' : 'draft'),
           is_interstate: Number(q.igst || 0) > 0,
-          created_by: q.created_by != null ? String(q.created_by) : String(user?.id || ''),
+          created_by: isQuote
+            ? (
+                q.sales_executive_id != null
+                  ? String(q.sales_executive_id)
+                  : q.created_by != null
+                    ? String(q.created_by)
+                    : String(user?.id || '')
+              )
+            : (q.created_by != null ? String(q.created_by) : String(user?.id || '')),
+          customer_billing_address: q.customer_billing_address || q.customer_address || '',
+          customer_shipping_address: q.customer_shipping_address || '',
           // invoice-specific fields
           reference_no: q.reference_no || '',
           gst_type: Number(q.igst || 0) > 0 ? 'inter_state' : 'intra_state',
@@ -794,7 +838,9 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', init
           gst_type: form.gst_type,
           tax_type: form.tax_type,
           is_interstate: interstate,
-          created_by: createdByNum,
+          sales_executive_id: createdByNum,
+          customer_billing_address: form.customer_billing_address?.trim() || null,
+          customer_shipping_address: form.customer_shipping_address?.trim() || null,
           items: lines,
         });
       } else if (isEditInvoice) {
@@ -862,7 +908,9 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', init
           gst_type: form.gst_type,
           tax_type: form.tax_type,
           is_interstate: interstate,
-          created_by: createdByNum,
+          sales_executive_id: createdByNum,
+          customer_billing_address: form.customer_billing_address?.trim() || null,
+          customer_shipping_address: form.customer_shipping_address?.trim() || null,
           items: lines,
         });
       } else {
@@ -1078,12 +1126,30 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', init
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <SectionCard title="Bill To">
           <Field label="Customer *">
-            <select className={selectCls} value={form.customer_id} onChange={set('customer_id')} required>
+            <select className={selectCls} value={form.customer_id} onChange={isQuote ? setQuoteCustomer : set('customer_id')} required>
               <option value="">Select customer…</option>
               {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </Field>
           <CustomerAddressPreview customer={selectedCustomer} />
+          {isQuote && (
+            <>
+              <Field label="Billing Address">
+                <textarea
+                  className={inputCls + ' h-16 resize-none'}
+                  value={form.customer_billing_address || ''}
+                  onChange={set('customer_billing_address')}
+                />
+              </Field>
+              <Field label="Shipping Address">
+                <textarea
+                  className={inputCls + ' h-16 resize-none'}
+                  value={form.customer_shipping_address || ''}
+                  onChange={set('customer_shipping_address')}
+                />
+              </Field>
+            </>
+          )}
           {user?.id && (
             <Field label="Sales Executive *">
               <select className={selectCls} value={form.created_by} onChange={set('created_by')} required
@@ -1424,7 +1490,8 @@ function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation, onEditInv
               ['Date', fmtD(doc.invoice_date || doc.order_date || doc.created_at)],
               ['Due / Valid', fmtD(doc.due_date || doc.valid_until)],
               ['Amount', fmt(doc.total_amount)],
-              ['Sales executive', doc.created_by_name || '—'],
+              ['Sales executive', doc.sales_executive_name || doc.created_by_name || '—'],
+              ...(type === 'quotation' ? [['Created by', doc.creator_name || '—']] : []),
             ].map(([k,v]) => (
               <div key={k} className="bg-slate-50 dark:bg-slate-800/50 rounded-xl px-3 py-2">
                 <p className="text-xs text-slate-400 dark:text-slate-500 mb-0.5">{k}</p>
@@ -2146,7 +2213,7 @@ export function SalesCustomersPage() {
   const [modal,     setModal]     = useState(null); // 'new' | 'edit'
   const [editCust,  setEditCust]  = useState(null);
   const [selected,  setSelected]  = useState([]);
-  const search = useSearch(customers, ['name','phone','email','gstin','billing_address','shipping_address','address','created_by_name']);
+  const search = useSearch(customers, ['name','phone','email','gstin','billing_address','shipping_address','created_by_name']);
   const pager  = usePagination(search.filtered);
   const cols = [
     { label: 'Name',    get: r => r.name },
@@ -2155,7 +2222,7 @@ export function SalesCustomersPage() {
     { label: 'GSTIN',   get: r => r.gstin || '' },
     { label: 'Created by', get: r => r.created_by_name || '' },
     { label: 'Created at', get: r => fmtDT(r.created_at) },
-    { label: 'Billing Address', get: r => r.billing_address || r.address || '' },
+    { label: 'Billing Address', get: r => r.billing_address || '' },
     { label: 'Shipping Address', get: r => r.shipping_address || '' },
   ];
 
@@ -2225,7 +2292,7 @@ export function SalesCustomersPage() {
                   <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs font-mono">{c.gstin || '—'}</td>
                   <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{c.created_by_name || '—'}</td>
                   <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">{fmtDT(c.created_at)}</td>
-                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs max-w-[180px] truncate">{c.billing_address || c.address || '—'}</td>
+                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs max-w-[180px] truncate">{c.billing_address || '—'}</td>
                   <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs max-w-[180px] truncate">{c.shipping_address || '—'}</td>
                   <td className="px-4 py-3 text-right">
                     <SettingsDropdown options={[

@@ -478,6 +478,15 @@ List<Widget> _metaTextLines(SalesDocumentKind kind, Map<String, dynamic> d, bool
   switch (kind) {
     case SalesDocumentKind.quotation:
       final lines = <Widget>[];
+      final salesExecutive =
+          (d['sales_executive_name'] ?? d['created_by_name'] ?? '').toString().trim();
+      final creatorName = (d['creator_name'] ?? '').toString().trim();
+      if (salesExecutive.isNotEmpty) {
+        lines.add(Text('Sales executive: $salesExecutive', style: style));
+      }
+      if (creatorName.isNotEmpty && creatorName != salesExecutive) {
+        lines.add(Text('Created by: $creatorName', style: style));
+      }
       if (formatIsoDate(d['valid_until']) != '—') {
         lines.add(Text('Valid until ${formatSalesCardDate(d['valid_until'])}', style: style));
       } else {

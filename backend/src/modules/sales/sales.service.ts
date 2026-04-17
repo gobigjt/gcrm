@@ -561,10 +561,7 @@ export class SalesService {
 
   private toCustomerApiShape(row: any) {
     if (!row) return row;
-    const out = { ...row };
-    out.address = out.address ?? out.billing_address ?? null;
-    delete out.billing_address;
-    return out;
+    return row;
   }
 
   // ─── Customers ────────────────────────────────────────────
@@ -606,18 +603,17 @@ export class SalesService {
   }
   async createCustomer(d: any, actor?: SalesActor) {
     const tenantId = this.requireTenantId(actor);
-    const billingAddress = d.billing_address ?? d.address ?? null;
+    const billingAddress = d.billing_address ?? null;
     const shippingAddress = d.shipping_address ?? null;
     const res = await this.db.query(
       `INSERT INTO customers
-        (name,email,phone,gstin,address,billing_address,shipping_address,lead_id,created_by,tenant_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+        (name,email,phone,gstin,billing_address,shipping_address,lead_id,created_by,tenant_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
       [
         d.name,
         d.email,
         d.phone,
         d.gstin,
-        billingAddress,
         billingAddress,
         shippingAddress,
         d.lead_id,
@@ -631,13 +627,7 @@ export class SalesService {
   async updateCustomer(id: number, d: any, actor?: SalesActor) {
     const tenantId = this.requireTenantId(actor);
     const patch = { ...d };
-    if (patch.billing_address === undefined && patch.address !== undefined) {
-      patch.billing_address = patch.address;
-    }
-    if (patch.address === undefined && patch.billing_address !== undefined) {
-      patch.address = patch.billing_address;
-    }
-    const fields = ['name','email','phone','gstin','address','billing_address','shipping_address','is_active'];
+    const fields = ['name','email','phone','gstin','billing_address','shipping_address','is_active'];
     const sets: string[] = []; const vals: any[] = []; let i = 1;
     for (const f of fields) { if(patch[f]!==undefined){ sets.push(`${f}=$${i++}`); vals.push(patch[f]); } }
     if(!sets.length) return null;
@@ -848,6 +838,7 @@ export class SalesService {
       const execName = String(
         dd.sales_executive_name || dd.sales_executive || dd.sales_person_name || dd.created_by_name || '—',
       );
+      const creatorName = String(dd.creator_name || dd.created_by_name || '—');
       const metaNoLabel = kind === 'quotation' ? 'Quotation No' : kind === 'order' ? 'Order No' : 'Invoice No';
       const metaDateLabel =
         kind === 'quotation' ? 'Quotation Date' : kind === 'order' ? 'Order Date' : 'Invoice Date';
@@ -953,7 +944,7 @@ export class SalesService {
       pdf.font('Helvetica-Bold').text('Sales Executive', pageLeft + leftW + 8, y + 8);
       pdf.font('Helvetica').text(`: ${execName}`, pageLeft + leftW + 92, y + 8);
       pdf.font('Helvetica-Bold').text('Created By', pageLeft + leftW + 8, y + 22);
-      pdf.font('Helvetica').text(`: ${docData.created_by_name || '—'}`, pageLeft + leftW + 92, y + 22);
+      pdf.font('Helvetica').text(`: ${creatorName}`, pageLeft + leftW + 92, y + 22);
       y += metaH + 8;
 
       // Address blocks: use dynamic height to prevent overlap for long/wrapped addresses.
@@ -1201,7 +1192,8 @@ export class SalesService {
       }
       if (docData.customer_gstin) pdf.text(`GSTIN: ${docData.customer_gstin}`);
       pdf.moveDown(0.4);
-      pdf.text(`Sales Executive: ${docData.created_by_name || '—'}`);
+      pdf.text(`Sales Executive: ${docData.sales_executive_name || docData.created_by_name || '—'}`);
+      pdf.text(`Created By: ${docData.creator_name || docData.created_by_name || '—'}`);
       const docDate = docData.invoice_date || docData.order_date || docData.created_at;
       if (docDate) pdf.text(`Date: ${String(docDate).slice(0, 10)}`);
       if (docData.valid_until) pdf.text(`Valid Until: ${String(docData.valid_until).slice(0, 10)}`);
@@ -1322,7 +1314,7 @@ export class SalesService {
       vals.push(filters.customer_id);
     }
     if (filters?.created_by) {
-      conds.push(`q.created_by=$${n++}`);
+      conds.push(`COALESCE(q.sales_executive_id, q.created_by)=$${n++}`);
       vals.push(filters.created_by);
     }
     if (filters?.status) {
@@ -1344,10 +1336,15 @@ export class SalesService {
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
     return (
       await this.db.query(
-        `SELECT q.*, c.name AS customer_name, u.name AS created_by_name
+        `SELECT q.*,
+                c.name AS customer_name,
+                COALESCE(se.name, u.name) AS created_by_name,
+                se.name AS sales_executive_name,
+                u.name AS creator_name
          FROM quotations q
          JOIN customers c ON c.id=q.customer_id
          LEFT JOIN users u ON u.id=q.created_by
+         LEFT JOIN users se ON se.id=q.sales_executive_id
          ${where} ORDER BY q.created_at DESC`,
         vals,
       )
@@ -1359,13 +1356,16 @@ export class SalesService {
       this.db.query(
         `SELECT q.*, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
                 c.gstin AS customer_gstin,
-                COALESCE(c.billing_address, c.address) AS customer_address,
-                COALESCE(c.billing_address, c.address) AS customer_billing_address,
-                c.shipping_address AS customer_shipping_address,
-                cu.name AS created_by_name
+                COALESCE(q.customer_billing_address, c.billing_address) AS customer_address,
+                COALESCE(q.customer_billing_address, c.billing_address) AS customer_billing_address,
+                COALESCE(q.customer_shipping_address, c.shipping_address) AS customer_shipping_address,
+                COALESCE(se.name, cu.name) AS created_by_name,
+                se.name AS sales_executive_name,
+                cu.name AS creator_name
            FROM quotations q
            JOIN customers c ON c.id=q.customer_id
            LEFT JOIN users cu ON cu.id=q.created_by
+           LEFT JOIN users se ON se.id=q.sales_executive_id
            WHERE q.id=$1 AND ($2::integer = 0 OR q.tenant_id = $2)`,
         [id, tenantId],
       ),
@@ -1394,9 +1394,10 @@ export class SalesService {
       const qr = await client.query(
         `INSERT INTO quotations
           (quotation_number,customer_id,proposal_id,status,valid_until,notes,
-           gst_type,tax_type,is_interstate,subtotal,cgst,sgst,igst,total_amount,created_by,
+           gst_type,tax_type,is_interstate,subtotal,cgst,sgst,igst,total_amount,created_by,sales_executive_id,
+           customer_billing_address,customer_shipping_address,
            approval_status,approved_by,approved_at,tenant_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING *`,
         [
           qn,
           data.customer_id,
@@ -1412,7 +1413,12 @@ export class SalesService {
           sgst,
           igst,
           total,
-          data.created_by,
+          Number.isFinite(Number(data.created_by)) && Number(data.created_by) > 0 ? Number(data.created_by) : null,
+          Number.isFinite(Number(data.sales_executive_id)) && Number(data.sales_executive_id) > 0
+            ? Number(data.sales_executive_id)
+            : null,
+          data.customer_billing_address ?? null,
+          data.customer_shipping_address ?? null,
           approval,
           approverId,
           approverId ? new Date().toISOString() : null,
@@ -1485,8 +1491,8 @@ export class SalesService {
       this.db.query(
         `SELECT o.*, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
                 c.gstin AS customer_gstin,
-                COALESCE(c.billing_address, c.address) AS customer_address,
-                COALESCE(c.billing_address, c.address) AS customer_billing_address,
+                c.billing_address AS customer_address,
+                c.billing_address AS customer_billing_address,
                 c.shipping_address AS customer_shipping_address,
                 cu.name AS created_by_name
            FROM sales_orders o
@@ -1719,8 +1725,8 @@ export class SalesService {
       this.db.query(
         `SELECT i.*, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
                 c.gstin AS customer_gstin,
-                COALESCE(c.billing_address, c.address) AS customer_address,
-                COALESCE(c.billing_address, c.address) AS customer_billing_address,
+                c.billing_address AS customer_address,
+                c.billing_address AS customer_billing_address,
                 c.shipping_address AS customer_shipping_address,
                 cu.name AS created_by_name
            FROM invoices i
@@ -2041,6 +2047,12 @@ export class SalesService {
   async patchQuotation(id: number, b: any, actor?: SalesActor) {
     const tenantId = this.requireTenantId(actor);
     const body = { ...b };
+    if (body.sales_executive_id === undefined && body.created_by !== undefined) {
+      body.sales_executive_id = body.created_by;
+    }
+    if (body.created_by !== undefined) {
+      delete body.created_by;
+    }
     if (body.approval_status !== undefined) {
       const req = normalizeDocApprovalStatus(body.approval_status);
       if (req !== 'approved' && req !== 'rejected') {
@@ -2103,7 +2115,18 @@ export class SalesService {
         if (body.gst_type !== undefined)     { sets.push(`gst_type=$${n++}`);    vals.push(body.gst_type); }
         if (body.tax_type !== undefined)     { sets.push(`tax_type=$${n++}`);    vals.push(body.tax_type); }
         if (body.is_interstate !== undefined){ sets.push(`is_interstate=$${n++}`); vals.push(body.is_interstate); }
-        if (body.created_by !== undefined)   { sets.push(`created_by=$${n++}`);  vals.push(body.created_by); }
+        if (body.customer_billing_address !== undefined) {
+          sets.push(`customer_billing_address=$${n++}`);
+          vals.push(body.customer_billing_address);
+        }
+        if (body.customer_shipping_address !== undefined) {
+          sets.push(`customer_shipping_address=$${n++}`);
+          vals.push(body.customer_shipping_address);
+        }
+        if (body.sales_executive_id !== undefined) {
+          sets.push(`sales_executive_id=$${n++}`);
+          vals.push(body.sales_executive_id);
+        }
         vals.push(id);
         await client.query(`UPDATE quotations SET ${sets.join(', ')} WHERE id=$${n}`, vals);
       return this.getQuotation(id, actor);
@@ -2128,9 +2151,17 @@ export class SalesService {
       sets.push(`customer_id = $${n++}`);
       vals.push(body.customer_id);
     }
-    if (body?.created_by !== undefined) {
-      sets.push(`created_by = $${n++}`);
-      vals.push(body.created_by);
+    if (body?.customer_billing_address !== undefined) {
+      sets.push(`customer_billing_address = $${n++}`);
+      vals.push(body.customer_billing_address);
+    }
+    if (body?.customer_shipping_address !== undefined) {
+      sets.push(`customer_shipping_address = $${n++}`);
+      vals.push(body.customer_shipping_address);
+    }
+    if (body?.sales_executive_id !== undefined) {
+      sets.push(`sales_executive_id = $${n++}`);
+      vals.push(body.sales_executive_id);
     }
     if (!sets.length) return this.getQuotation(id, actor);
     vals.push(id);

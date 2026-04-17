@@ -80,8 +80,15 @@ export class SalesController {
   }
   @Post('quotations') async createQuotation(@Body() b: any, @CurrentUser() u: any) {
     const { items = [], ...d } = b;
-    const created_by = await this.svc.resolveDocumentCreatedBy(u, d.created_by);
-    return this.svc.createQuotation({ ...d, created_by }, items, u);
+    const sales_executive_id = await this.svc.resolveDocumentCreatedBy(
+      u,
+      d.sales_executive_id ?? d.created_by,
+    );
+    return this.svc.createQuotation(
+      { ...d, created_by: u?.id ?? null, sales_executive_id },
+      items,
+      u,
+    );
   }
   @Get('quotations/:id')       async getQuotation(@Param('id') id: string, @CurrentUser() u: any) { const q=await this.svc.getQuotation(Number(id), u); if(!q) throw new NotFoundException(); return {quotation:q}; }
   @Get('quotations/:id/pdf') async getQuotationPdf(@Param('id') id: string, @CurrentUser() u: any) {
@@ -91,8 +98,12 @@ export class SalesController {
   }
   @Patch('quotations/:id')     async patchQuotation(@Param('id') id: string, @Body() b: any, @CurrentUser() u: any) {
     const body = { ...b };
-    if (body.created_by !== undefined) {
-      body.created_by = await this.svc.resolveDocumentCreatedBy(u, body.created_by);
+    if (body.sales_executive_id !== undefined || body.created_by !== undefined) {
+      body.sales_executive_id = await this.svc.resolveDocumentCreatedBy(
+        u,
+        body.sales_executive_id ?? body.created_by,
+      );
+      delete body.created_by;
     }
     const q = await this.svc.patchQuotation(Number(id), body, u);
     if (!q) throw new NotFoundException();

@@ -989,14 +989,14 @@ export class LeadsService {
     if (!email && !phone) {
       throw new BadRequestException('Add an email or phone on the lead before converting to customer.');
     }
-    const address =
+    const billingAddress =
       lead.address != null && String(lead.address).trim() ? String(lead.address).trim() : null;
 
     const customer = await this.db.transaction(async (client) => {
       const ins = await client.query(
-        `INSERT INTO customers (name, email, phone, gstin, address, lead_id, tenant_id, created_by)
+        `INSERT INTO customers (name, email, phone, gstin, billing_address, lead_id, tenant_id, created_by)
          VALUES ($1, $2, $3, NULL, $4, $5, $6, $7) RETURNING *`,
-        [name, email, phone, address, leadId, lead.tenant_id ?? null, currentUser?.id ?? null],
+        [name, email, phone, billingAddress, leadId, lead.tenant_id ?? null, currentUser?.id ?? null],
       );
       await client.query('UPDATE leads SET is_converted=TRUE, updated_at=NOW() WHERE id=$1', [leadId]);
       return ins.rows[0];

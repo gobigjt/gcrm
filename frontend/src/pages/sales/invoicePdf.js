@@ -226,7 +226,6 @@ function isInterstateForDoc(doc, kind) {
 
 /** @param {'invoice'|'quotation'|'order'} kind */
 function totalsForSalesDocument(doc, kind) {
-  const taxType = String(doc.tax_type || 'exclusive');
   if (kind === 'invoice') {
     const storedSubtotal = doc.subtotal != null ? Number(doc.subtotal) : null;
     const storedCgst = Number(doc.cgst || 0);
@@ -402,7 +401,7 @@ export function buildSalesDocumentHtml(doc, company, logoDataUrl = null, kind = 
     || doc.created_by_name
     || '—'
   );
-  const createdByName = escapeHtml(doc.created_by_name || doc.created_by || '—');
+  const createdByName = escapeHtml(doc.creator_name || doc.created_by_name || doc.created_by || '—');
   const bankDetails = formatBankDetailsBlock(company);
 
   const metaLeft = [
@@ -840,7 +839,7 @@ async function downloadSalesDocumentPdfVector(doc, company, kind, docNo) {
     || doc.sales_person_name
     || doc.created_by_name
     || '—';
-  const createdByName = doc.created_by_name || doc.created_by || '—';
+  const createdByName = doc.creator_name || doc.created_by_name || doc.created_by || '—';
   pdf.text(`Sales Executive : ${salesExecutiveName}`, rightX, y, { align: 'right' });
   if (doc.valid_until) pdf.text(`Valid Until : ${fmtInvoiceDate(doc.valid_until)}`, rightX, y, { align: 'right' });
   y += 14;
