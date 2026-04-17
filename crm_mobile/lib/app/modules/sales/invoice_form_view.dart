@@ -146,10 +146,7 @@ class _InvoiceFormViewState extends State<InvoiceFormView> {
                             onExecutiveChanged: (v) => c.selectedCreatedById.value = v,
                             sectionLabelStyle: salesFieldSectionLabel,
                           ),
-                          Obx(() => salesCustomerAddressPreview(
-                                context,
-                                customer: selectedCustomerMap(),
-                              )),
+                          
                         ],
                       ),
                     );

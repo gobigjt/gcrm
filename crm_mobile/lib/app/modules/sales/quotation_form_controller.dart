@@ -38,6 +38,7 @@ class QuotationFormController extends GetxController {
 
   final selectedCustomerId = Rxn<int>();
   final selectedCreatedById = Rxn<int>();
+  final sameAsBillingAddress = true.obs;
   final validUntilCtrl     = TextEditingController();
   final notesCtrl          = TextEditingController();
   final customerBillingAddressCtrl = TextEditingController();
@@ -177,6 +178,7 @@ class QuotationFormController extends GetxController {
     if (customerId == null) {
       customerBillingAddressCtrl.clear();
       customerShippingAddressCtrl.clear();
+      sameAsBillingAddress.value = true;
       return;
     }
     if (!forceAddressRefresh &&
@@ -185,8 +187,25 @@ class QuotationFormController extends GetxController {
       return;
     }
     final cu = _customerById(customerId);
-    customerBillingAddressCtrl.text = (cu?['billing_address'] ?? '').toString();
-    customerShippingAddressCtrl.text = (cu?['shipping_address'] ?? '').toString();
+    final billing = (cu?['billing_address'] ?? '').toString();
+    final shippingRaw = (cu?['shipping_address'] ?? '').toString();
+    final sameAs = shippingRaw.trim().isEmpty || shippingRaw.trim() == billing.trim();
+    customerBillingAddressCtrl.text = billing;
+    customerShippingAddressCtrl.text = sameAs ? billing : shippingRaw;
+    sameAsBillingAddress.value = sameAs;
+  }
+
+  void onBillingAddressChanged(String value) {
+    if (sameAsBillingAddress.value) {
+      customerShippingAddressCtrl.text = value;
+    }
+  }
+
+  void setSameAsBillingAddress(bool enabled) {
+    sameAsBillingAddress.value = enabled;
+    if (enabled) {
+      customerShippingAddressCtrl.text = customerBillingAddressCtrl.text;
+    }
   }
 
   Future<void> _loadQuotationIntoForm(int id) async {
@@ -199,7 +218,11 @@ class QuotationFormController extends GetxController {
     notesCtrl.text       = (q['notes'] ?? '').toString();
     statusValue.value    = (q['status'] ?? 'draft').toString();
     customerBillingAddressCtrl.text = (q['customer_billing_address'] ?? q['customer_address'] ?? '').toString();
-    customerShippingAddressCtrl.text = (q['customer_shipping_address'] ?? '').toString();
+    final shippingRaw = (q['customer_shipping_address'] ?? '').toString();
+    final billing = customerBillingAddressCtrl.text;
+    final sameAs = shippingRaw.trim().isEmpty || shippingRaw.trim() == billing.trim();
+    customerShippingAddressCtrl.text = sameAs ? billing : shippingRaw;
+    sameAsBillingAddress.value = sameAs;
     selectedCreatedById.value =
         (q['sales_executive_id'] as num?)?.toInt() ?? (q['created_by'] as num?)?.toInt();
     _syncCreatedBySelection(selectedCreatedById.value);
@@ -298,8 +321,12 @@ class QuotationFormController extends GetxController {
         'is_interstate':    interstate,
         'customer_billing_address':
             customerBillingAddressCtrl.text.trim().isEmpty ? null : customerBillingAddressCtrl.text.trim(),
-        'customer_shipping_address':
-            customerShippingAddressCtrl.text.trim().isEmpty ? null : customerShippingAddressCtrl.text.trim(),
+        'customer_shipping_address': (() {
+          final v = sameAsBillingAddress.value
+              ? customerBillingAddressCtrl.text.trim()
+              : customerShippingAddressCtrl.text.trim();
+          return v.isEmpty ? null : v;
+        })(),
         'sales_executive_id': selectedCreatedById.value,
         'items':            payloadLines,
       };

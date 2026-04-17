@@ -102,14 +102,6 @@ class _QuotationFormViewState extends State<QuotationFormView> {
                   Builder(builder: (context) {
                     final auth = Get.find<AuthController>();
                     final wide = salesFormWideLayout(context);
-                    Map<String, dynamic>? selectedCustomerMap() {
-                      final sid = c.selectedCustomerId.value;
-                      if (sid == null) return null;
-                      for (final cu in c.customers) {
-                        if ((cu['id'] as num?)?.toInt() == sid) return cu;
-                      }
-                      return null;
-                    }
                     final billTo = SalesFormSectionCard(
                       title: 'Bill To',
                       child: Column(
@@ -163,10 +155,7 @@ class _QuotationFormViewState extends State<QuotationFormView> {
                             onExecutiveChanged: (v) => c.selectedCreatedById.value = v,
                             sectionLabelStyle: salesFieldSectionLabel,
                           ),
-                          Obx(() => salesCustomerAddressPreview(
-                                context,
-                                customer: selectedCustomerMap(),
-                              )),
+                          
                           const SizedBox(height: 10),
                           Text('Billing address', style: salesFieldSectionLabel(context)),
                           const SizedBox(height: 6),
@@ -175,16 +164,26 @@ class _QuotationFormViewState extends State<QuotationFormView> {
                             maxLines: 2,
                             style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15),
                             decoration: salesOutlineField(context, hintText: 'Enter billing address'),
+                            onChanged: c.onBillingAddressChanged,
                           ),
+                          const SizedBox(height: 8),
+                          Obx(() => CheckboxListTile(
+                                value: c.sameAsBillingAddress.value,
+                                contentPadding: EdgeInsets.zero,
+                                controlAffinity: ListTileControlAffinity.leading,
+                                title: const Text('Same as billing address'),
+                                onChanged: (v) => c.setSameAsBillingAddress(v == true),
+                              )),
                           const SizedBox(height: 10),
                           Text('Shipping address', style: salesFieldSectionLabel(context)),
                           const SizedBox(height: 6),
-                          TextField(
-                            controller: c.customerShippingAddressCtrl,
-                            maxLines: 2,
-                            style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15),
-                            decoration: salesOutlineField(context, hintText: 'Enter shipping address'),
-                          ),
+                          Obx(() => TextField(
+                                controller: c.customerShippingAddressCtrl,
+                                enabled: !c.sameAsBillingAddress.value,
+                                maxLines: 2,
+                                style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15),
+                                decoration: salesOutlineField(context, hintText: 'Enter shipping address'),
+                              )),
                         ],
                       ),
                     );

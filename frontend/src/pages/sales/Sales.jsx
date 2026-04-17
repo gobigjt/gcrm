@@ -624,13 +624,7 @@ function CustomerAddressPreview({ customer }) {
   if (!billing && !shipping && !gstin) return null;
   return (
     <>
-    <div className="mt-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-3 text-xs text-slate-600 dark:text-slate-300 space-y-1">
-      {billing && <p><span className="font-semibold">Billing Address:</span> {billing}</p>}      
-      {gstin && <p><span className="font-semibold">GSTIN:</span> {gstin}</p>}
-    </div>
-    <div className="mt-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-3 text-xs text-slate-600 dark:text-slate-300 space-y-1">      
-      {shipping && <p><span className="font-semibold">Shipping Address:</span> {shipping}</p>}
-    </div>
+    
     </>
   );
 }
@@ -667,6 +661,7 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', init
   const [fetchingDoc, setFetchingDoc] = useState(() => Boolean(existingId && (isQuote || isInvoice || isOrder)));
   const [loadErr, setLoadErr]   = useState('');
   const [salesExecs, setSalesExecs] = useState([]);
+  const [quoteSameAsBilling, setQuoteSameAsBilling] = useState(true);
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
   const selectedCustomer = useMemo(
     () => customers.find((c) => String(c.id) === String(form.customer_id)),
@@ -680,12 +675,14 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', init
     const nextId = e.target.value;
     const picked = customers.find((c) => String(c.id) === String(nextId));
     const addr = pickCustomerAddresses(picked);
+    const sameAs = !addr.shipping || addr.shipping === addr.billing;
     setForm((f) => ({
       ...f,
       customer_id: nextId,
       customer_billing_address: addr.billing,
-      customer_shipping_address: addr.shipping,
+      customer_shipping_address: sameAs ? addr.billing : addr.shipping,
     }));
+    setQuoteSameAsBilling(sameAs);
   };
 
   const canPickOtherExecutive = ['Admin', 'Super Admin', 'Sales Manager'].includes(user?.role || '');
@@ -779,6 +776,11 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', init
           payment_terms: q.payment_terms || '',
           payment_method: q.payment_method || '',
         }));
+        if (isQuote) {
+          const b = String(q.customer_billing_address || q.customer_address || '').trim();
+          const s = String(q.customer_shipping_address || '').trim();
+          setQuoteSameAsBilling(!s || s === b);
+        }
         setItems(
           q.items?.length
             ? q.items.map((it) => ({
@@ -828,6 +830,9 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', init
         igst:        interstate ? l.gst : 0,
         total:       l.total,
       }));
+      const quoteShippingAddress = quoteSameAsBilling
+        ? (form.customer_billing_address || '')
+        : (form.customer_shipping_address || '');
       const createdByNum = form.created_by ? Number(form.created_by) : undefined;
       if (isEditQuote) {
         await api.patch(`/sales/quotations/${existingId}`, {
@@ -840,7 +845,7 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', init
           is_interstate: interstate,
           sales_executive_id: createdByNum,
           customer_billing_address: form.customer_billing_address?.trim() || null,
-          customer_shipping_address: form.customer_shipping_address?.trim() || null,
+          customer_shipping_address: quoteShippingAddress?.trim() || null,
           items: lines,
         });
       } else if (isEditInvoice) {
@@ -910,7 +915,7 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', init
           is_interstate: interstate,
           sales_executive_id: createdByNum,
           customer_billing_address: form.customer_billing_address?.trim() || null,
-          customer_shipping_address: form.customer_shipping_address?.trim() || null,
+          customer_shipping_address: quoteShippingAddress?.trim() || null,
           items: lines,
         });
       } else {
@@ -1138,14 +1143,36 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', init
                 <textarea
                   className={inputCls + ' h-16 resize-none'}
                   value={form.customer_billing_address || ''}
-                  onChange={set('customer_billing_address')}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setForm((f) => ({
+                      ...f,
+                      customer_billing_address: value,
+                      customer_shipping_address: quoteSameAsBilling ? value : f.customer_shipping_address,
+                    }));
+                  }}
                 />
               </Field>
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={quoteSameAsBilling}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setQuoteSameAsBilling(checked);
+                    if (checked) {
+                      setForm((f) => ({ ...f, customer_shipping_address: f.customer_billing_address || '' }));
+                    }
+                  }}
+                />
+                Same as billing address
+              </label>
               <Field label="Shipping Address">
                 <textarea
                   className={inputCls + ' h-16 resize-none'}
-                  value={form.customer_shipping_address || ''}
+                  value={quoteSameAsBilling ? (form.customer_billing_address || '') : (form.customer_shipping_address || '')}
                   onChange={set('customer_shipping_address')}
+                  disabled={quoteSameAsBilling}
                 />
               </Field>
             </>
