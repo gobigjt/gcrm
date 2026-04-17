@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
@@ -87,7 +87,13 @@ export class AuthService {
 
   async register(dto: RegisterDto, tenantSlugHeader?: string) {
     const tenantSlug = this.normalizeTenantSlug(dto.tenant_slug, tenantSlugHeader);
+    if (!tenantSlug) {
+      throw new BadRequestException('tenant_slug is required');
+    }
     const tenantId = tenantSlug ? await this.resolveTenantIdBySlug(tenantSlug) : null;
+    if (!tenantId) {
+      throw new BadRequestException('Invalid tenant_slug');
+    }
     const exists = await this.db.query(
       `SELECT id
          FROM users
@@ -117,21 +123,28 @@ export class AuthService {
   async login(dto: LoginDto, tenantSlugHeader?: string) {
     const tenantSlug = this.normalizeTenantSlug(dto.tenant_slug, tenantSlugHeader);
     const tenantId = tenantSlug ? await this.resolveTenantIdBySlug(tenantSlug) : null;
-    const res = await this.db.query(
+    if (tenantSlug && !tenantId) {
+      throw new UnauthorizedException('Invalid email / password');
+    }
+    const allRes = await this.db.query(
       `SELECT id,name,email,password,role,role_id,tenant_id,avatar_url
          FROM users
         WHERE LOWER(email)=LOWER($1)
-          AND is_active=TRUE
-          AND (
-            $2::integer IS NULL
-            OR tenant_id = $2
-            OR role = 'Super Admin'
-          )
-        ORDER BY CASE WHEN role = 'Super Admin' THEN 0 ELSE 1 END
-        LIMIT 1`,
-      [dto.email, tenantId],
+          AND is_active=TRUE`,
+      [dto.email],
     );
-    const user = res.rows[0];
+    const all = allRes.rows || [];
+    let user: any | undefined;
+    if (tenantId) {
+      user = all.find((u: any) => u.role === 'Super Admin')
+        || all.find((u: any) => Number(u.tenant_id) === tenantId);
+    } else {
+      // For tenant users, force explicit tenant routing to avoid ambiguous email login.
+      user = all.find((u: any) => u.role === 'Super Admin');
+      if (!user && all.length > 0) {
+        throw new UnauthorizedException('Tenant slug is required for this account');
+      }
+    }
     if (!user) throw new UnauthorizedException('Invalid email / password');
     const ok = await bcrypt.compare(dto.password, user.password);
     if (!ok) throw new UnauthorizedException('Invalid email / password');

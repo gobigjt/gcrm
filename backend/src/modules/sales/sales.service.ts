@@ -559,11 +559,20 @@ export class SalesService {
     return tenantId;
   }
 
+  private toCustomerApiShape(row: any) {
+    if (!row) return row;
+    const out = { ...row };
+    out.address = out.address ?? out.billing_address ?? null;
+    delete out.billing_address;
+    return out;
+  }
+
   // ─── Customers ────────────────────────────────────────────
   async listCustomers(search?: string, actor?: SalesActor) {
     const tenantId = this.requireTenantId(actor);
-    const cached = await this.cache.get<any[]>(`customers:${search||''}`);
-    if (cached) return cached;
+    const cacheKey = `customers:${tenantId}:${search||''}`;
+    const cached = await this.cache.get<any[]>(cacheKey);
+    if (cached) return cached.map((r) => this.toCustomerApiShape(r));
     const vals: any[] = [tenantId];
     let where = 'WHERE ($1::integer = 0 OR c.tenant_id = $1)';
     if (search) {
@@ -578,13 +587,13 @@ export class SalesService {
        ORDER BY c.name`,
       vals,
     );
-    await this.cache.set(`customers:${search||''}`, res.rows, 120);
-    return res.rows;
+    await this.cache.set(cacheKey, res.rows, 120);
+    return res.rows.map((r) => this.toCustomerApiShape(r));
   }
 
   async getCustomer(id: number, actor?: SalesActor) {
     const tenantId = this.requireTenantId(actor);
-    return (
+    const row = (
       await this.db.query(
         `SELECT c.*, u.name AS created_by_name
          FROM customers c
@@ -593,6 +602,7 @@ export class SalesService {
         [id, tenantId],
       )
     ).rows[0];
+    return this.toCustomerApiShape(row);
   }
   async createCustomer(d: any, actor?: SalesActor) {
     const tenantId = this.requireTenantId(actor);
@@ -616,7 +626,7 @@ export class SalesService {
       ],
     );
     await this.cache.delPattern('customers:*');
-    return res.rows[0];
+    return this.toCustomerApiShape(res.rows[0]);
   }
   async updateCustomer(id: number, d: any, actor?: SalesActor) {
     const tenantId = this.requireTenantId(actor);
@@ -637,7 +647,7 @@ export class SalesService {
       vals,
     );
     await this.cache.delPattern('customers:*');
-    return res.rows[0];
+    return this.toCustomerApiShape(res.rows[0]);
   }
 
   /** Active users who can own quotes/orders/invoices (sales module filters). */

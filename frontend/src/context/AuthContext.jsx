@@ -38,8 +38,11 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  const login = useCallback(async (email, password) => {
-    const res = await api.post('/auth/login', { email, password });
+  const login = useCallback(async (email, password, tenantSlug = '') => {
+    const payload = { email, password };
+    const slug = String(tenantSlug || '').trim().toLowerCase();
+    if (slug) payload.tenant_slug = slug;
+    const res = await api.post('/auth/login', payload);
     const { access_token, refresh_token, user: u } = res.data;
     localStorage.setItem('refresh_token', refresh_token);
     localStorage.setItem('user', JSON.stringify(u));

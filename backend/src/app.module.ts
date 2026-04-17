@@ -16,6 +16,7 @@ import { CommunicationModule} from './modules/communication/communication.module
 import { SettingsModule }       from './modules/settings/settings.module';
 import { ExportModule }         from './modules/export/export.module';
 import { NotificationsModule }  from './modules/notifications/notifications.module';
+import { TenantsModule }        from './modules/tenants/tenants.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { NotificationsModule }  from './modules/notifications/notifications.modu
     SettingsModule,
     ExportModule,
     NotificationsModule,
+    TenantsModule,
   ],
 })
 export class AppModule {}

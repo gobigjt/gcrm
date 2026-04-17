@@ -57,6 +57,7 @@ async function bootstrap() {
     .addTag('HR',            'Employees, attendance, payroll')
     .addTag('Communication', 'Message templates and communication logs')
     .addTag('Settings',      'Company settings, module access, audit logs')
+    .addTag('Tenants',       'Super Admin tenant account management')
     .addTag('Export',        'CSV export for leads, invoices, employees, stock')
     .addTag('Notifications', 'Per-user notification feed')
     .build();

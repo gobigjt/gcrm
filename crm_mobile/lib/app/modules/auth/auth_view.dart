@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 import '../../core/auth/role_home_route.dart';
@@ -139,6 +140,69 @@ class AuthView extends GetView<AuthController> {
                           ),
                         ),
                         const SizedBox(height: 24),
+                        Obx(
+                          () => Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    'TENANT SLUG',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: subtitleColor,
+                                      letterSpacing: 0.2,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  if (controller.tenantSlug.value.isNotEmpty)
+                                    TextButton(
+                                      onPressed: controller.clearSavedTenantSlug,
+                                      style: TextButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 2,
+                                        ),
+                                        minimumSize: Size.zero,
+                                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      ),
+                                      child: Text(
+                                        'Clear',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: subtitleColor,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              TextField(
+                                controller: controller.tenantSlugInput,
+                                autocorrect: false,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9-]')),
+                                ],
+                                style: TextStyle(fontSize: 14, color: textColor),
+                                decoration: fieldDeco(
+                                  'TENANT SLUG',
+                                  hint: 'your-tenant',
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Required for tenant users. Super Admin can sign in without it.',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: subtitleColor.withValues(alpha: 0.75),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 14),
                         TextField(
                           keyboardType: TextInputType.emailAddress,
                           autocorrect: false,
