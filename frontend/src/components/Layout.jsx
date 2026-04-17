@@ -5,6 +5,8 @@ import { resolveApiPublicUrl } from '../utils/publicAssetUrl';
 import { useModules } from '../context/ModuleContext';
 import { useTheme } from '../context/ThemeContext';
 
+const LAST_TENANT_SLUG_KEY = 'last_tenant_slug';
+
 const PAGE_META = {
   '/': { title: 'Dashboard', cta: '+ New Lead', ctaTo: '/crm?tab=list' },
   '/crm': { title: 'CRM', cta: '+ New Lead', ctaTo: '/crm/leads/new' },
@@ -409,8 +411,12 @@ export default function Layout({ children }) {
                     className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-slate-50 dark:hover:bg-slate-800/60"
                     onClick={async () => {
                       setUserMenuOpen(false);
+                      const rememberedTenant = String(localStorage.getItem(LAST_TENANT_SLUG_KEY) || '').trim().toLowerCase();
+                      const userTenant = String(user?.tenant_slug || '').trim().toLowerCase();
+                      const lastTenantSlug = rememberedTenant || userTenant;
+                      const loginPath = lastTenantSlug ? `/login/${lastTenantSlug}` : '/login';
                       await logout();
-                      navigate('/login');
+                      navigate(loginPath, { replace: true });
                     }}
                   >
                     Sign out

@@ -3,6 +3,7 @@ import axios, { AxiosHeaders } from 'axios';
 // Dev: leave unset → `/api` (Vite proxy → backend). Production: set in `.env.production`, e.g.
 //   VITE_API_BASE_URL=https://your-api.up.railway.app/api
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
+const LAST_TENANT_SLUG_KEY = 'last_tenant_slug';
 
 /** Avoid infinite “Loading workspace…” when the API is unreachable or stalls. */
 const REQUEST_TIMEOUT_MS = 25_000;
@@ -25,6 +26,11 @@ function clearSession() {
   localStorage.removeItem('refresh_token');
   localStorage.removeItem('user');
   delete api.defaults.headers.common.Authorization;
+}
+
+function loginRedirectPath() {
+  const slug = String(localStorage.getItem(LAST_TENANT_SLUG_KEY) || '').trim().toLowerCase();
+  return slug ? `/login/${slug}` : '/login';
 }
 
 /** Sync memory when another tab or legacy code updates localStorage (best-effort). */
@@ -105,7 +111,7 @@ api.interceptors.response.use(
 
     if (!localStorage.getItem('refresh_token')) {
       clearSession();
-      window.location.href = '/login';
+      window.location.href = loginRedirectPath();
       return Promise.reject(err);
     }
 
@@ -119,7 +125,7 @@ api.interceptors.response.use(
       return api.request(original);
     } catch {
       clearSession();
-      window.location.href = '/login';
+      window.location.href = loginRedirectPath();
       return Promise.reject(err);
     }
   },

@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth }  from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+
+const LAST_TENANT_SLUG_KEY = 'last_tenant_slug';
 
 const fieldCls =
   'w-full px-4 py-3 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-xl ' +
@@ -20,12 +22,19 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [passwordVisible, setPasswordVisible] = useState(false);
 
+  useEffect(() => {
+    if (urlTenantSlug) {
+      localStorage.setItem(LAST_TENANT_SLUG_KEY, urlTenantSlug);
+    }
+  }, [urlTenantSlug]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
       await login(form.email, form.password, urlTenantSlug);
+      if (urlTenantSlug) localStorage.setItem(LAST_TENANT_SLUG_KEY, urlTenantSlug);
       navigate('/');
     } catch (err) {
       const msg = err.response?.data?.message;

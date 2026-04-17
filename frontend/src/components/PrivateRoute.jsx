@@ -3,11 +3,16 @@ import { useAuth }    from '../context/AuthContext';
 import { useModules } from '../context/ModuleContext';
 import Layout from './Layout';
 
+const LAST_TENANT_SLUG_KEY = 'last_tenant_slug';
+
 export default function PrivateRoute({ children, module }) {
   const { user }              = useAuth();
   const { canAccess, loaded } = useModules();
 
-  if (!user) return <Navigate to="/login" replace />;
+  const savedTenantSlug = String(localStorage.getItem(LAST_TENANT_SLUG_KEY) || '').trim().toLowerCase();
+  const loginPath = savedTenantSlug ? `/login/${savedTenantSlug}` : '/login';
+
+  if (!user) return <Navigate to={loginPath} replace />;
 
   // Wait for module settings to load before making access decisions,
   // so we never flash a redirect and never flash-allow blocked content.
