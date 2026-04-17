@@ -535,7 +535,7 @@ function deriveTotalsFromLineItems(
   return { subtotal, cgst, sgst, igst, total };
 }
 
-export type SalesActor = { id?: number; role?: string };
+export type SalesActor = { id?: number; role?: string; tenant_id?: number | null };
 type DbTxClient = { query: (sql: string, params?: any[]) => Promise<{ rows: any[] }> };
 
 @Injectable()

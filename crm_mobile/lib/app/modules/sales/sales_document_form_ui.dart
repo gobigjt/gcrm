@@ -441,7 +441,7 @@ Widget salesLineProductDropdown({
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Text(
-        'No catalog products with available stock — enter lines manually.',
+        'No catalog products found — enter lines manually.',
         style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
       ),
     );
@@ -482,6 +482,27 @@ Widget salesLineProductDropdown({
               child: Text(
                 (p['name'] ?? '—').toString(),
                 overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+        ],
+        selectedItemBuilder: (ctx) => [
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              '— Select product —',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          ...products.map(
+            (p) => Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                (p['name'] ?? '—').toString(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                softWrap: false,
               ),
             ),
           ),

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/network/error_utils.dart';
-import '../../core/utils/product_catalog.dart';
 import '../../core/utils/ui_format.dart';
 import '../auth/auth_controller.dart';
 import 'sales_line_draft.dart';
@@ -131,8 +130,7 @@ class QuotationFormController extends GetxController {
   Future<void> _loadProducts() async {
     try {
       final res  = await _auth.authorizedRequest(method: 'GET', path: '/inventory/products');
-      final list = productsWithAvailableStock(_extractProducts(res));
-      products.assignAll(list);
+      products.assignAll(_extractProducts(res));
     } catch (_) {
       products.clear();
     }
