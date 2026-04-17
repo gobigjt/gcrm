@@ -9,24 +9,15 @@ import PDFDocument = require('pdfkit');
 /** Must match sales_orders_status_check in DB (001_initial_schema.sql). */
 const SALES_ORDER_STATUSES = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'] as const;
 
-function singleLineFooterText(text: string): string {
-  return String(text || '')
-    .replace(/\r?\n/g, ', ')
-    .replace(/\s+/g, ' ')
-    .replace(/,\s*,/g, ', ')
-    .trim();
+function safeFooterValue(value: unknown): string {
+  const t = String(value ?? '').trim();
+  if (!t) return '';
+  if (/^(undefined|null|nan)$/i.test(t)) return '';
+  return t;
 }
 
 function buildInvoiceFooterContent(company: Record<string, unknown>): string {
-  const custom = String(company.invoice_footer_content || '').trim();
-  if (custom) return custom;
-  const footerBody = singleLineFooterText(
-    String(company.address || '').trim() || String(company.company_name || '').trim() || '—',
-  );
-  const footerMeta = company.gstin
-    ? `GSTIN: ${String(company.gstin)}`
-    : `Company: ${String(company.company_name || '—')}`;
-  return `Contact: ${footerBody}\n${footerMeta}`;
+  return safeFooterValue(company.invoice_footer_content);
 }
 
 function topAddressTwoLines(address: string): string[] {
@@ -820,7 +811,7 @@ export class SalesService {
       const borderWidth = 0.6;
 
       const footerBaseText = buildInvoiceFooterContent(company as Record<string, unknown>);
-      const footerText = `${footerBaseText}\nPage 1 of 1`;
+      const footerText = footerBaseText ? `${footerBaseText}\nPage 1 of 1` : 'Page 1 of 1';
       pdf.font('Helvetica').fontSize(7);
       const footerHeight = pdf.heightOfString(footerText, { width: pageWidth, align: 'center' });
       const footerBand = Math.max(footerHeight + 18, 44);
@@ -1303,7 +1294,8 @@ export class SalesService {
       for (let pi = fr.start; pi < fr.start + fr.count; pi++) {
         pdf.switchToPage(pi);
         pdf.font('Helvetica').fontSize(7);
-        const footerText = `${footerBaseText}\nPage ${pi - fr.start + 1} of ${fr.count}`;
+        const pageLabel = `Page ${pi - fr.start + 1} of ${fr.count}`;
+        const footerText = footerBaseText ? `${footerBaseText}\n${pageLabel}` : pageLabel;
         const footerHeight = pdf.heightOfString(footerText, { width: footerWidth, align: 'center' });
         const fy = pdf.page.height - m.bottom - footerHeight - 10;
         pdf.fillColor('#666666').text(footerText, footerLeft, fy, {

@@ -28,20 +28,15 @@ function topAddressTwoLines(address) {
   return [first, second].filter(Boolean);
 }
 
-function singleLineFooterText(text) {
-  return String(text || '')
-    .replace(/\r?\n/g, ', ')
-    .replace(/\s+/g, ' ')
-    .replace(/,\s*,/g, ', ')
-    .trim();
+function safeFooterValue(value) {
+  const t = String(value ?? '').trim();
+  if (!t) return '';
+  if (/^(undefined|null|nan)$/i.test(t)) return '';
+  return t;
 }
 
 function buildInvoiceFooterContent(company = {}) {
-  const custom = String(company.invoice_footer_content || '').trim();
-  if (custom) return custom;
-  const contact = singleLineFooterText((company.address || '').trim() || (company.company_name || '').trim() || '');
-  const gstOrName = company.gstin ? `GSTIN: ${company.gstin}` : (company.company_name || '');
-  return [`Contact: ${contact}`, gstOrName].filter(Boolean).join('\n');
+  return safeFooterValue(company.invoice_footer_content);
 }
 
 function invoiceFooterHtml(company = {}) {
@@ -801,7 +796,8 @@ async function rasterSalesDocumentToPdf(doc, company, kind, docNo) {
     pdf.setFontSize(5.5);
     pdf.setTextColor(110, 110, 110);
     const pageLabel = `-- ${i} of ${n} --`;
-    pdf.text(`${footerText}\n${pageLabel}`, pageW / 2, pageH - 24, { align: 'center', width: '60%' });
+    const footerLines = footerText ? `${footerText}\n${pageLabel}` : pageLabel;
+    pdf.text(footerLines, pageW / 2, pageH - 24, { align: 'center', width: '60%' });
   }
   pdf.setTextColor(0, 0, 0);
   pdf.save(`${docNo}.pdf`);
