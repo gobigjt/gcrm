@@ -311,38 +311,93 @@ function totalsForSalesPdf(docData: any, kind: 'quotation' | 'order' | 'invoice'
   };
 }
 
-function amountInWordsInr(n: number, currencyLabel = 'INR'): string {
-  const num = Math.round(Number(n || 0));
-  if (num === 0) return `${currencyLabel} Zero only.`;
+/** 0–999 in words (Indian invoice style). */
+function wordsBelow1000(n: number): string {
+  const v = Math.floor(Math.min(999, Math.max(0, n)));
+  if (v === 0) return '';
   const ones = [
     '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
     'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen',
   ];
   const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-  const chunk = (x: number): string => {
-    let out = '';
-    let v = x;
-    if (v >= 100) {
-      out += `${ones[Math.floor(v / 100)]} Hundred `;
-      v %= 100;
-    }
-    if (v >= 20) {
-      out += `${tens[Math.floor(v / 10)]} `;
-      v %= 10;
-    }
-    if (v > 0) out += `${ones[v]} `;
-    return out.trim();
-  };
-  const crore = Math.floor(num / 10000000);
-  const lakh = Math.floor((num % 10000000) / 100000);
-  const thousand = Math.floor((num % 100000) / 1000);
-  const hundred = num % 1000;
   const parts: string[] = [];
-  if (crore) parts.push(`${chunk(crore)} Crore`);
-  if (lakh) parts.push(`${chunk(lakh)} Lakh`);
-  if (thousand) parts.push(`${chunk(thousand)} Thousand`);
-  if (hundred) parts.push(chunk(hundred));
-  return `${currencyLabel} ${parts.join(' ').replace(/\s+/g, ' ').trim()} only.`;
+  let x = v;
+  if (x >= 100) {
+    parts.push(`${ones[Math.floor(x / 100)]} Hundred`);
+    x %= 100;
+  }
+  if (x >= 20) {
+    parts.push(tens[Math.floor(x / 10)]);
+    x %= 10;
+    if (x) parts.push(ones[x]);
+  } else if (x > 0) {
+    parts.push(ones[x]);
+  }
+  return parts.join(' ').trim();
+}
+
+/**
+ * Indian numbering: Crore → Lakh → Thousand → last 3 digits.
+ * Recurses for crore part when &gt; 999 so large amounts stay readable.
+ */
+function amountInWordsIndian(n: number): string {
+  const num = Math.round(Number(n || 0));
+  if (num <= 0) return 'Zero';
+  if (num <= 999) return wordsBelow1000(num);
+
+  let rem = num;
+  const parts: string[] = [];
+
+  if (rem >= 10000000) {
+    const cro = Math.floor(rem / 10000000);
+    rem %= 10000000;
+    parts.push(`${amountInWordsIndian(cro)} Crore`);
+  }
+  if (rem >= 100000) {
+    const lak = Math.floor(rem / 100000);
+    rem %= 100000;
+    parts.push(`${wordsBelow1000(lak)} Lakh`);
+  }
+  if (rem >= 1000) {
+    const th = Math.floor(rem / 1000);
+    rem %= 1000;
+    parts.push(`${wordsBelow1000(th)} Thousand`);
+  }
+  if (rem > 0) {
+    parts.push(wordsBelow1000(rem));
+  }
+
+  return parts.join(' ').replace(/\s+/g, ' ').trim();
+}
+
+function amountInWordsInr(n: number, currencyLabel = 'INR'): string {
+  const num = Math.round(Number(n || 0));
+  if (num === 0) return `${currencyLabel} Zero only.`;
+  const words = amountInWordsIndian(num);
+  return `${currencyLabel} ${words} only.`;
+}
+
+/** Indian-style grouping: last 3 digits, then pairs (e.g. 12,34,567.89). */
+function formatIndianMoney(v: unknown): string {
+  const num = Number(v ?? 0);
+  if (!Number.isFinite(num)) return '0.00';
+  const fixed = num.toFixed(2);
+  const neg = num < 0;
+  const [intRaw, dec] = fixed.split('.');
+  const intPart = intRaw.replace(/^-/, '');
+  if (intPart.length <= 3) {
+    return `${neg ? '-' : ''}${intPart}.${dec}`;
+  }
+  const rest = intPart.slice(0, -3);
+  const last3 = intPart.slice(-3);
+  const groups: string[] = [last3];
+  let r = rest;
+  while (r.length > 2) {
+    groups.unshift(r.slice(-2));
+    r = r.slice(0, -2);
+  }
+  if (r.length > 0) groups.unshift(r);
+  return `${neg ? '-' : ''}${groups.join(',')}.${dec}`;
 }
 
 type PdfUnicodeFontSet = { regular: string; bold: string; italic: string };
@@ -660,7 +715,7 @@ export class SalesService {
   }
 
   private money(v: unknown): string {
-    return Number(v ?? 0).toFixed(2);
+    return formatIndianMoney(v);
   }
 
   private async nextQuotationNumber(client: DbTxClient): Promise<string> {
