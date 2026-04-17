@@ -109,7 +109,7 @@ class SalesView extends GetView<SalesController> {
     final phoneCtrl = TextEditingController(text: (existing?['phone'] ?? '').toString());
     final emailCtrl = TextEditingController(text: (existing?['email'] ?? '').toString());
     final gstinCtrl = TextEditingController(text: (existing?['gstin'] ?? '').toString());
-    final billingSeed = (existing?['billing_address'] ?? existing?['address'] ?? '').toString();
+    final billingSeed = (existing?['billing_address'] ?? '').toString();
     final shippingSeed = (existing?['shipping_address'] ?? '').toString();
     final billingCtrl = TextEditingController(text: billingSeed);
     final shippingCtrl = TextEditingController(text: shippingSeed);
@@ -401,7 +401,7 @@ class SalesView extends GetView<SalesController> {
                       name: (r['name'] ?? '—').toString(),
                       phone: (r['phone'] ?? '—').toString(),
                       email: (r['email'] ?? '—').toString(),
-                      billingAddress: (r['billing_address'] ?? r['address'] ?? '—').toString(),
+                      billingAddress: (r['billing_address'] ?? '—').toString(),
                       shippingAddress: (r['shipping_address'] ?? '').toString(),
                       createdBy: (r['created_by_name'] ?? '—').toString(),
                       createdDateTime: _formatCreatedDateTime(r['created_at']),

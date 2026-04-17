@@ -40,6 +40,8 @@ class QuotationFormController extends GetxController {
   final selectedCreatedById = Rxn<int>();
   final validUntilCtrl     = TextEditingController();
   final notesCtrl          = TextEditingController();
+  final customerBillingAddressCtrl = TextEditingController();
+  final customerShippingAddressCtrl = TextEditingController();
 
   // GST & tax type
   final gstTypeValue  = 'intra_state'.obs; // 'intra_state' | 'inter_state'
@@ -69,6 +71,8 @@ class QuotationFormController extends GetxController {
     _disposeAllLines();
     validUntilCtrl.dispose();
     notesCtrl.dispose();
+    customerBillingAddressCtrl.dispose();
+    customerShippingAddressCtrl.dispose();
     discountAmountCtrl.dispose();
     shippingAmountCtrl.dispose();
     roundOffCtrl.dispose();
@@ -97,11 +101,12 @@ class QuotationFormController extends GetxController {
           statusValue.value = 'draft';
         }
       } else {
-        // Keep new form unselected by default; prefill only for explicit lead handoff.
+        // For new quotations, always resolve to a valid executive.
+        // Sales Executives cannot edit this field, so default to logged-in user.
         if (initialCreatedById != null && initialCreatedById! > 0) {
           _syncCreatedBySelection(initialCreatedById);
         } else {
-          selectedCreatedById.value = null;
+          _syncCreatedBySelection();
         }
         if (lines.isEmpty) addLine();
       }
@@ -122,9 +127,12 @@ class QuotationFormController extends GetxController {
     if (forceCustomerPrefill && initialCustomerId != null) {
       final ids = list.map((c) => (c['id'] as num?)?.toInt()).whereType<int>().toSet();
       selectedCustomerId.value = ids.contains(initialCustomerId) ? initialCustomerId : null;
+      onCustomerChanged(selectedCustomerId.value, forceAddressRefresh: true);
       return;
     }
     selectedCustomerId.value = null;
+    customerBillingAddressCtrl.clear();
+    customerShippingAddressCtrl.clear();
   }
 
   Future<void> _loadProducts() async {
@@ -156,6 +164,31 @@ class QuotationFormController extends GetxController {
     }
   }
 
+  Map<String, dynamic>? _customerById(int? id) {
+    if (id == null) return null;
+    for (final cu in customers) {
+      if ((cu['id'] as num?)?.toInt() == id) return cu;
+    }
+    return null;
+  }
+
+  void onCustomerChanged(int? customerId, {bool forceAddressRefresh = false}) {
+    selectedCustomerId.value = customerId;
+    if (customerId == null) {
+      customerBillingAddressCtrl.clear();
+      customerShippingAddressCtrl.clear();
+      return;
+    }
+    if (!forceAddressRefresh &&
+        customerBillingAddressCtrl.text.trim().isNotEmpty &&
+        customerShippingAddressCtrl.text.trim().isNotEmpty) {
+      return;
+    }
+    final cu = _customerById(customerId);
+    customerBillingAddressCtrl.text = (cu?['billing_address'] ?? '').toString();
+    customerShippingAddressCtrl.text = (cu?['shipping_address'] ?? '').toString();
+  }
+
   Future<void> _loadQuotationIntoForm(int id) async {
     final res = await _auth.authorizedRequest(method: 'GET', path: '/sales/quotations/$id');
     final q   = Map<String, dynamic>.from((res as Map)['quotation'] as Map);
@@ -165,7 +198,10 @@ class QuotationFormController extends GetxController {
     if (validUntilCtrl.text == '—') validUntilCtrl.clear();
     notesCtrl.text       = (q['notes'] ?? '').toString();
     statusValue.value    = (q['status'] ?? 'draft').toString();
-    selectedCreatedById.value = (q['created_by'] as num?)?.toInt();
+    customerBillingAddressCtrl.text = (q['customer_billing_address'] ?? q['customer_address'] ?? '').toString();
+    customerShippingAddressCtrl.text = (q['customer_shipping_address'] ?? '').toString();
+    selectedCreatedById.value =
+        (q['sales_executive_id'] as num?)?.toInt() ?? (q['created_by'] as num?)?.toInt();
     _syncCreatedBySelection(selectedCreatedById.value);
 
     // GST & tax type
@@ -260,7 +296,11 @@ class QuotationFormController extends GetxController {
         'gst_type':         gstTypeValue.value,
         'tax_type':         taxTypeValue.value,
         'is_interstate':    interstate,
-        'created_by':       selectedCreatedById.value,
+        'customer_billing_address':
+            customerBillingAddressCtrl.text.trim().isEmpty ? null : customerBillingAddressCtrl.text.trim(),
+        'customer_shipping_address':
+            customerShippingAddressCtrl.text.trim().isEmpty ? null : customerShippingAddressCtrl.text.trim(),
+        'sales_executive_id': selectedCreatedById.value,
         'items':            payloadLines,
       };
 

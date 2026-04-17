@@ -144,6 +144,7 @@ class SalesBillToFields extends StatelessWidget {
             final safeVal = cur != null && ids.contains(cur) ? cur : null;
             return DropdownButtonFormField<int>(
               value: safeVal,
+              isExpanded: true,
               decoration: customerDecoration(ctx),
               dropdownColor: Theme.of(ctx).brightness == Brightness.dark ? cs.surfaceContainerHighest : null,
               style: TextStyle(color: cs.onSurface, fontSize: 15, fontWeight: FontWeight.w500),
@@ -152,6 +153,18 @@ class SalesBillToFields extends StatelessWidget {
                     (cu) => DropdownMenuItem<int>(
                       value: (cu['id'] as num).toInt(),
                       child: Text((cu['name'] ?? '—').toString(), overflow: TextOverflow.ellipsis),
+                    ),
+                  )
+                  .toList(),
+              selectedItemBuilder: (_) => customers
+                  .map(
+                    (cu) => Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        (cu['name'] ?? '—').toString(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   )
                   .toList(),
@@ -169,6 +182,7 @@ class SalesBillToFields extends StatelessWidget {
           else
             DropdownButtonFormField<int>(
               value: safeExec,
+              isExpanded: true,
               decoration: customerDecoration(context),
               dropdownColor: Theme.of(context).brightness == Brightness.dark ? cs.surfaceContainerHighest : null,
               style: TextStyle(color: cs.onSurface, fontSize: 15, fontWeight: FontWeight.w500),
@@ -181,6 +195,26 @@ class SalesBillToFields extends StatelessWidget {
                   (u) => DropdownMenuItem<int>(
                     value: (u['id'] as num).toInt(),
                     child: Text((u['name'] ?? '—').toString(), overflow: TextOverflow.ellipsis),
+                  ),
+                ),
+              ],
+              selectedItemBuilder: (_) => [
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Select sales executive',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                ...executives.map(
+                  (u) => Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      (u['name'] ?? '—').toString(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ),
               ],

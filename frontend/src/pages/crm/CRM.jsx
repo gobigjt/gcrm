@@ -600,15 +600,15 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
         showToast('Customer created from lead. Opening quotation list.', 'success');
       }
 
-      // Best-effort: keep Sales customer address + shipping_address in sync with lead address
+      // Best-effort: keep Sales customer billing_address + shipping_address in sync with lead address
       // when those fields are currently empty.
       try {
         const leadAddr = String(detail?.address || lead?.address || '').trim();
-        const customerAddr = String(linked?.address || '').trim();
+        const customerAddr = String(linked?.billing_address || '').trim();
         const customerShip = String(linked?.shipping_address || '').trim();
         const patch = {};
         if (leadAddr && linked?.id) {
-          if (!customerAddr) patch.address = leadAddr;
+          if (!customerAddr) patch.billing_address = leadAddr;
           if (!customerShip) patch.shipping_address = leadAddr;
         }
         if (Object.keys(patch).length > 0) {
