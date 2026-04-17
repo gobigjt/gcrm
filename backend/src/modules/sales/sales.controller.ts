@@ -81,7 +81,7 @@ export class SalesController {
   @Post('quotations') async createQuotation(@Body() b: any, @CurrentUser() u: any) {
     const { items = [], ...d } = b;
     const created_by = await this.svc.resolveDocumentCreatedBy(u, d.created_by);
-    return this.svc.createQuotation({ ...d, created_by }, items, { id: u?.id, role: u?.role });
+    return this.svc.createQuotation({ ...d, created_by }, items, u);
   }
   @Get('quotations/:id')       async getQuotation(@Param('id') id: string, @CurrentUser() u: any) { const q=await this.svc.getQuotation(Number(id), u); if(!q) throw new NotFoundException(); return {quotation:q}; }
   @Get('quotations/:id/pdf') async getQuotationPdf(@Param('id') id: string, @CurrentUser() u: any) {
@@ -94,7 +94,7 @@ export class SalesController {
     if (body.created_by !== undefined) {
       body.created_by = await this.svc.resolveDocumentCreatedBy(u, body.created_by);
     }
-    const q = await this.svc.patchQuotation(Number(id), body, { id: u?.id, role: u?.role });
+    const q = await this.svc.patchQuotation(Number(id), body, u);
     if (!q) throw new NotFoundException();
     return { quotation: q };
   }
@@ -122,7 +122,7 @@ export class SalesController {
   @Post('orders') async createOrder(@Body() b: any, @CurrentUser() u: any) {
     const { items = [], ...d } = b;
     const created_by = await this.svc.resolveDocumentCreatedBy(u, d.created_by);
-    return this.svc.createOrder({ ...d, created_by }, items, { id: u?.id, role: u?.role });
+    return this.svc.createOrder({ ...d, created_by }, items, u);
   }
   @Get('orders/:id')           async getOrder(@Param('id') id: string, @CurrentUser() u: any) { const o=await this.svc.getOrder(Number(id), u); if(!o) throw new NotFoundException(); return {order:o}; }
   @Get('orders/:id/pdf') async getOrderPdf(@Param('id') id: string, @CurrentUser() u: any) {
@@ -135,7 +135,7 @@ export class SalesController {
     if (body.created_by !== undefined) {
       body.created_by = await this.svc.resolveDocumentCreatedBy(u, body.created_by);
     }
-    return this.svc.patchOrder(Number(id), body, { id: u?.id, role: u?.role });
+    return this.svc.patchOrder(Number(id), body, u);
   }
   @Delete('orders/:id')        deleteOrder(@Param('id') id: string, @CurrentUser() u: any) { return this.svc.deleteOrder(Number(id), u); }
 
@@ -161,7 +161,7 @@ export class SalesController {
   @Post('invoices') async createInvoice(@Body() b: any, @CurrentUser() u: any) {
     const { items = [], ...d } = b;
     const created_by = await this.svc.resolveDocumentCreatedBy(u, d.created_by);
-    return this.svc.createInvoice({ ...d, created_by }, items, { id: u?.id, role: u?.role });
+    return this.svc.createInvoice({ ...d, created_by }, items, u);
   }
   @Get('invoices/:id')         async getInvoice(@Param('id') id: string, @CurrentUser() u: any) { const inv=await this.svc.getInvoice(Number(id), u); if(!inv) throw new NotFoundException(); return {invoice:inv}; }
   @Get('invoices/:id/pdf') async getInvoicePdf(@Param('id') id: string, @CurrentUser() u: any) {
@@ -174,7 +174,7 @@ export class SalesController {
     if (body.created_by !== undefined) {
       body.created_by = await this.svc.resolveDocumentCreatedBy(u, body.created_by);
     }
-    const inv = await this.svc.patchInvoice(Number(id), body, { id: u?.id, role: u?.role });
+    const inv = await this.svc.patchInvoice(Number(id), body, u);
     if (!inv) throw new NotFoundException();
     return { invoice: inv };
   }
