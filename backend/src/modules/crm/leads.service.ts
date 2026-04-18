@@ -286,6 +286,9 @@ export class LeadsService {
       );
       vals.push(scopedUserId);
       i++;
+      // `assigned_to` in query params is already encoded in the scoped clause above.
+      // Keeping both added `AND l.assigned_to = …`, which hid e.g. unassigned leads created by that user.
+      delete f.assigned_to;
     }
     if (f.stage_id) {
       conds.push(`l.stage_id=$${i++}`);

@@ -20,13 +20,16 @@ async function bootstrap() {
 
   // CORS must apply to static `/uploads/*` (Flutter web loads profile images cross-origin).
   app.enableCors();
-  app.useStaticAssets(uploadRoot, {
-    prefix: '/uploads/',
+  const uploadsStaticOpts = {
     index: false,
-    setHeaders: (res) => {
+    setHeaders: (res: { setHeader: (k: string, v: string) => void }) => {
       res.setHeader('Access-Control-Allow-Origin', '*');
     },
-  });
+  };
+  // Root path — direct links, Puppeteer, older clients
+  app.useStaticAssets(uploadRoot, { ...uploadsStaticOpts, prefix: '/uploads/' });
+  // Same files under /api/uploads — gateways that only forward `/api/*` to this app (common in production)
+  app.useStaticAssets(uploadRoot, { ...uploadsStaticOpts, prefix: '/api/uploads/' });
 
   app.setGlobalPrefix('api');
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));

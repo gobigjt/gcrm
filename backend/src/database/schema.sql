@@ -761,6 +761,7 @@ CREATE TABLE IF NOT EXISTS lead_platform_google_sheets (
   sheet_url      TEXT NOT NULL,
   sheet_gid      VARCHAR(50),
   lead_source_id INTEGER REFERENCES lead_sources(id) ON DELETE SET NULL,
+  tenant_id      INTEGER,
   data_start_row INTEGER,
   is_active      BOOLEAN NOT NULL DEFAULT TRUE,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -769,6 +770,9 @@ CREATE TABLE IF NOT EXISTS lead_platform_google_sheets (
 
 CREATE INDEX IF NOT EXISTS idx_lead_platform_google_sheets_source
   ON lead_platform_google_sheets(lead_source_id);
+
+CREATE INDEX IF NOT EXISTS idx_lead_platform_google_sheets_tenant_id
+  ON lead_platform_google_sheets(tenant_id);
 
 -- ============================================================
 -- SEED DATA
