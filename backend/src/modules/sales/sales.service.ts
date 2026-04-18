@@ -3,7 +3,9 @@ import { DatabaseService } from '../../database/database.service';
 import { RedisService }    from '../../redis/redis.service';
 import { SalesNotificationsService } from './sales-notifications.service';
 import { createWriteStream, existsSync, mkdirSync } from 'fs';
+import { writeFile } from 'fs/promises';
 import { join } from 'path';
+import { buildSalesDocumentHtml, isEmptySalesLineItem } from './sales-document-print-html';
 import PDFDocument = require('pdfkit');
 
 /** Must match sales_orders_status_check in DB (001_initial_schema.sql). */
@@ -771,7 +773,37 @@ export class SalesService {
     const fileName = `${safeKind}-${id}-${Date.now()}.pdf`;
     const filePath = join(pdfDir, fileName);
 
-    const pdf = new PDFDocument({ size: 'A4', margin: 28, bufferPages: true });
+    const useHtmlPrintEngine = process.env.SALES_PDF_ENGINE !== 'pdfkit';
+    if (useHtmlPrintEngine) {
+      try {
+        const { loadInvoiceLogoDataUrl, renderSalesPrintHtmlToPdf } = await import('./sales-html-pdf');
+        const logoDataUrl = await loadInvoiceLogoDataUrl(company as Record<string, unknown>, uploadsRoot);
+        const html = buildSalesDocumentHtml(
+          docData,
+          company as Record<string, unknown>,
+          logoDataUrl,
+          kind,
+          { includeSheetFooter: true, rasterLayout: false },
+        );
+        const buf = await renderSalesPrintHtmlToPdf(html);
+        await writeFile(filePath, buf);
+        return {
+          url: `/sales/generated-pdfs/${fileName}`,
+          file_name: fileName,
+          kind,
+          id,
+        };
+      } catch (err) {
+        console.warn('[SalesService] Print-view HTML PDF failed, falling back to PDFKit:', err);
+      }
+    }
+
+    const pdfLineItems = (Array.isArray(docData.items) ? docData.items : []).filter(
+      (it: Record<string, unknown>) => !isEmptySalesLineItem(it),
+    );
+    const docDataForPdfKit = { ...docData, items: pdfLineItems };
+
+    const pdf = new PDFDocument({ size: 'A4', margin: 23, bufferPages: true });
     const unicodeFonts = resolvePdfUnicodeFontSet();
     const fontRegular = unicodeFonts ? 'PdfUnicodeRegular' : 'Helvetica';
     const fontBold = unicodeFonts ? 'PdfUnicodeBold' : 'Helvetica-Bold';
@@ -1012,7 +1044,7 @@ export class SalesService {
         x += cols[i];
       });
       y += 18;
-      const items = Array.isArray(docData.items) ? docData.items : [];
+      const items = pdfLineItems;
       if (!items.length) {
         bumpPage(16);
         pdf.rect(pageLeft, y, pageWidth, 16).lineWidth(borderWidth).stroke(borderColor);
@@ -1053,7 +1085,7 @@ export class SalesService {
       y += 8;
 
       const interstate = kind === 'invoice' && Number(docData.igst || 0) > 0;
-      const taxRows = hsnSummaryRowsForPdf(docData, kind);
+      const taxRows = hsnSummaryRowsForPdf(docDataForPdfKit, kind);
       const displayTaxRows: HsnTaxRowPdf[] = taxRows.length
         ? taxRows
         : [{ hsn: '—', taxable: 0, cgst: 0, sgst: 0, igst: 0, rate: 0 }];
@@ -1109,7 +1141,7 @@ export class SalesService {
       }
 
       y += 4;
-      const t = totalsForSalesPdf(docData, kind);
+      const t = totalsForSalesPdf(docDataForPdfKit, kind);
       const totalTax = t.cgst + t.sgst + t.igst;
       const subTotal = t.subtotal != null ? t.subtotal : t.total - totalTax;
       const wordsStr = amountInWordsInr(t.total, currencyLabel);
@@ -1259,7 +1291,7 @@ export class SalesService {
 
       pdf.fontSize(10).text('Items', { underline: true });
       pdf.moveDown(0.4);
-      const items = Array.isArray(docData.items) ? docData.items : [];
+      const items = pdfLineItems;
       if (!items.length) {
         pdf.fontSize(9).text('No line items');
       } else {
