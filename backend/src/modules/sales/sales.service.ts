@@ -99,6 +99,25 @@ function resolveUploadsFilePath(urlOrPath: string, uploadsRoot: string): string 
   return existsSync(local) ? local : null;
 }
 
+function resolveLogoFetchUrl(urlOrPath: string): string | null {
+  const s = String(urlOrPath || '').trim();
+  if (!s || /^javascript:/i.test(s)) return null;
+  if (/^https?:\/\//i.test(s)) return s;
+  const p = s.startsWith('/') ? s : `/${s}`;
+  const apiBase = String(process.env.API_PUBLIC_URL || '').trim().replace(/\/$/, '');
+  if (p.startsWith('/api/uploads/')) {
+    if (apiBase && /^https?:\/\//i.test(apiBase)) return `${apiBase}${p.slice('/api'.length)}`;
+    const port = String(process.env.PORT || '4000').trim();
+    return `http://127.0.0.1:${port}${p}`;
+  }
+  if (p.startsWith('/uploads/')) {
+    if (apiBase && /^https?:\/\//i.test(apiBase)) return `${apiBase}${p}`;
+    const port = String(process.env.PORT || '4000').trim();
+    return `http://127.0.0.1:${port}/api${p}`;
+  }
+  return null;
+}
+
 const MAX_REMOTE_LOGO_BYTES = 3 * 1024 * 1024;
 const REMOTE_LOGO_FETCH_MS = 12_000;
 
@@ -887,8 +906,11 @@ export class SalesService {
       const logoUrl = String((company as { invoice_logo_url?: string }).invoice_logo_url || company.logo_url || '').trim();
       const logoPath = resolveUploadsFilePath(logoUrl, uploadsRoot);
       let logoBuffer: Buffer | null = null;
-      if (!logoPath && /^https?:\/\//i.test(logoUrl)) {
-        logoBuffer = await fetchRemoteLogoBuffer(logoUrl);
+      if (!logoPath) {
+        const remoteLogoUrl = resolveLogoFetchUrl(logoUrl);
+        if (remoteLogoUrl) {
+          logoBuffer = await fetchRemoteLogoBuffer(remoteLogoUrl);
+        }
       }
       const hasLogo = Boolean(logoPath || logoBuffer);
       // Header: left ~65% (logo), right 35% (company name / address / GSTIN); no inner vertical line

@@ -38,6 +38,25 @@ function mimeForPath(filePath: string): string {
   return 'image/png';
 }
 
+function resolveLogoFetchUrl(urlOrPath: string): string | null {
+  const s = String(urlOrPath || '').trim();
+  if (!s || /^javascript:/i.test(s)) return null;
+  if (/^https?:\/\//i.test(s)) return s;
+  const p = s.startsWith('/') ? s : `/${s}`;
+  const apiBase = String(process.env.API_PUBLIC_URL || '').trim().replace(/\/$/, '');
+  if (p.startsWith('/api/uploads/')) {
+    if (apiBase && /^https?:\/\//i.test(apiBase)) return `${apiBase}${p.slice('/api'.length)}`;
+    const port = String(process.env.PORT || '4000').trim();
+    return `http://127.0.0.1:${port}${p}`;
+  }
+  if (p.startsWith('/uploads/')) {
+    if (apiBase && /^https?:\/\//i.test(apiBase)) return `${apiBase}${p}`;
+    const port = String(process.env.PORT || '4000').trim();
+    return `http://127.0.0.1:${port}/api${p}`;
+  }
+  return null;
+}
+
 /**
  * Inline logo as data URL so Puppeteer does not need to fetch (works offline / same process).
  */
@@ -59,11 +78,12 @@ export async function loadInvoiceLogoDataUrl(
     }
   }
 
-  if (/^https?:\/\//i.test(preferred)) {
+  const remoteUrl = resolveLogoFetchUrl(preferred);
+  if (remoteUrl) {
     try {
       const ac = new AbortController();
       const t = setTimeout(() => ac.abort(), 15_000);
-      const r = await fetch(preferred, { signal: ac.signal });
+      const r = await fetch(remoteUrl, { signal: ac.signal });
       clearTimeout(t);
       if (!r.ok) return null;
       const ct = (r.headers.get('content-type') || '').split(';')[0].trim() || 'image/png';
