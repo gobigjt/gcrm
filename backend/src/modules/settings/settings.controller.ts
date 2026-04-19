@@ -12,7 +12,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
+import { diskStorage, memoryStorage } from 'multer';
 import { extname, join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import { ApiTags, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
@@ -130,19 +130,7 @@ export class SettingsController {
   })
   @UseInterceptors(
     FileInterceptor('file', {
-      storage: diskStorage({
-        destination: (_req, _file, cb) => {
-          const dir = join(process.cwd(), 'uploads', 'company');
-          if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-          cb(null, dir);
-        },
-        filename: (_req, file, cb) => {
-          const ext = extname(file.originalname || '').toLowerCase();
-          const allowed = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg'];
-          const safe = allowed.includes(ext) ? ext : '.png';
-          cb(null, `invoice-logo-${Date.now()}${safe}`);
-        },
-      }),
+      storage: memoryStorage(),
       limits: { fileSize: 2 * 1024 * 1024 },
       fileFilter: (_req, file, cb) => {
         const ok =
@@ -156,7 +144,7 @@ export class SettingsController {
     if (!file) {
       throw new BadRequestException('Upload an image file (JPEG, PNG, WebP, GIF, or SVG), max 2 MB.');
     }
-    return this.svc.setInvoiceLogoFromUpload(file.filename, u.id, u);
+    return this.svc.setInvoiceLogoFromUpload(file, u.id, u);
   }
 
   @UseGuards(RolesGuard) @Roles('Admin')
