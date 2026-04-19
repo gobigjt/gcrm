@@ -12,9 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiBody, ApiResponse, ApiConsumes } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname, join } from 'path';
-import { existsSync, mkdirSync } from 'fs';
+import { memoryStorage } from 'multer';
 import { AuthService }  from './auth.service';
 import { LoginDto }     from './dto/login.dto';
 import { RegisterDto }  from './dto/register.dto';
@@ -86,19 +84,7 @@ export class AuthController {
   })
   @UseInterceptors(
     FileInterceptor('file', {
-      storage: diskStorage({
-        destination: (_req, _file, cb) => {
-          const dir = join(process.cwd(), 'uploads', 'users');
-          if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-          cb(null, dir);
-        },
-        filename: (_req, file, cb) => {
-          const ext = extname(file.originalname || '').toLowerCase();
-          const allowed = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
-          const safe = allowed.includes(ext) ? ext : '.jpg';
-          cb(null, `avatar-${Date.now()}${safe}`);
-        },
-      }),
+      storage: memoryStorage(),
       limits: { fileSize: 2 * 1024 * 1024 },
       fileFilter: (_req, file, cb) => {
         const ok =
@@ -115,7 +101,7 @@ export class AuthController {
         'Could not read the image. Use JPEG, PNG, WebP, or GIF under 2 MB.',
       );
     }
-    const u = await this.auth.setAvatarFromUpload(user.id, file.filename);
+    const u = await this.auth.setAvatarFromUpload(user.id, file);
     return { user: u };
   }
 

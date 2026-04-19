@@ -4,6 +4,7 @@ import { existsSync, unlinkSync } from 'fs';
 import { DatabaseService } from '../../database/database.service';
 import { RedisService }    from '../../redis/redis.service';
 import { AuditService }    from '../audit/audit.service';
+import { ObjectStorageService } from '../../common/services/object-storage.service';
 
 @Injectable()
 export class SettingsService {
@@ -11,6 +12,7 @@ export class SettingsService {
     private readonly db:    DatabaseService,
     private readonly cache: RedisService,
     private readonly audit: AuditService,
+    private readonly objectStorage: ObjectStorageService,
   ) {}
 
   private isSuperAdmin(ctx?: { role?: unknown }): boolean {
@@ -105,14 +107,20 @@ export class SettingsService {
   }
 
   /** Save uploaded invoice logo file path and remove previous file under /uploads/company/. */
-  async setInvoiceLogoFromUpload(filename: string, actorId?: number, ctx?: { tenant_id?: unknown; role?: unknown }) {
+  async setInvoiceLogoFromUpload(file: Express.Multer.File, actorId?: number, ctx?: { tenant_id?: unknown; role?: unknown }) {
     const tenantId = this.requireTenantId(ctx);
     await this.cache.del(`company:settings:${tenantId || 'all'}`);
     const prev = (await this.db.query(
       'SELECT invoice_logo_url FROM company_settings WHERE ($1::integer = 0 OR tenant_id = $1) ORDER BY id LIMIT 1',
       [tenantId],
     )).rows[0]?.invoice_logo_url as string | undefined;
-    if (prev && prev.startsWith('/uploads/company/')) {
+    if (prev && /^https?:\/\//i.test(prev)) {
+      try {
+        await this.objectStorage.deleteByPublicUrl(prev);
+      } catch {
+        /* ignore */
+      }
+    } else if (prev && prev.startsWith('/uploads/company/')) {
       const fp = join(process.cwd(), 'uploads', 'company', basename(prev));
       try {
         if (existsSync(fp)) unlinkSync(fp);
@@ -120,8 +128,8 @@ export class SettingsService {
         /* ignore */
       }
     }
-    const rel = `/uploads/company/${filename}`;
-    return this.upsertCompanySettings({ invoice_logo_url: rel }, actorId, ctx);
+    const uploaded = await this.objectStorage.uploadPublicImage(file, 'company/invoice-logos');
+    return this.upsertCompanySettings({ invoice_logo_url: uploaded.url }, actorId, ctx);
   }
 
   async listPermissions(_ctx?: { tenant_id?: unknown; role?: unknown }) {

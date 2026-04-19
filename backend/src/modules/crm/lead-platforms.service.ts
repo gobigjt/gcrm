@@ -1067,6 +1067,7 @@ export class LeadPlatformsService {
     const headers = rows[0].map((h) => this.normHeader(h));
     const stageId = await this.leadStageIdOrDefault();
     const srcId = cfg.lead_source_id ?? (await this.defaultLeadSourceId());
+    const tenantId = cfg.tenant_id ?? null;
     const createdLeads: number[] = [];
     let importedCount = 0;
     let skippedEmptyIdentity = 0;
@@ -1106,8 +1107,8 @@ export class LeadPlatformsService {
       }
 
       const ins = await this.db.query(
-        `INSERT INTO leads (name,email,phone,company,source_id,stage_id,assigned_to,notes,priority,custom_fields)
-         VALUES ($1,$2,$3,$4,$5,$6,NULL,$7,'warm',$8)
+        `INSERT INTO leads (name,email,phone,company,source_id,stage_id,assigned_to,notes,priority,custom_fields,tenant_id)
+         VALUES ($1,$2,$3,$4,$5,$6,NULL,$7,'warm',$8,$9)
          RETURNING id`,
         [
           leadName,
@@ -1118,6 +1119,7 @@ export class LeadPlatformsService {
           stageId,
           notes || 'Imported from Google Sheet',
           JSON.stringify({ import_source: 'google_sheet', config_id: cfg.id, row_index: i + 1 }),
+          tenantId,
         ],
       );
       const id = ins.rows[0]?.id;
@@ -1174,6 +1176,7 @@ export class LeadPlatformsService {
 
     const fallbackSourceId = await this.defaultLeadSourceId();
     const sourceFallback = cfg.lead_source_id ?? fallbackSourceId;
+    const tenantId = cfg.tenant_id ?? null;
     const [defaultStageId, stageByLower, userByLower, resolveSource] = await Promise.all([
       this.leadStageIdOrDefault(),
       this.buildStageLookup(),
@@ -1311,8 +1314,8 @@ export class LeadPlatformsService {
 
       if (sheetLeadId) {
         const ins = await this.db.query(
-          `INSERT INTO leads (name,email,phone,company,source_id,stage_id,assigned_to,notes,priority,custom_fields,address)
-           VALUES ($1,$2,$3,NULL,$4,$5,$6,$7,'warm',$8::jsonb,$9)
+          `INSERT INTO leads (name,email,phone,company,source_id,stage_id,assigned_to,notes,priority,custom_fields,address,tenant_id)
+           VALUES ($1,$2,$3,NULL,$4,$5,$6,$7,'warm',$8::jsonb,$9,$10)
            RETURNING id`,
           [
             leadName,
@@ -1324,6 +1327,7 @@ export class LeadPlatformsService {
             notesLine,
             JSON.stringify(sheetMeta),
             address,
+            tenantId,
           ],
         );
         const newId = ins.rows[0]?.id;
@@ -1345,8 +1349,8 @@ export class LeadPlatformsService {
       }
 
       const ins = await this.db.query(
-        `INSERT INTO leads (name,email,phone,company,source_id,stage_id,assigned_to,notes,priority,custom_fields,address)
-         VALUES ($1,$2,$3,NULL,$4,$5,$6,$7,'warm',$8::jsonb,$9)
+        `INSERT INTO leads (name,email,phone,company,source_id,stage_id,assigned_to,notes,priority,custom_fields,address,tenant_id)
+         VALUES ($1,$2,$3,NULL,$4,$5,$6,$7,'warm',$8::jsonb,$9,$10)
          RETURNING id`,
         [
           leadName,
@@ -1358,6 +1362,7 @@ export class LeadPlatformsService {
           notesLine,
           JSON.stringify({ ...sheetMeta, google_sheet_lead_id: null }),
           address,
+          tenantId,
         ],
       );
       const newId = ins.rows[0]?.id;
