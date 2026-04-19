@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { apiErrorMessage } from '../../utils/apiErrorMessage';
 import { promptDestructive } from '../../utils/promptDestructive';
+import { resolveApiPublicUrl } from '../../utils/publicAssetUrl';
 import Table from '../../components/Table';
 import Modal from '../../components/Modal';
 import Tabs  from '../../components/Tabs';
@@ -58,6 +59,26 @@ const ROLE_COLORS = {
 
 function displayRoleName(role) {
   return role === 'Super Admin' ? 'Admin' : role;
+}
+
+function UserAvatar({ name, avatarUrl }) {
+  const src = resolveApiPublicUrl(avatarUrl || '');
+  const initial = String(name || 'U').trim().charAt(0).toUpperCase() || 'U';
+  return (
+    <div className="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">
+      {src ? (
+        <img
+          src={src}
+          alt=""
+          className="w-8 h-8 object-cover"
+          onError={(e) => {
+            e.currentTarget.style.display = 'none';
+          }}
+        />
+      ) : null}
+      <span>{initial}</span>
+    </div>
+  );
 }
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -616,9 +637,7 @@ function UsersTab({ allPerms, roles }) {
         cols={['User', 'Role', 'Zone', 'Overrides', 'Status', 'Joined', 'Actions']}
         rows={users.map(u => [
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">
-              {u.name?.[0]?.toUpperCase()}
-            </div>
+            <UserAvatar name={u.name} avatarUrl={u.avatar_url} />
             <div>
               <p className="font-medium text-slate-800 dark:text-slate-100 text-sm">{u.name}</p>
               <p className="text-xs text-slate-400">{u.email}</p>

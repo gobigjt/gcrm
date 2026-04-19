@@ -71,7 +71,30 @@ function invoiceBalanceDue(doc) {
 /** Absolute URL for static paths (e.g. /uploads/...) when rendering HTML for Puppeteer. */
 function resolvePublicUrl(pathOrUrl: string) {
   if (!pathOrUrl) return '';
-  const s = String(pathOrUrl).trim();
+  let s = String(pathOrUrl).trim();
+  const bucketEndpoint = String(process.env.RAILWAY_BUCKET_ENDPOINT || '').trim().replace(/\/$/, '');
+  const bucketName = String(process.env.RAILWAY_BUCKET_NAME || '').trim();
+  if (
+    bucketEndpoint &&
+    bucketName &&
+    s.toLowerCase().startsWith(`${bucketEndpoint.toLowerCase()}/${bucketName.toLowerCase()}/`)
+  ) {
+    const key = s.slice(`${bucketEndpoint}/${bucketName}/`.length);
+    s = `/uploads/bucket/${key}`;
+  }
+  if (/^https?:\/\//i.test(s)) {
+    try {
+      const u = new URL(s);
+      if (u.hostname.toLowerCase().includes('storageapi.dev')) {
+        const parts = u.pathname.split('/').filter(Boolean);
+        if (parts.length >= 2) {
+          s = `/uploads/bucket/${parts.slice(1).join('/')}`;
+        }
+      }
+    } catch {
+      /* keep as-is */
+    }
+  }
   if (/^https?:\/\//i.test(s)) return s;
   const p = s.startsWith('/') ? s : `/${s}`;
 

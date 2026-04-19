@@ -1,5 +1,5 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
-import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 
 type StorageConfig = {
   bucket: string;
@@ -16,16 +16,24 @@ export class ObjectStorageService {
   private client: S3Client | null = null;
   private cfg: StorageConfig | null = null;
 
+  private cleanEnv(raw: string | undefined): string {
+    let s = String(raw || '').replace(/^\uFEFF/, '').trim();
+    if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+      s = s.slice(1, -1).trim();
+    }
+    return s;
+  }
+
   private readConfig(): StorageConfig {
     if (this.cfg) return this.cfg;
 
-    const bucket = process.env.RAILWAY_BUCKET_NAME || '';
-    const endpoint = process.env.RAILWAY_BUCKET_ENDPOINT || '';
-    const region = process.env.RAILWAY_BUCKET_REGION || 'auto';
-    const accessKeyId = process.env.RAILWAY_BUCKET_ACCESS_KEY_ID || '';
-    const secretAccessKey = process.env.RAILWAY_BUCKET_SECRET_ACCESS_KEY || '';
-    const acl = process.env.RAILWAY_BUCKET_ACL || '';
-    const forcePathStyleRaw = String(process.env.RAILWAY_BUCKET_FORCE_PATH_STYLE || '').trim().toLowerCase();
+    const bucket = this.cleanEnv(process.env.RAILWAY_BUCKET_NAME);
+    const endpoint = this.cleanEnv(process.env.RAILWAY_BUCKET_ENDPOINT);
+    const region = this.cleanEnv(process.env.RAILWAY_BUCKET_REGION) || 'auto';
+    const accessKeyId = this.cleanEnv(process.env.RAILWAY_BUCKET_ACCESS_KEY_ID);
+    const secretAccessKey = this.cleanEnv(process.env.RAILWAY_BUCKET_SECRET_ACCESS_KEY);
+    const acl = this.cleanEnv(process.env.RAILWAY_BUCKET_ACL);
+    const forcePathStyleRaw = this.cleanEnv(process.env.RAILWAY_BUCKET_FORCE_PATH_STYLE).toLowerCase();
     const forcePathStyle = forcePathStyleRaw ? forcePathStyleRaw === 'true' || forcePathStyleRaw === '1' : true;
 
     if (!bucket || !endpoint || !accessKeyId || !secretAccessKey) {
@@ -78,11 +86,22 @@ export class ObjectStorageService {
   }
 
   private buildPublicUrl(key: string): string {
+    return `/uploads/bucket/${key}`;
+  }
+
+  private extractKeyFromPathOrUrl(fileUrl: string | null | undefined): string | null {
+    const raw = String(fileUrl || '').trim();
+    if (!raw) return null;
+    if (raw.startsWith('/uploads/bucket/')) return raw.slice('/uploads/bucket/'.length);
+    if (raw.startsWith('/api/uploads/bucket/')) return raw.slice('/api/uploads/bucket/'.length);
+
     const cfg = this.readConfig();
     if (cfg.endpoint) {
-      return `${cfg.endpoint.replace(/\/$/, '')}/${cfg.bucket}/${key}`;
+      const endpoint = cfg.endpoint.replace(/\/$/, '');
+      const marker = `${endpoint}/${cfg.bucket}/`;
+      if (raw.startsWith(marker)) return raw.slice(marker.length);
     }
-    throw new InternalServerErrorException('Object storage endpoint is not configured.');
+    return null;
   }
 
   async uploadPublicImage(file: Express.Multer.File, keyPrefix: string): Promise<{ url: string; key: string }> {
@@ -110,20 +129,11 @@ export class ObjectStorageService {
   }
 
   async deleteByPublicUrl(fileUrl: string | null | undefined): Promise<boolean> {
-    const raw = String(fileUrl || '').trim();
-    if (!raw || !/^https?:\/\//i.test(raw)) return false;
-
-    const cfg = this.readConfig();
-    const client = this.getClient();
-    let key = '';
-
-    if (cfg.endpoint) {
-      const endpoint = cfg.endpoint.replace(/\/$/, '');
-      const marker = `${endpoint}/${cfg.bucket}/`;
-      if (raw.startsWith(marker)) key = raw.slice(marker.length);
-    }
-
+    const key = this.extractKeyFromPathOrUrl(fileUrl);
     if (!key) return false;
+
+    const client = this.getClient();
+    const cfg = this.readConfig();
 
     await client.send(
       new DeleteObjectCommand({
@@ -132,5 +142,27 @@ export class ObjectStorageService {
       }),
     );
     return true;
+  }
+
+  async readPublicAsset(pathOrUrl: string): Promise<{ body: Buffer; contentType: string; cacheControl?: string }> {
+    const key = this.extractKeyFromPathOrUrl(pathOrUrl);
+    if (!key) {
+      throw new InternalServerErrorException('Invalid bucket asset path.');
+    }
+
+    const cfg = this.readConfig();
+    const client = this.getClient();
+    const obj = await client.send(
+      new GetObjectCommand({
+        Bucket: cfg.bucket,
+        Key: key,
+      }),
+    );
+    const bytes = obj.Body ? await obj.Body.transformToByteArray() : new Uint8Array();
+    return {
+      body: Buffer.from(bytes),
+      contentType: obj.ContentType || 'application/octet-stream',
+      cacheControl: obj.CacheControl || undefined,
+    };
   }
 }
